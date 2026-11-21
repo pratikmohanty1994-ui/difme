@@ -4,6 +4,7 @@ Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIB
 
 ## Where things stand
 - **Repository moved (2026-11-21)** from `pratikmohanty1294/difme` to `pratikmohanty1994-ui/difme` (identical at 4ebfc707). Images are now `ghcr.io/pratikmohanty1994-ui/difme-*`; Argo CD, Fleet, Tekton, the bootstrap scripts and the Kyverno signing identity point at the new repository. Run ids below belong to the old repository.
+- **Actions on the new account (2026-11-21):** runs start again. The first full images run (44963269957) was cancelled after a few minutes on purpose: images now build per group and in waves (`images` dispatch input `only`), see rule 19 in `docs/knowledge-base/process.md`.
 - **Running in the Codespace:** profiles `base`, `core` and `streaming`. Rebuilt on 2026-11-18 with the containerd image store on `/tmp`.
   - core: Cilium, Argo CD, Kyverno, Envoy Gateway, cert-manager, MetalLB, YugabyteDB, TigerBeetle, Valkey, the shared Postgres (ADR-019), Temporal, flagd and the core services.
   - streaming: Strimzi 0.51 / Kafka 4.2, Apicurio 3.3.4, Debezium 3.7.1 (both connectors RUNNING), RisingWave (meta on the shared Postgres), Flink operator and fraud-cep, KEDA, SeaweedFS.

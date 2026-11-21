@@ -5,16 +5,19 @@ on:
     branches: [main]
     paths: ["services/**", "ml/fraud/**", "ml/feast/**", "verticals/**", "vendor/**", "backoffice/**", "pwa/**", "analytics/**", "processes/dmn/**", "deploy/images/**", "api/proto/**", ".github/workflows/images.yml", ".github/workflows/_image.yml", ".github/workflows/_manifest.yml"]
   workflow_dispatch:
+    inputs:
+      # Build in waves rather than all ~40 jobs at once (see ci/image-changes.py for the group keys).
+      only: { description: "Groups to build: empty = changed since each group's last green build; 'all'; or e.g. 'scheme,core'", default: "", type: string }
 permissions: { contents: read, packages: write, id-token: write, attestations: write }
-# A newer push supersedes an older image build of the same ref: every run rebuilds every image, so three merges in a
-# row queued three full builds (~25 jobs each) and starved the 20-job runner limit (2026-11-20).
-concurrency: { group: "images-${{ github.ref }}", cancel-in-progress: true }
+# One images run per ref at a time. A newer push waits (GitHub keeps only the latest pending run) instead of cancelling:
+# cancelling threw away hours of finished work (the Hyperswitch build), and with per-group change detection
+# (ci/image-changes.py) the waiting run builds only what is still not green, so runs no longer stack full rebuilds.
+concurrency: { group: "images-${{ github.ref }}", cancel-in-progress: false }
 
 jobs:
-  # Builds only the images whose sources changed since the last successful images run on this branch (not just since
-  # the previous push: a cancelled run must not drop an image). Manual dispatch, a first run, or a change to the image
-  # pipeline itself rebuilds everything. Every-image rebuilds on each merge (~30 jobs) were the bulk of the Actions
-  # usage that got the account's Actions disabled (2026-11-20).
+  # Per image group: rebuilt only when its sources changed since the last run in which that group fully succeeded
+  # (ci/image-changes.py). Every-image rebuilds on each merge (~30 jobs) were the bulk of the Actions usage that got
+  # the old account's Actions disabled (2026-11-20).
   changes:
     runs-on: ubuntu-24.04
     permissions: { contents: read, actions: read }
@@ -39,32 +42,8 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - id: d
-        env: { GH_TOKEN: "${{ github.token }}" }
-        run: |
-          base=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow images.yml --branch "$GITHUB_REF_NAME" --status success \
-                 --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)
-          all=false
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then all=true; fi
-          files=$([ "$all" = true ] || git diff --name-only "$base" HEAD)
-          echo "$files" | grep -qE '^\.github/workflows/(images|_image|_manifest)\.yml$' && all=true
-          echo "base ${base:-none} all=$all"; echo "$files" | head -50
-          check() { if [ "$all" = true ] || echo "$files" | grep -qE "$2"; then echo "$1=true" >> "$GITHUB_OUTPUT"; echo "build: $1"; else echo "$1=false" >> "$GITHUB_OUTPUT"; fi; }
-          check core '^(services/core/|api/proto/|api/openapi/|verticals/)'
-          check backoffice '^(backoffice/|vendor/formio/js/)'
-          check pwa '^pwa/'
-          check flink '^(analytics/flink-jobs/|processes/dmn/)'
-          check dbt '^analytics/dbt/'
-          check formio '^(vendor/formio/server/|deploy/images/formio/)'
-          check hub '^(services/hub/|api/proto/|deploy/images/quinn-hub/)'
-          check attestation '^(services/attestation/|api/proto/|deploy/images/attestation-verifier/)'
-          check feast '^(ml/feast/|deploy/images/feast/)'
-          check notary '^(services/notary/|deploy/images/notary/)'
-          check fraud '^(services/fraud-scorer/|ml/fraud/|deploy/images/fraud-scorer/)'
-          check scheme '^(services/scheme-sim/|vendor/moov-iso8583/|deploy/images/scheme-sim/)'
-          check fineract '^(vendor/fineract/|deploy/images/fineract/)'
-          check hyperswitch '^(vendor/hyperswitch/|deploy/images/hyperswitch/)'
-          check debezium '^deploy/images/debezium-connect/'
-          check veraison '^deploy/images/veraison/'
+        env: { GH_TOKEN: "${{ github.token }}", ONLY: "${{ inputs.only }}" }
+        run: python3 ci/image-changes.py
   core:
     needs: changes
     if: needs.changes.outputs.core == 'true'
