@@ -10,7 +10,7 @@ import sys
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-REPO = "https://github.com/pratikmohanty1294/difme.git"
+REPO = "https://github.com/pratikmohanty1994-ui/difme.git"
 APPS = ROOT / "deploy/argocd/apps"
 PROFILES = ROOT / "deploy/profiles"
 # Composite profiles: `make up PROFILE=all` etc.

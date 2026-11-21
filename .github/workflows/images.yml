@@ -261,6 +261,8 @@ jobs:
       runner: ${{ matrix.runner }}
       tag-suffix: -${{ matrix.arch }}
       sign: false
+      # rustc peaks above the runner's 16 GB on the router and hyperswitch_connectors crates (docs/knowledge-base/build.md).
+      swap: 24G
 
   hyperswitch-manifest:
     needs: [changes, hyperswitch]

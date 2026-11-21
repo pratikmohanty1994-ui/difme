@@ -25,7 +25,7 @@ spec:
       securityContext: { runAsNonRoot: true, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: notary
-          image: ghcr.io/pratikmohanty1294/difme-notary:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-notary:0.1.0
           env:
             - { name: NOTARY_NAME, value: notary-1 }
             - { name: NOTARY_KEY_FILE, value: /etc/notary/seed }

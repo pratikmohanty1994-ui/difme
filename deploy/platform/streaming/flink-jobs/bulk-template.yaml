@@ -5,7 +5,7 @@ apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata: { name: bulk-__RUN__, namespace: streaming, labels: { difme/bulk-run: __RUN__ } }
 spec:
-  image: ghcr.io/pratikmohanty1294/difme-flink-jobs:0.1.0
+  image: ghcr.io/pratikmohanty1994-ui/difme-flink-jobs:0.1.0
   flinkVersion: v2_2
   mode: native
   flinkConfiguration:

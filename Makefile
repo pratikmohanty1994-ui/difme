@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 CLUSTER ?= difme
 PROFILE ?= core
-REPO    ?= https://github.com/pratikmohanty1294/difme.git
+REPO    ?= https://github.com/pratikmohanty1994-ui/difme.git
 APPS     = $(shell cat deploy/profiles/$(PROFILE).txt 2>/dev/null | grep -v '^\#')
 
 .PHONY: help registries prefetch cluster destroy up down status ui verify test build tla lint check

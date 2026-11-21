@@ -2,7 +2,7 @@ apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata: { name: difme, namespace: fleet-default }
 spec:
-  repo: https://github.com/pratikmohanty1294/difme
+  repo: https://github.com/pratikmohanty1994-ui/difme
   branch: main
   paths: [deploy/argocd]
   targets:

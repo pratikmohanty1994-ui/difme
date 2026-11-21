@@ -28,7 +28,7 @@ def manifests(s: dict) -> list[dict]:
     mounts = [{"name": "tmp", "mountPath": "/tmp"}]
     container = {
         "name": "app",
-        "image": f"ghcr.io/pratikmohanty1294/{s['image']}:0.1.0",
+        "image": f"ghcr.io/pratikmohanty1994-ui/{s['image']}:0.1.0",
         "ports": [{"name": "http", "containerPort": s["port"]}, {"name": "grpc", "containerPort": 9000}],
         "env": env,
         "readinessProbe": {"httpGet": {"path": "/q/health/ready", "port": s["port"]}, "periodSeconds": 10},

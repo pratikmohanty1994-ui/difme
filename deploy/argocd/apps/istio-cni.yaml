@@ -36,6 +36,6 @@ spec:
       releaseName: istio-cni
       valueFiles:
       - $values/deploy/platform/istio-system/istio-cni/values.yaml
-  - repoURL: https://github.com/pratikmohanty1294/difme.git
+  - repoURL: https://github.com/pratikmohanty1994-ui/difme.git
     targetRevision: main
     ref: values

@@ -47,7 +47,7 @@ spec:
       initContainers:
         # Schema first: applies only the migrations not yet recorded (idempotent), then the router starts.
         - name: migrate
-          image: ghcr.io/pratikmohanty1294/difme-hyperswitch:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-hyperswitch:0.1.0
           command: [bash, -c, 'set -a; . /vault/secrets/router.env; set +a; until pg_isready -q -h postgres-docdb.database-tier.svc; do sleep 3; done; exec /local/bin/migrate.sh']
           env:
             - { name: DATABASE_URL, value: "postgresql://hyperswitch@postgres-docdb.database-tier.svc:5432/hyperswitch" }
@@ -55,7 +55,7 @@ spec:
           resources: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
       containers:
         - name: router
-          image: ghcr.io/pratikmohanty1294/difme-hyperswitch:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-hyperswitch:0.1.0
           command: [bash, -c, 'set -a; . /vault/secrets/router.env; set +a; exec /local/bin/router -f /local/config/docker_compose.toml']
           env:
             - { name: ROUTER__MASTER_DATABASE__HOST, value: postgres-docdb.database-tier.svc }

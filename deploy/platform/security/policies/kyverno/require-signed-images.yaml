@@ -12,11 +12,11 @@ spec:
     - name: verify-signature-and-provenance
       match: { any: [{ resources: { kinds: [Pod] } }] }
       verifyImages:
-        - imageReferences: ["ghcr.io/pratikmohanty1294/difme-*"]
+        - imageReferences: ["ghcr.io/pratikmohanty1994-ui/difme-*"]
           attestors:
             - entries:
                 - keyless:
-                    subjectRegExp: '^https://github\.com/pratikmohanty1294/difme/\.github/workflows/_(image|manifest)\.yml@refs/heads/main$'
+                    subjectRegExp: '^https://github\.com/pratikmohanty1994-ui/difme/\.github/workflows/_(image|manifest)\.yml@refs/heads/main$'
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor: { url: https://rekor.sigstore.dev }
           attestations:
@@ -24,13 +24,13 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subjectRegExp: '^https://github\.com/pratikmohanty1294/difme/\.github/workflows/_(image|manifest)\.yml@refs/heads/main$'
+                        subjectRegExp: '^https://github\.com/pratikmohanty1994-ui/difme/\.github/workflows/_(image|manifest)\.yml@refs/heads/main$'
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor: { url: https://rekor.sigstore.dev }
             - type: https://spdx.dev/Document
               attestors:
                 - entries:
                     - keyless:
-                        subjectRegExp: '^https://github\.com/pratikmohanty1294/difme/\.github/workflows/_(image|manifest)\.yml@refs/heads/main$'
+                        subjectRegExp: '^https://github\.com/pratikmohanty1994-ui/difme/\.github/workflows/_(image|manifest)\.yml@refs/heads/main$'
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor: { url: https://rekor.sigstore.dev }

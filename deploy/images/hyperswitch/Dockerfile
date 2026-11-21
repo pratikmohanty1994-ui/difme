@@ -10,8 +10,9 @@ COPY vendor/hyperswitch /src
 # release-fast (upstream's profile: optimised, no LTO) without debug info, stripped: half the build time and memory
 # of full LTO, which a simulator doesn't need.
 ENV CARGO_INCREMENTAL=0 CARGO_NET_RETRY=10 CARGO_PROFILE_RELEASE_FAST_DEBUG=0 CARGO_PROFILE_RELEASE_FAST_STRIP=symbols
-# The router crate alone needs more than 16 GB at full optimisation (killed by the kernel at 15 GB peak, 2026-11-21);
-# GitHub's standard runners have 16 GB. Building just that crate at opt-level 1 fits; every other crate stays optimised.
+# rustc needs more than the 16 GB of GitHub's standard runners here (router and hyperswitch_connectors were killed by
+# the kernel at ~15 GB, 2026-11-21, docs/knowledge-base/build.md). images.yml gives this job a 24 GB swapfile; the
+# router crate at opt-level 1 (every other crate optimised) keeps the peak and the build time down.
 RUN cargo build --locked --profile release-fast --bin router -j 2 --config 'profile.release-fast.package.router.opt-level=1' \
     && cp target/release-fast/router /router
 

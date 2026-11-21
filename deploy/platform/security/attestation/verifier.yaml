@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
         - name: verifier
-          image: ghcr.io/pratikmohanty1294/difme-attestation-verifier:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-attestation-verifier:0.1.0
           # Policy (empty in dev, so every device fails closed to the server-side fraud check): device keys file
           # ("device-id <SEC1 hex>"), approved Wasm module hashes from SLSA provenance, revoked devices.
           env:

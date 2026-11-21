@@ -21,7 +21,7 @@ spec:
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: scorer
-          image: ghcr.io/pratikmohanty1294/difme-fraud-scorer:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-fraud-scorer:0.1.0
           env: [{ name: FEAST_URL, value: "http://feast-server.ml-platform.svc:6566" }]
           ports: [{ containerPort: 8090 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8090 }, periodSeconds: 10 }

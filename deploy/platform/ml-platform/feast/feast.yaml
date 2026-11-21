@@ -12,13 +12,13 @@ spec:
       # written before the lakehouse (Trino) is up; materialization checks the sources when it runs.
       initContainers:
         - name: apply
-          image: ghcr.io/pratikmohanty1294/difme-feast:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-feast:0.1.0
           command: [feast, apply, --skip-source-validation]
           volumeMounts: [{ name: repo, mountPath: /feature_repo/feature_store.yaml, subPath: feature_store.yaml }]
           resources: { requests: { cpu: 50m, memory: 192Mi }, limits: { memory: 512Mi } }
       containers:
         - name: feast
-          image: ghcr.io/pratikmohanty1294/difme-feast:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-feast:0.1.0
           args: [feast, serve, --host, 0.0.0.0, --port, "6566"]
           ports: [{ containerPort: 6566 }]
           readinessProbe: { tcpSocket: { port: 6566 }, periodSeconds: 10 }

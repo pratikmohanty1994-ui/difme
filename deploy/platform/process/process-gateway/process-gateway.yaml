@@ -9,7 +9,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: ghcr.io/pratikmohanty1294/difme-process-gateway:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-process-gateway:0.1.0
           env:
             - { name: FLUXNOVA_USER, value: admin }
             - { name: FLUXNOVA_PASSWORD, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-password } } }

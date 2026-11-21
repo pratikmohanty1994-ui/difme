@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/pratikmohanty1294/difme-backoffice-shell:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-backoffice-shell:0.1.0
           ports: [{ containerPort: 8080 }]
           resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 64Mi } }
 ---

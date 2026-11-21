@@ -18,7 +18,7 @@ spec:
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: scheme-sim
-          image: ghcr.io/pratikmohanty1294/difme-scheme-sim:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-scheme-sim:0.1.0
           command: [/usr/local/bin/scheme-sim]
           env:
             # Bank X (BIN 437551, the FR-01 offer BIN) cards for buying partners, plus another issuer.
@@ -58,7 +58,7 @@ spec:
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: iso-adapter
-          image: ghcr.io/pratikmohanty1294/difme-scheme-sim:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-scheme-sim:0.1.0
           command: [/usr/local/bin/iso-adapter]
           env:
             - { name: NETWORK_ADDR, value: "scheme-sim.rails.svc:8583" }

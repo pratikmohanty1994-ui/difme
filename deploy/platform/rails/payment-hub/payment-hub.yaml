@@ -19,7 +19,7 @@ spec:
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: payment-hub
-          image: ghcr.io/pratikmohanty1294/difme-payment-hub:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-payment-hub:0.1.0
           env:
             - { name: TEMPORAL_TARGET, value: "temporal-frontend.temporal.svc:7233" }
             - { name: FINERACT_URL, value: "http://fineract.rails.svc:8080/fineract-provider" }

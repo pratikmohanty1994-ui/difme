@@ -6,7 +6,7 @@
 # Needs gh authenticated with the codespace scope (GH_TOKEN env var, or `gh auth login -s codespace`).
 # The Codespace is found by repo; set DIFME_CODESPACE to pick one explicitly. A stopped Codespace is started by ssh.
 set -euo pipefail
-REPO=${DIFME_REPO:-pratikmohanty1294/difme}
+REPO=${DIFME_REPO:-pratikmohanty1994-ui/difme}
 # DIFME_VM=user@host (plus optional DIFME_VM_KEY) drives a plain VM over SSH instead, e.g. the cloud VM runtime
 # set up by ci/vm-bootstrap.sh; the repo lives at the same /workspaces/difme path there.
 if [ -n "${DIFME_VM:-}" ]; then

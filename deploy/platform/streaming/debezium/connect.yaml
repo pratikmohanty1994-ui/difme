@@ -17,7 +17,7 @@ spec:
     # Lets connectors set producer.override.* (idempotent, acks=all for the outbox relay — ADR-017).
     connector.client.config.override.policy: All
   # Prebuilt in CI (deploy/images/debezium-connect): Debezium Postgres connector + Apicurio converters.
-  image: ghcr.io/pratikmohanty1294/difme-debezium-connect:3.7.1
+  image: ghcr.io/pratikmohanty1994-ui/difme-debezium-connect:3.7.1
   resources: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 1Gi } }
   jvmOptions: { "-Xms": 128m, "-Xmx": 384m, "-XX": { MaxMetaspaceSize: 128m } }   # measured 885 Mi RSS with the default heap
   template: { connectContainer: { env: [{ name: MALLOC_ARENA_MAX, value: "2" }] } }

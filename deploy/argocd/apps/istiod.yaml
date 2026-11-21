@@ -47,6 +47,6 @@ spec:
       releaseName: istiod
       valueFiles:
       - $values/deploy/platform/istio-system/istiod/values.yaml
-  - repoURL: https://github.com/pratikmohanty1294/difme.git
+  - repoURL: https://github.com/pratikmohanty1994-ui/difme.git
     targetRevision: main
     ref: values

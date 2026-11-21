@@ -129,4 +129,8 @@ In a 16 GB / 4 CPU container (nothing else running, `-j 2`, `CARGO_INCREMENTAL=0
 release-fast --bin router` was killed by the kernel three times: on `router` with opt-level 1, and on
 `hyperswitch_connectors` (peak 14,989 MB used) with router at opt-level 0. The build tree also needs ~8 GB of disk.
 Build the image on a machine with at least 24 GB RAM (or with swap), or turn off router features DIFME doesn't use.
+**Fix (2026-11-21):** the `hyperswitch` image job passes `swap: 24G` to `_image.yml`, which frees the runner's
+preinstalled SDKs and adds a swapfile (on `/mnt` where it has room, else the root disk) with zswap via
+`ci/image-disk.sh swap` before building. Prevention: any image whose compiler peaks near the runner's RAM gets the same
+input rather than lower optimisation.
 

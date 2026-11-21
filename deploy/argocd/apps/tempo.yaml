@@ -36,6 +36,6 @@ spec:
       releaseName: tempo
       valueFiles:
       - $values/deploy/platform/observability/tempo/values.yaml
-  - repoURL: https://github.com/pratikmohanty1294/difme.git
+  - repoURL: https://github.com/pratikmohanty1994-ui/difme.git
     targetRevision: main
     ref: values

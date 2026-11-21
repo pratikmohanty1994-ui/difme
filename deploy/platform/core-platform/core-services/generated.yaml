@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-cmd-svc:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-cmd-svc:0.1.0
         ports:
         - name: http
           containerPort: 8080
@@ -103,7 +103,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-qry-svc:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-qry-svc:0.1.0
         ports:
         - name: http
           containerPort: 8081
@@ -185,7 +185,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-saga-orchestrator:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-saga-orchestrator:0.1.0
         ports:
         - name: http
           containerPort: 8082
@@ -267,7 +267,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-consistency-router:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-consistency-router:0.1.0
         ports:
         - name: http
           containerPort: 8083
@@ -349,7 +349,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-rate-limiter:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-rate-limiter:0.1.0
         ports:
         - name: http
           containerPort: 8084
@@ -431,7 +431,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-exchange-svc:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-exchange-svc:0.1.0
         ports:
         - name: http
           containerPort: 8089

@@ -5,7 +5,7 @@ spec:
   params: [{ name: revision, default: main }]
   workspaces: [{ name: src }]
   tasks:
-    - { name: clone, taskRef: { resolver: hub, params: [{ name: name, value: git-clone }, { name: version, value: "0.9" }] }, workspaces: [{ name: output, workspace: src }], params: [{ name: url, value: "https://github.com/pratikmohanty1294/difme" }, { name: revision, value: $(params.revision) }] }
+    - { name: clone, taskRef: { resolver: hub, params: [{ name: name, value: git-clone }, { name: version, value: "0.9" }] }, workspaces: [{ name: output, workspace: src }], params: [{ name: url, value: "https://github.com/pratikmohanty1994-ui/difme" }, { name: revision, value: $(params.revision) }] }
     - name: semgrep
       runAfter: [clone]
       workspaces: [{ name: src, workspace: src }]

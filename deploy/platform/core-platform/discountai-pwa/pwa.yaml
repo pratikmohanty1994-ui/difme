@@ -11,7 +11,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/pratikmohanty1294/difme-pwa-shopbot:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-pwa-shopbot:0.1.0
           ports: [{ containerPort: 8080 }]
           readinessProbe: { httpGet: { path: /, port: 8080 }, periodSeconds: 10 }
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/pratikmohanty1294/difme-pwa-investor:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-pwa-investor:0.1.0
           ports: [{ containerPort: 8080 }]
           readinessProbe: { httpGet: { path: /, port: 8080 }, periodSeconds: 10 }
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
@@ -47,7 +47,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/pratikmohanty1294/difme-pwa-exchange:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-pwa-exchange:0.1.0
           ports: [{ containerPort: 8080 }]
           readinessProbe: { httpGet: { path: /, port: 8080 }, periodSeconds: 10 }
           volumeMounts: [{ name: tmp, mountPath: /tmp }]

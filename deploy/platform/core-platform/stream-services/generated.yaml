@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-rehydration-svc:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-rehydration-svc:0.1.0
         ports:
         - name: http
           containerPort: 8085
@@ -102,7 +102,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-projection-svc:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-projection-svc:0.1.0
         ports:
         - name: http
           containerPort: 8086
@@ -184,7 +184,7 @@ spec:
       enableServiceLinks: false
       containers:
       - name: app
-        image: ghcr.io/pratikmohanty1294/difme-replay-engine:0.1.0
+        image: ghcr.io/pratikmohanty1994-ui/difme-replay-engine:0.1.0
         ports:
         - name: http
           containerPort: 8087

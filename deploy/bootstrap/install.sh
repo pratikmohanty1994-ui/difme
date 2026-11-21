@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bootstraps Cilium + Argo CD + the app-of-apps root. Everything after this is GitOps.
 set -euo pipefail
-REPO=${1:-https://github.com/pratikmohanty1294/difme.git}
+REPO=${1:-https://github.com/pratikmohanty1994-ui/difme.git}
 
 helm repo add cilium https://helm.cilium.io >/dev/null
 helm upgrade --install cilium cilium/cilium -n kube-system --version 1.17.3 \

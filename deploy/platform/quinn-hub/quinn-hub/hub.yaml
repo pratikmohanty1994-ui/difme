@@ -14,7 +14,7 @@ spec:
       serviceAccountName: quinn-hub
       containers:
         - name: hub
-          image: ghcr.io/pratikmohanty1294/difme-quinn-hub:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-quinn-hub:0.1.0
           ports: [{ name: quic, containerPort: 4443, protocol: UDP }, { name: sse, containerPort: 8443 }, { name: metrics, containerPort: 9100 }]
           env:
             - { name: HUB_GRPC_CORE, value: "http://quarkus-cmd-svc.core-platform.svc:9000" }

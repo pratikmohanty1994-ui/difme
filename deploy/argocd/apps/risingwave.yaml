@@ -36,6 +36,6 @@ spec:
       releaseName: risingwave
       valueFiles:
       - $values/deploy/platform/streaming/risingwave/values.yaml
-  - repoURL: https://github.com/pratikmohanty1294/difme.git
+  - repoURL: https://github.com/pratikmohanty1994-ui/difme.git
     targetRevision: main
     ref: values

@@ -20,13 +20,13 @@ spec:
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       initContainers:
         - name: wait-db
-          image: ghcr.io/pratikmohanty1294/difme-fineract:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-fineract:0.1.0
           command: [bash, -c, 'until (exec 3<>/dev/tcp/postgres-docdb.database-tier.svc/5432) 2>/dev/null; do sleep 3; done']
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
       containers:
         - name: fineract
-          image: ghcr.io/pratikmohanty1294/difme-fineract:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-fineract:0.1.0
           env:
             - { name: FINERACT_NODE_ID, value: "1" }
             - { name: FINERACT_SERVER_SSL_ENABLED, value: "false" }

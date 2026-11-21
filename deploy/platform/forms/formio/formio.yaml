@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
         - name: formio
-          image: ghcr.io/pratikmohanty1294/difme-formio:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-formio:0.1.0
           env:
             - { name: MONGO, valueFrom: { secretKeyRef: { name: formio, key: mongo-url } } }   # mongodb://…@ferretdb.forms.svc:27017/formio
             - { name: JWT_SECRET, valueFrom: { secretKeyRef: { name: formio, key: jwt-secret } } }

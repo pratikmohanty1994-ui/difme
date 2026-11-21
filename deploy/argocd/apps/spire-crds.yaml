@@ -36,6 +36,6 @@ spec:
       releaseName: spire-crds
       valueFiles:
       - $values/deploy/platform/security/spire-crds/values.yaml
-  - repoURL: https://github.com/pratikmohanty1294/difme.git
+  - repoURL: https://github.com/pratikmohanty1994-ui/difme.git
     targetRevision: main
     ref: values

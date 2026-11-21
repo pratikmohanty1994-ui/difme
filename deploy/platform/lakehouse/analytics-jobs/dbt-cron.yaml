@@ -12,7 +12,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: dbt
-              image: ghcr.io/pratikmohanty1294/difme-dbt:0.1.0
+              image: ghcr.io/pratikmohanty1994-ui/difme-dbt:0.1.0
               command: [dbt-ol]     # lineage wrapper; runs dbt and posts OpenLineage events (failures are logged, the run continues)
               args: [build, --profiles-dir, /dbt, --project-dir, /dbt]
               env:

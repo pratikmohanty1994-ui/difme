@@ -2,7 +2,7 @@
 # One-time setup of a plain Ubuntu 24.04 VM as the DIFME runtime (replaces the Codespace; 2026-11-20).
 # Target: a free-tier arm64 cloud VM (arm64, 4 OCPU / 24 GB RAM, boot volume up to 200 GB), but any
 # amd64/arm64 Ubuntu 24.04 host works. Run as the default sudo user (ubuntu):
-#   curl -fsSL https://raw.githubusercontent.com/pratikmohanty1294/difme/main/ci/vm-bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/pratikmohanty1994-ui/difme/main/ci/vm-bootstrap.sh | bash
 # Afterwards drive it from anywhere with:  DIFME_VM=ubuntu@<ip> DIFME_VM_KEY=~/.ssh/<key> bash ci/cs.sh '<cmd>'
 # Idempotent: safe to re-run.
 set -euo pipefail
@@ -48,7 +48,7 @@ command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y -q
 
 echo "== repo at /workspaces/difme (same path as the Codespace, so every script works unchanged)"
 sudo mkdir -p /workspaces "$DATA"; sudo chown "$ME" /workspaces
-[ -d /workspaces/difme/.git ] || git clone -q https://github.com/pratikmohanty1294/difme.git /workspaces/difme
+[ -d /workspaces/difme/.git ] || git clone -q https://github.com/pratikmohanty1994-ui/difme.git /workspaces/difme
 git -C /workspaces/difme pull -q --ff-only || true
 
 echo "== image store and swap on the persistent disk"

@@ -46,20 +46,20 @@ spec:
         - { name: stores, emptyDir: {} }
       containers:
         - name: vts
-          image: ghcr.io/pratikmohanty1294/difme-veraison:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-veraison:0.1.0
           args: [vts-service, --config, /opt/veraison/config/config.yaml]
           env: [{ name: GOMEMLIMIT, value: 100MiB }]
           volumeMounts: [{ name: config, mountPath: /opt/veraison/config }, { name: keys, mountPath: /opt/veraison/keys }, { name: stores, mountPath: /opt/veraison/stores }]
           resources: { requests: { cpu: 20m, memory: 48Mi }, limits: { memory: 160Mi } }
         - name: verification
-          image: ghcr.io/pratikmohanty1294/difme-veraison:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-veraison:0.1.0
           args: [verification-service, --config, /opt/veraison/config/config.yaml]
           env: [{ name: GOMEMLIMIT, value: 48MiB }]
           ports: [{ name: verify, containerPort: 8080 }]
           volumeMounts: [{ name: config, mountPath: /opt/veraison/config }, { name: stores, mountPath: /opt/veraison/stores }]   # its start-up creates stores/ (read-only root FS otherwise)
           resources: { requests: { cpu: 10m, memory: 24Mi }, limits: { memory: 96Mi } }
         - name: provisioning
-          image: ghcr.io/pratikmohanty1294/difme-veraison:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-veraison:0.1.0
           args: [provisioning-service, --config, /opt/veraison/config/config.yaml]
           env: [{ name: GOMEMLIMIT, value: 48MiB }]
           ports: [{ name: provision, containerPort: 8888 }]

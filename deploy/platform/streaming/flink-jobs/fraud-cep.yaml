@@ -3,7 +3,7 @@ apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata: { name: fraud-cep }
 spec:
-  image: ghcr.io/pratikmohanty1294/difme-flink-jobs:0.1.0
+  image: ghcr.io/pratikmohanty1994-ui/difme-flink-jobs:0.1.0
   flinkVersion: v2_2
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "1"
