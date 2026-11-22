@@ -3,10 +3,14 @@
 // (ACTIVE, SUSPENDED, DELETED). Each payment carries a single-use cryptogram the TSP issues to that requestor: an HMAC
 // over token, requestor, amount and a transaction counter with a per-token key that never leaves the TSP. On an
 // authorisation the network swaps the token for the card number before the issuer sees it (Detokenize).
-// Simulator scope: the per-token keys are random and held in memory; ADR-026 moves cryptograms to the security module.
+// With a security module (Vault.HSM, ADR-026) the cryptogram is a TAVV: the CAVV layout (internal/threeds) with
+// result code 3 and ECI 07, its CVV part computed by services/hsm over the token number; each ATN is accepted once.
+// Like Visa's TAVV it binds token and ATN, not amount; the requestor check stays. Without one (unit tests), a
+// per-token HMAC over token, requestor, amount and counter.
 package tokens
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -17,6 +21,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/threeds"
 )
 
 // Token number range: separate from card BINs, so a token can never be mistaken for a card number.
@@ -41,11 +47,13 @@ type Token struct {
 }
 
 type Vault struct {
+	HSM    threeds.HSM // TAVV via the security module; nil: HMAC cryptograms (tests)
 	mu     sync.Mutex
 	tokens map[string]*Token
+	atns   map[string]bool // token|ATN of accepted TAVVs
 }
 
-func New() *Vault { return &Vault{tokens: map[string]*Token{}} }
+func New() *Vault { return &Vault{tokens: map[string]*Token{}, atns: map[string]bool{}} }
 
 // IsToken reports whether a number is in the token range.
 func IsToken(n string) bool { return strings.HasPrefix(n, TokenBIN) }
@@ -86,6 +94,15 @@ func (v *Vault) Cryptogram(token, requestor string, amountMinor int64) (string, 
 		return "", ErrDomain
 	}
 	atc := t.lastATC + 1
+	if v.HSM != nil {
+		v.mu.Unlock() // the security module is a network call
+		value, _, err := threeds.Build(context.Background(), v.HSM, token, threeds.ResultToken, 0)
+		v.mu.Lock()
+		if err != nil {
+			return "", err
+		}
+		return "TAVV:" + value, nil
+	}
 	return fmt.Sprintf("TAVV:%s:%d", mac(t, amountMinor, atc), atc), nil
 }
 
@@ -105,6 +122,24 @@ func (v *Vault) Detokenize(token, requestor string, amountMinor int64, cryptogra
 		return "", ErrDomain
 	}
 	parts := strings.Split(cryptogram, ":")
+	if v.HSM != nil {
+		if len(parts) != 2 || parts[0] != "TAVV" {
+			return "", ErrNoCryptogram
+		}
+		v.mu.Unlock()
+		c, err := threeds.Verify(context.Background(), v.HSM, token, parts[1])
+		v.mu.Lock()
+		switch {
+		case errors.Is(err, threeds.ErrFormat) || errors.Is(err, threeds.ErrCryptogram) || (err == nil && c.Result != threeds.ResultToken):
+			return "", ErrCryptogram
+		case err != nil:
+			return "", err
+		case v.atns[token+"|"+strconv.FormatUint(uint64(c.ATN), 10)]:
+			return "", ErrReplay
+		}
+		v.atns[token+"|"+strconv.FormatUint(uint64(c.ATN), 10)] = true
+		return t.PAN, nil
+	}
 	if len(parts) != 3 || parts[0] != "TAVV" {
 		return "", ErrNoCryptogram
 	}

@@ -4,13 +4,14 @@
 // CAVV (authenticationValue, 20 bytes, base64 on the wire; DIFME layout modelled on Visa's CVV-with-ATN method):
 //
 //	[0]     usage/version   0x07
-//	[1]     authentication result code: 1 challenge passed, 2 frictionless (risk-based), 7 attempt (stand-in)
+//	[1]     authentication result code: 1 challenge passed, 2 frictionless (risk-based), 3 network token (TAVV),
+//	        7 attempt (stand-in)
 //	[2]     second-factor result code (BCD): 00 none, 01 OTP
 //	[3]     CAVV key indicator (selects the CVK; 01 today) so keys rotate without breaking in-flight authentications
 //	[4:6]   CVV output, 3 digits BCD (0x0675 = "675"), from the security module
 //	[6:8]   unpredictable number: the last 4 digits of the ATN, BCD (binds the ATN into the cryptogram)
 //	[8:12]  ATN, authentication tracking number (big-endian); unique per card, so a CAVV is accepted once
-//	[12]    ECI: 05 authenticated, 06 attempt
+//	[12]    ECI: 05 authenticated, 06 attempt, 07 network token payment (TAVV)
 //	[13:20] zero
 //
 // Like Visa's CVV-method CAVV it does not bind amount or merchant: the switch checks those against the
@@ -29,6 +30,7 @@ const (
 	Usage           = 0x07
 	ResultChallenge = 1
 	ResultFriction  = 2 // frictionless
+	ResultToken     = 3 // network token cryptogram (TAVV, ADR-024): token presented by its requestor
 	ResultAttempt   = 7
 	KeyIndicator    = 0x01
 )
@@ -50,8 +52,11 @@ func (c CAVV) SFARC() string  { return fmt.Sprintf("%02d", c.SecondFactor) }
 
 // ECIFor returns the ECI an authentication result must carry.
 func ECIFor(result int) int {
-	if result == ResultAttempt {
+	switch result {
+	case ResultAttempt:
 		return 6
+	case ResultToken:
+		return 7
 	}
 	return 5
 }
@@ -112,7 +117,7 @@ func Decode(s string) (CAVV, error) {
 	}
 	c := CAVV{Result: int(b[1]), KeyIndicator: int(b[3]), CVV: cvv[1:], ATN: binary.BigEndian.Uint32(b[8:12]), ECI: int(b[12])}
 	fmt.Sscanf(sf, "%d", &c.SecondFactor)
-	if upn != c.UPN() || (c.Result != ResultChallenge && c.Result != ResultFriction && c.Result != ResultAttempt) || c.ECI != ECIFor(c.Result) {
+	if upn != c.UPN() || (c.Result != ResultChallenge && c.Result != ResultFriction && c.Result != ResultToken && c.Result != ResultAttempt) || c.ECI != ECIFor(c.Result) {
 		return CAVV{}, ErrFormat
 	}
 	return c, nil

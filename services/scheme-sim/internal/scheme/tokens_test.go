@@ -1,11 +1,15 @@
 package scheme
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/moov-io/iso8583"
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/threeds"
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/threeds/threedstest"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/tokens"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/wire"
 )
@@ -115,5 +119,32 @@ func TestTokenLifecycle(t *testing.T) {
 	_ = n.Tokens.SetStatus(tok.Number, "DELETED")
 	if err := n.Tokens.SetStatus(tok.Number, "ACTIVE"); err == nil {
 		t.Fatal("a deleted token came back")
+	}
+}
+
+func TestTAVVFromTheSecurityModule(t *testing.T) {
+	n := newNet(t)
+	n.Tokens.HSM = threedstest.New()
+	tok, _ := n.Tokens.Provision("4375510000000001", "MERCHANT01")
+	cg, err := n.Tokens.Cryptogram(tok.Number, "MERCHANT01", 50_000)
+	if err != nil || !strings.HasPrefix(cg, "TAVV:") {
+		t.Fatalf("%v %q", err, cg)
+	}
+	if c, _ := threeds.Decode(strings.TrimPrefix(cg, "TAVV:")); c.Result != threeds.ResultToken || c.ECI != 7 {
+		t.Fatalf("TAVV layout: %+v", c)
+	}
+	if code, _ := send(t, n, authReq(t, tok.Number, "MERCHANT01", 50_000, cg)); code != Approved {
+		t.Fatalf("TAVV payment: %s", code)
+	}
+	if code, _ := send(t, n, authReq(t, tok.Number, "MERCHANT01", 50_000, cg)); code != DoNotHonour {
+		t.Errorf("replayed TAVV: %s", code)
+	}
+	if code, _ := send(t, n, authReq(t, tok.Number, "OTHERSHOP1", 1000, cg)); code != Restricted {
+		t.Errorf("another requestor: %s", code)
+	}
+	// a 3-D Secure CAVV for the token number is not a TAVV
+	cavv, _, _ := threeds.Build(context.Background(), n.Tokens.HSM, tok.Number, threeds.ResultFriction, 0)
+	if code, _ := send(t, n, authReq(t, tok.Number, "MERCHANT01", 1000, "TAVV:"+cavv)); code != DoNotHonour {
+		t.Errorf("CAVV used as TAVV: %s", code)
 	}
 }

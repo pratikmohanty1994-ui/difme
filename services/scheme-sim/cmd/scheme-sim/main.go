@@ -25,7 +25,8 @@ func env(k, d string) string {
 func main() {
 	n := scheme.New()
 	if u := os.Getenv("HSM_URL"); u != "" {
-		n.HSM = threeds.NewHSMClient(u) // 3-D Secure CAVV verification (ADR-027)
+		n.HSM = threeds.NewHSMClient(u)        // 3-D Secure CAVV verification (ADR-027)
+		n.Tokens.HSM = threeds.NewHSMClient(u) // network token cryptograms as TAVV (ADR-024/026)
 	}
 	if seed := os.Getenv("SEED_CARDS"); seed != "" {
 		var cards []scheme.Card
