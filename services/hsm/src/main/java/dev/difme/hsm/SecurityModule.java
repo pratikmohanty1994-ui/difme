@@ -86,16 +86,19 @@ public final class SecurityModule {
     /** Chip cryptogram profiles: master-key derivation, session-key derivation and ARPC method per scheme CVN. */
     public enum Cvn {
         // Visa CVN 10: card master key as session key, zero padding (jPOS's MAC default), ARPC method 1
-        VISA_10(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.VSDC, org.jpos.security.ARPCMethod.METHOD_1, false),
+        VISA_10(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.VSDC, org.jpos.security.ARPCMethod.METHOD_1, false, org.jpos.security.SKDMethod.VSDC),
         // Visa CVN 18: EMV common session key from the ATC, ISO 9797 method 2 padding, ARPC method 2 (CSU)
-        VISA_18(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_2, true),
+        VISA_18(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_2, true, org.jpos.security.SKDMethod.VSDC),
         // Mastercard M/Chip CVN 16: session key from ATC and unpredictable number, method 2 padding, ARPC method 1
-        MASTERCARD_16(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true);
+        MASTERCARD_16(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.MCHIP);
         final org.jpos.security.MKDMethod mkd;
         final org.jpos.security.SKDMethod skd;
         final org.jpos.security.ARPCMethod arpc;
         final boolean method2Padding;
-        Cvn(org.jpos.security.MKDMethod m, org.jpos.security.SKDMethod s, org.jpos.security.ARPCMethod a, boolean p) { mkd = m; skd = s; arpc = a; method2Padding = p; }
+        final org.jpos.security.SKDMethod smSkd; // secure messaging session keys (Visa: from the ATC, also for CVN 18)
+        Cvn(org.jpos.security.MKDMethod m, org.jpos.security.SKDMethod s, org.jpos.security.ARPCMethod a, boolean p, org.jpos.security.SKDMethod sm) {
+            mkd = m; skd = s; arpc = a; method2Padding = p; smSkd = sm;
+        }
         byte[] pad(byte[] d) {
             if (!method2Padding) return d;
             byte[] out = new byte[(d.length / 8 + 1) * 8];
@@ -112,6 +115,43 @@ public final class SecurityModule {
     public byte[] verifyArqcGenerateArpc(Cvn cvn, SecureDESKey imkAc, String pan, String psn, byte[] arqc, byte[] atc, byte[] upn, byte[] txnData,
             byte[] arcOrCsu) throws SMException {
         return sm.verifyARQCGenerateARPC(cvn.mkd, cvn.skd, imkAc, pan, psn, arqc, atc, upn, cvn.pad(txnData), cvn.arpc, arcOrCsu, null);
+    }
+
+    private static byte[] scriptMacInput(byte[] command, byte[] atc, byte[] arqc) {
+        byte[] out = new byte[5 + atc.length + arqc.length + command.length - 5];
+        System.arraycopy(command, 0, out, 0, 5);
+        System.arraycopy(atc, 0, out, 5, atc.length);
+        System.arraycopy(arqc, 0, out, 5 + atc.length, arqc.length);
+        System.arraycopy(command, 5, out, 5 + atc.length + arqc.length, command.length - 5);
+        return out;
+    }
+
+    /** Issuer script MAC (secure messaging integrity) over the script command, keyed from the card's MK-SMI. */
+    public byte[] scriptMac(Cvn cvn, SecureDESKey imkSmi, String pan, String psn, byte[] atc, byte[] arqc, byte[] command) throws SMException {
+        // MAC input per EMV: command header || ATC || ARQC || command data (jPOS MACs what it is given)
+        return sm.generateSM_MAC(cvn.mkd, cvn.smSkd, imkSmi, pan, psn, atc, arqc, scriptMacInput(command, atc, arqc));
+    }
+
+    /**
+     * Offline PIN change script: the new PIN (arriving under a ZPK) re-encrypted for the card under its MK-SMC session
+     * key, with the script MAC. Returns the encrypted PIN data and the MAC.
+     */
+    public org.javatuples.Pair<EncryptedPIN, byte[]> pinChangeScript(Cvn cvn, SecureDESKey imkSmi, SecureDESKey imkSmc, SecureDESKey imkAc, String pan,
+            String psn, byte[] atc, byte[] arqc, byte[] command, EncryptedPIN newPinUnderZpk, SecureDESKey zpk) throws SMException {
+        return sm.translatePINGenerateSM_MAC(cvn.mkd, cvn.smSkd, org.jpos.security.PaddingMethod.VSDC, imkSmi, pan, psn, atc, arqc, scriptMacInput(command, atc, arqc), null,
+                newPinUnderZpk, zpk, imkSmc, imkAc, SMAdapter.FORMAT41);
+    }
+
+    /** Mastercard CVC3 (contactless magstripe): track template, ATC and unpredictable number with the card's CVC3 key. */
+    public boolean verifyCvc3(SecureDESKey imkCvc3, String pan, String psn, byte[] atc, byte[] upn, byte[] trackTemplate, String cvc3) throws SMException {
+        return sm.verifyCVC3(imkCvc3, pan, psn, atc, upn, trackTemplate, org.jpos.security.MKDMethod.OPTION_A, cvc3);
+    }
+
+    /** DUKPT (ANSI X9.24-1, TDES): a PIN block from a terminal, identified by its KSN, translated to a ZPK. */
+    public String translateDukptPin(byte[] pinBlockUnderDuk, String pan, String ksnHex, SecureDESKey bdk, SecureDESKey zpk) throws SMException {
+        EncryptedPIN in = new EncryptedPIN(pinBlockUnderDuk, SMAdapter.FORMAT01, pan, true);
+        org.jpos.security.KeySerialNumber ksn = new org.jpos.security.KeySerialNumber(org.jpos.iso.ISOUtil.hex2byte(ksnHex));
+        return org.jpos.iso.ISOUtil.hexString(sm.translatePIN(in, ksn, bdk, zpk, SMAdapter.FORMAT01, true).getPINBlock());
     }
 
     /** Visa dCVV (contactless MSD): CVV over PAN, expiry, service code and ATC with the card's derived key. */

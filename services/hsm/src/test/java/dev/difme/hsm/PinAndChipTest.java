@@ -91,4 +91,46 @@ class PinAndChipTest {
                 ISOUtil.hex2byte(TXN + "A00003220000"), ISOUtil.hex2byte("0010"));
         assertArrayEquals(ISOUtil.hex2byte("47006C9808C545B2"), arpc);
     }
+
+    @Test
+    void issuerScriptMacsMatchPyemv() throws Exception {
+        SecureDESKey smi = hsm.keyFromComponents(SMAdapter.TYPE_MK_SMI, KEY);
+        // pyemv VisaCVN10.generate_command_mac(841E000004, ARQC, ATC) = 8CAB713A77715915 (block application)
+        assertArrayEquals(ISOUtil.hex2byte("8CAB713A77715915"), hsm.scriptMac(SecurityModule.Cvn.VISA_10, smi, PAN, "00", ATC,
+                ISOUtil.hex2byte("D9ABDDB9BE215B12"), ISOUtil.hex2byte("841E000004")));
+        // pyemv VisaCVN18.generate_command_mac(...) = 8915C0D89FD214B5
+        assertArrayEquals(ISOUtil.hex2byte("8915C0D89FD214B5"), hsm.scriptMac(SecurityModule.Cvn.VISA_18, smi, PAN, "00", ATC,
+                ISOUtil.hex2byte("3875B6B0C1E9CCCD"), ISOUtil.hex2byte("841E000004")));
+    }
+
+    @Test
+    void cvc3MatchesPyemv() throws Exception {
+        SecureDESKey cvc3 = hsm.keyFromComponents(SMAdapter.TYPE_MK_CVC3, KEY);
+        byte[] track = ISOUtil.hex2byte("4375510000000001D2812101000000000F");
+        // pyemv generate_cvc3(derive_icc_mk_a(KEY, PAN, "00"), track, 0005, 00000899) = 37940
+        assertTrue(hsm.verifyCvc3(cvc3, PAN, "00", ISOUtil.hex2byte("0005"), ISOUtil.hex2byte("00000899"), track, "37940"));
+        assertFalse(hsm.verifyCvc3(cvc3, PAN, "00", ISOUtil.hex2byte("0006"), ISOUtil.hex2byte("00000899"), track, "37940"));
+    }
+
+    @Test
+    void dukptPinFromATerminalMatchesTheX924Vector() throws Exception {
+        // ANSI X9.24-1 test data: BDK 0123456789ABCDEFFEDCBA9876543210, KSN FFFF9876543210E00001, PAN 4012345678909,
+        // PIN 1234 -> encrypted PIN block 1B9C1845EB993A7A
+        SecureDESKey bdk = hsm.keyFromComponents(SMAdapter.TYPE_BDK, KEY);
+        String underZpk = hsm.translateDukptPin(ISOUtil.hex2byte("1B9C1845EB993A7A"), "4012345678909", "FFFF9876543210E00001", bdk, zpk);
+        // the same PIN block under our ZPK: psec encrypt_tdes_ecb(ZPK, encode_pinblock_iso_0("1234", "4012345678909"))
+        assertEquals(REF_DUKPT_UNDER_ZPK, underZpk);
+    }
+    @Test
+    void offlinePinChangeScriptMatchesPyemv() throws Exception {
+        SecureDESKey smi = hsm.keyFromComponents(SMAdapter.TYPE_MK_SMI, KEY), smc = hsm.keyFromComponents(SMAdapter.TYPE_MK_SMC, KEY);
+        // pyemv VisaCVN10.generate_pin_change_command("5678", ARQC, ATC) =
+        // 8424000218 | ED5FEFA28F6313ADAAD4A9056B697BDB (PIN for the card) | 594DAD4E767AAE68 (MAC)
+        var out = hsm.pinChangeScript(SecurityModule.Cvn.VISA_10, smi, smc, imk, PAN, "00", ATC, ISOUtil.hex2byte("D9ABDDB9BE215B12"),
+                ISOUtil.hex2byte("8424000218"), SecurityModule.pinBlock("1E1B70C3FAA8AEB5", PAN), zpk);
+        assertEquals("ED5FEFA28F6313ADAAD4A9056B697BDB", ISOUtil.hexString(out.getValue0().getPINBlock()));
+        assertEquals("594DAD4E767AAE68", ISOUtil.hexString(out.getValue1()));
+    }
+
+    static final String REF_DUKPT_UNDER_ZPK = "EE8E9B1F429DEA0F";
 }
