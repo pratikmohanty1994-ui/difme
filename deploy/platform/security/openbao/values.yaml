@@ -100,6 +100,28 @@ server:
             }
           }
         }
+        initialize "openbao-config" {
+          # F2: the openbao-config Job (security/openbao-config) re-applies every request in these blocks on each sync,
+          # so clusters whose OpenBao already exists stay in line with this file. Its policy covers exactly the kinds
+          # of paths used here (mounts, Kubernetes auth and roles, ACL policies, transit keys); writing ACL policies is
+          # admin-equivalent by nature, so only that Job's service account may log in with it, and git is the authority.
+          request "config-policy" {
+            operation = "update"
+            path = "sys/policies/acl/openbao-config"
+            data = { policy = "path \"sys/mounts/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"sys/auth/kubernetes\" { capabilities = [\"create\", \"update\", \"read\", \"sudo\"] }\npath \"auth/kubernetes/config\" { capabilities = [\"update\", \"read\"] }\npath \"auth/kubernetes/role/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"sys/policies/acl/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"transit/keys/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"pki_int/cert/ca\" { capabilities = [\"read\"] }\npath \"pki_int/root/generate/internal\" { capabilities = [\"update\"] }" }
+          }
+          request "config-role" {
+            operation = "update"
+            path = "auth/kubernetes/role/openbao-config"
+            data = {
+              bound_service_account_names = ["openbao-config"]
+              bound_service_account_namespaces = ["security"]
+              audience = "vault"
+              token_policies = ["openbao-config"]
+              token_ttl = "10m"
+            }
+          }
+        }
         initialize "key-release" {
           # Attested key release (ADR-026): the security module's LMK, KBPK and key list live under kbs/difme/hsm
           # (KV v1, base64 values). Trustee's KBS may only read them; the module may only create missing ones on its

@@ -12,6 +12,7 @@ attestation
 notary
 exchange-evidence
 keycloak
+openbao-config
 tee-key-release
 valkey
 tigerbeetle

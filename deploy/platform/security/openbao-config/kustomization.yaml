@@ -1,0 +1,6 @@
+resources: [openbao-config.yaml]
+namespace: security
+generatorOptions: { disableNameSuffixHash: true }
+configMapGenerator:
+  - name: openbao-config-requests
+    files: [apply.sh, requests.json]

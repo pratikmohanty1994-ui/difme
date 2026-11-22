@@ -59,6 +59,8 @@ jobs:
         run: python verticals/check.py
       - name: Generated Tazama manifests are current
         run: python deploy/platform/fraud/tazama/render.py --check
+      - name: OpenBao configuration requests are current (F2)
+        run: python deploy/platform/security/openbao-config/render.py --check
       - name: No key material in the deployment tree (ADR-026, keys only through attested key release)
         run: bash ci/no-key-material.sh
       - name: Generated core-service manifests are current

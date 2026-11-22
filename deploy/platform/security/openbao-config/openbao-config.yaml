@@ -1,0 +1,50 @@
+# F2: re-applies OpenBao's configuration (mounts, auth, policies, roles from openbao/values.yaml `initialize` blocks)
+# on every sync, idempotently, so clusters whose OpenBao already exists get new mounts, policies and roles too.
+# Logs in with Kubernetes auth role `openbao-config` (created by the `openbao-config` initialize block on a fresh
+# OpenBao; on an OpenBao that existed before, once by an operator: ci/openbao-config-bootstrap.sh).
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: openbao-config }
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: openbao-config, annotations: { argocd.argoproj.io/hook: PostSync, argocd.argoproj.io/hook-delete-policy: BeforeHookCreation } }
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      serviceAccountName: openbao-config
+      restartPolicy: OnFailure
+      securityContext: { runAsNonRoot: true, runAsUser: 100, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: apply
+          image: curlimages/curl:8.11.1
+          env: [{ name: BAO_ADDR, value: "http://openbao.security.svc:8200" }]
+          command: [sh, -c]
+          args:
+            - |
+              set -eu
+              LOGIN=$(curl -s -X POST "$BAO_ADDR/v1/auth/kubernetes/login" -d "{\"role\":\"openbao-config\",\"jwt\":\"$(cat /var/run/secrets/openbao/token)\"}")
+              TOKEN=$(printf '%s' "$LOGIN" | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p')
+              [ -n "$TOKEN" ] || { echo "OpenBao login (role openbao-config) failed: run ci/openbao-config-bootstrap.sh once on this cluster"; exit 1; }
+              bao() { curl -s -X "$1" -H "X-Vault-Token: $TOKEN" "$BAO_ADDR/v1/$2"; }
+              apply() {  # path json: create or update; "already in use" on mounts/auth is fine
+                out=$(curl -s -w '\n%{http_code}' -X POST -H "X-Vault-Token: $TOKEN" -d "$2" "$BAO_ADDR/v1/$1")
+                code=$(printf '%s' "$out" | tail -1)
+                case "$code" in
+                  200|204) echo "+ $1" ;;
+                  400) printf '%s' "$out" | grep -q "already in use\|already exists" && echo "= $1" || { echo "! $1: $out"; fail=$((fail+1)); } ;;
+                  *) echo "! $1: HTTP $code"; fail=$((fail+1)) ;;
+                esac
+              }
+              . /requests/apply.sh
+          volumeMounts:
+            - { name: requests, mountPath: /requests }
+            - { name: openbao-token, mountPath: /var/run/secrets/openbao, readOnly: true }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
+      volumes:
+        - { name: requests, configMap: { name: openbao-config-requests } }
+        - name: openbao-token
+          projected: { sources: [{ serviceAccountToken: { audience: vault, expirationSeconds: 600, path: token } }] }

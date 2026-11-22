@@ -1,0 +1,282 @@
+[
+ {
+  "block": "spire-ca",
+  "data": {
+   "config": {
+    "max_lease_ttl": "87600h"
+   },
+   "type": "pki"
+  },
+  "name": "mount-pki-int",
+  "operation": "update",
+  "path": "sys/mounts/pki_int"
+ },
+ {
+  "block": "spire-ca",
+  "data": {
+   "common_name": "difme.local SPIRE upstream CA",
+   "ttl": "87600h"
+  },
+  "name": "generate-root",
+  "operation": "update",
+  "path": "pki_int/root/generate/internal"
+ },
+ {
+  "block": "spire-auth",
+  "data": {
+   "type": "kubernetes"
+  },
+  "name": "enable-k8s-auth",
+  "operation": "update",
+  "path": "sys/auth/kubernetes"
+ },
+ {
+  "block": "spire-auth",
+  "data": {
+   "kubernetes_host": "https://kubernetes.default.svc"
+  },
+  "name": "k8s-auth-config",
+  "operation": "update",
+  "path": "auth/kubernetes/config"
+ },
+ {
+  "block": "spire-auth",
+  "data": {
+   "policy": "path \"pki_int/root/sign-intermediate\" { capabilities = [\"update\"] }"
+  },
+  "name": "spire-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/spire-server"
+ },
+ {
+  "block": "spire-auth",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "spire-server"
+   ],
+   "bound_service_account_namespaces": [
+    "security"
+   ],
+   "token_policies": [
+    "spire-server"
+   ],
+   "token_ttl": "1h"
+  },
+  "name": "spire-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/spire-server"
+ },
+ {
+  "block": "evidence-transit",
+  "data": {
+   "type": "transit"
+  },
+  "name": "mount-transit",
+  "operation": "update",
+  "path": "sys/mounts/transit"
+ },
+ {
+  "block": "evidence-transit",
+  "data": {
+   "allow_plaintext_backup": false,
+   "exportable": false,
+   "type": "ed25519"
+  },
+  "name": "evidence-key",
+  "operation": "update",
+  "path": "transit/keys/evidence-operator"
+ },
+ {
+  "block": "evidence-transit",
+  "data": {
+   "policy": "path \"transit/sign/evidence-operator\" { capabilities = [\"update\"] }\npath \"transit/keys/evidence-operator\" { capabilities = [\"read\"] }"
+  },
+  "name": "evidence-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/exchange-evidence"
+ },
+ {
+  "block": "evidence-transit",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "exchange-svc"
+   ],
+   "bound_service_account_namespaces": [
+    "core-platform"
+   ],
+   "token_policies": [
+    "exchange-evidence"
+   ],
+   "token_ttl": "1h"
+  },
+  "name": "evidence-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/exchange-evidence"
+ },
+ {
+  "block": "openbao-config",
+  "data": {
+   "policy": "path \"sys/mounts/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"sys/auth/kubernetes\" { capabilities = [\"create\", \"update\", \"read\", \"sudo\"] }\npath \"auth/kubernetes/config\" { capabilities = [\"update\", \"read\"] }\npath \"auth/kubernetes/role/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"sys/policies/acl/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"transit/keys/*\" { capabilities = [\"create\", \"update\", \"read\"] }\npath \"pki_int/cert/ca\" { capabilities = [\"read\"] }\npath \"pki_int/root/generate/internal\" { capabilities = [\"update\"] }"
+  },
+  "name": "config-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/openbao-config"
+ },
+ {
+  "block": "openbao-config",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "openbao-config"
+   ],
+   "bound_service_account_namespaces": [
+    "security"
+   ],
+   "token_policies": [
+    "openbao-config"
+   ],
+   "token_ttl": "10m"
+  },
+  "name": "config-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/openbao-config"
+ },
+ {
+  "block": "key-release",
+  "data": {
+   "options": {
+    "version": "1"
+   },
+   "type": "kv"
+  },
+  "name": "mount-kbs",
+  "operation": "update",
+  "path": "sys/mounts/kbs"
+ },
+ {
+  "block": "key-release",
+  "data": {
+   "policy": "path \"kbs/difme/*\" { capabilities = [\"read\"] }"
+  },
+  "name": "kbs-read-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/trustee-kbs"
+ },
+ {
+  "block": "key-release",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "trustee"
+   ],
+   "bound_service_account_namespaces": [
+    "security"
+   ],
+   "token_policies": [
+    "trustee-kbs"
+   ],
+   "token_ttl": "720h"
+  },
+  "name": "kbs-read-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/trustee-kbs"
+ },
+ {
+  "block": "key-release",
+  "data": {
+   "policy": "path \"kbs/difme/hsm/*\" { capabilities = [\"create\"] }"
+  },
+  "name": "hsm-bootstrap-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/hsm-bootstrap"
+ },
+ {
+  "block": "key-release",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "hsm"
+   ],
+   "bound_service_account_namespaces": [
+    "rails"
+   ],
+   "token_policies": [
+    "hsm-bootstrap"
+   ],
+   "token_ttl": "5m"
+  },
+  "name": "hsm-bootstrap-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/hsm-bootstrap"
+ },
+ {
+  "block": "rails-secrets",
+  "data": {
+   "options": {
+    "version": "2"
+   },
+   "type": "kv"
+  },
+  "name": "mount-kv",
+  "operation": "update",
+  "path": "sys/mounts/secret"
+ },
+ {
+  "block": "rails-secrets",
+  "data": {
+   "policy": "path \"secret/data/rails/hyperswitch\" { capabilities = [\"read\"] }"
+  },
+  "name": "hyperswitch-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/hyperswitch"
+ },
+ {
+  "block": "rails-secrets",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "hyperswitch"
+   ],
+   "bound_service_account_namespaces": [
+    "rails"
+   ],
+   "token_policies": [
+    "hyperswitch"
+   ],
+   "token_ttl": "10m"
+  },
+  "name": "hyperswitch-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/hyperswitch"
+ },
+ {
+  "block": "rails-secrets",
+  "data": {
+   "policy": "path \"secret/data/rails/hyperswitch\" { capabilities = [\"create\"] }\npath \"secret/metadata/rails/hyperswitch\" { capabilities = [\"read\"] }"
+  },
+  "name": "seeder-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/hyperswitch-seeder"
+ },
+ {
+  "block": "rails-secrets",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "hyperswitch-seeder"
+   ],
+   "bound_service_account_namespaces": [
+    "rails"
+   ],
+   "token_policies": [
+    "hyperswitch-seeder"
+   ],
+   "token_ttl": "5m"
+  },
+  "name": "seeder-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/hyperswitch-seeder"
+ }
+]
