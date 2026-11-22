@@ -364,3 +364,14 @@ keys) serves as the issuer's card-number vault for part 3.
 **End-to-end flow:** cardholder account (Fineract) → card issued (number in the issuer vault) → network token for the
 merchant (TSP) → token stored in Hyperswitch's vault → each payment carries the token and a cryptogram → scheme
 swaps it for the card number → issuer authorises against Fineract → Tazama (ADR-023) sees each step.
+
+**References studied for ADR-024 (2026-11-22; reading only, nothing vendored yet):**
+
+| Repository | Licence | What we take from it |
+|---|---|---|
+| [srosio/card-engine](https://github.com/srosio/card-engine) | Apache-2.0 | Closest match to part 3: card orchestration over an existing core (has a Fineract adapter). Authorisation = card state → rules (per-transaction and daily limits, MCC blocking, velocity) → reserve funds → record → respond, idempotent by key; clearing and reversal services. Small (~5.6k lines, 6 tests, MVP mocks), so a design reference, not a dependency. It keeps holds in its own table and settles with a Fineract withdrawal; DIFME uses Fineract's native `holdAmount` / `releaseAmount` savings commands instead (present in the vendored 1.16.1), so the hold lives in the bank's ledger. |
+| [jpos/jPOS-EE](https://github.com/jpos/jPOS-EE) | AGPL-3.0 | For the later jPOS migration: `cryptoservice` / `cryptoserver` (AES-256 card-number encryption, keys protected with PGP), `minigl` (general ledger), `saf` (store and forward), `cmf` (jPOS common message format), `txn` (transaction manager), client/server simulators. |
+| [cloud-itonami/cloud-itonami-card-issuing](https://github.com/cloud-itonami/cloud-itonami-card-issuing) | AGPL-3.0 | Issuer-side scope checklist only (BIN sponsorship, cardholder provisioning, authorisation policy, lifecycle, disputes); a governance blueprint, no processing code. |
+| BIAN service domains *Issued Device Administration*, *Card Authorization*, *Card Transaction Switch* | open specification | Vocabulary and boundaries for the card-issuer service's API. |
+
+Not used: `sebastianrm/cards-service` has no licence (all rights reserved), so it isn't read for code.
