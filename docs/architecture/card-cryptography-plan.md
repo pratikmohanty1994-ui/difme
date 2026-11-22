@@ -35,7 +35,7 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 | Visa CAVV (3-D Secure, CVV method) | jPOS | **done**: psec | 3DS ACS (later), card-issuer |
 | Network token cryptogram (TAVV, CAVV format) replacing the HMAC cryptogram | jPOS | psec + existing scheme-sim token tests | scheme-sim TSP (ADR-024) |
 | Mastercard AAV/UCAF (SPA2, HMAC-SHA-256) | ext | spec examples | card-issuer |
-| Dynamic CVV2 for virtual cards (time/counter-based, DIFME-defined) | ext | own vectors + negative cases | card-issuer, app |
+| **dCVV2** (dynamic CVV2 for card-not-present: a 3-digit code that changes every N minutes, shown in the app or on a virtual/display card). Per-card key derived from an IMK-DCVV2 (EMV option A), CVV algorithm with the time-step counter (or an app counter) in place of expiry/service code; verify accepts the current and previous step, rejects reuse, and falls back to static CVV2 per card setting. Scheme dCVV2 profiles are not public, so the DIFME profile is documented here and swappable | ext (on jPOS key derivation) | independent Python implementation on psec/pyemv primitives; time-window, replay and wrong-key negatives | card-issuer (authorise), app (display) |
 
 ## Phase 2 — PIN
 
@@ -60,7 +60,8 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 | ARQC verify + ARPC generate, method 1 and 2 (`verifyARQCGenerateARPC`) | jPOS | pyemv `cvn`: Visa CVN 10/18, Mastercard CVN 16/17/20/21 | card-issuer authorisation |
 | AES cryptograms (Visa CVN 22 and later AES chip profiles) | ext | pyemv `cvn.VisaCVN22` | card-issuer |
 | TC/AAC verification at clearing | jPOS | pyemv `ac.generate_ac` | card-issuer clearing |
-| Contactless: Mastercard CVC3, Visa dCVV (MSD) | jPOS | pyemv `cvv.generate_cvc3`; Visa vectors | card-issuer |
+| **dCVV** (Visa contactless MSD, and track-2-equivalent data from MSD wallets): per-card key from IMK-DCVV, CVV algorithm over PAN, expiry, service code and the card's ATC (`calculatedCVV`/`verifydCVV`); issuer checks the ATC is newer than the last one seen and within a configured window | jPOS | independent Python implementation on psec/pyemv primitives; jPOS's own test vectors; ATC replay negatives | card-issuer (authorise MSD), scheme-sim (contactless test cards) |
+| Mastercard CVC3 (contactless magstripe mode) | jPOS | pyemv `cvv.generate_cvc3` | card-issuer |
 | Mobile wallet / tokenised chip (DSRP, cloud cryptograms) on network tokens | jPOS + ext | pyemv `cvn` | scheme-sim TSP |
 | Offline data authentication verification SDA/DDA/CDA | jPOS | EMV test certificates | scheme-sim / acquirer tests |
 
@@ -86,7 +87,7 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 
 1. **Service shell:** gRPC/HTTP with mTLS over the mesh, LMK from attestation, audit log, Phase 0 key management,
    then card-issuer and scheme-sim switched to the Phase 1 functions (stopgaps deleted). *Medium.*
-2. **Phase 1 remainder** (TAVV, AAV, dynamic CVV2). *Small.*
+2. **Phase 1 remainder** (TAVV, AAV, dCVV2). *Small.* dCVV (MSD) comes with Phase 3 contactless.
 3. **Phase 2 PIN** (3DES first, then format 4 / AES DUKPT ext). *Medium.*
 4. **Phase 3 chip**, with card-present flows in scheme-sim (field 55 parsing via moov-iso8583 or jPOS TLV). *Large.*
 5. **Phase 4 scripts and personalisation.** *Medium.*
