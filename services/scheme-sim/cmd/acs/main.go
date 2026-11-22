@@ -7,10 +7,18 @@
 //	ACS_DS_URL          directory server results endpoint for RReqs (empty: not sent)
 //	ACS_CHALLENGE_URL   acsURL given in ARes for challenges
 //	ACS_FRICTIONLESS_LIMIT_MINOR   frictionless ceiling (default 500000 = INR 5,000)
+//	ACS_DATABASE_URL    PostgreSQL for pending challenges (table acs_challenge, created if missing); empty: in memory
+//	                    (a restart loses them). App-channel session keys are never stored: an app-channel challenge
+//	                    open when the process restarts ends with transStatus U (RReq sent at start-up).
+//	ACS_INSTANCE        this instance's name for that recovery (default: host name, i.e. the pod name)
+//	ACS_SIGNING_CERT_CHAIN  PEM file, leaf first: the scheme-issued ACS signing certificate chain presented in
+//	                    acsSignedContent's x5c; the leaf's key is the security module's acs-sign key, which still signs.
+//	                    Empty: the security module's own certificate.
 package main
 
 import (
 	"context"
+	"crypto/x509"
 	"log"
 	"net/http"
 	"os"
@@ -44,20 +52,42 @@ func main() {
 	// The ACS holds no keys: signing (acsSignedContent) and HMAC (card references, passcodes) happen in the security
 	// module, whose keys come only through attested key release (ADR-026).
 	hsmURL := env("HSM_URL", "http://127.0.0.1:8700")
+	var chain []*x509.Certificate
+	if p := os.Getenv("ACS_SIGNING_CERT_CHAIN"); p != "" {
+		var err error
+		if chain, err = acs.LoadCertChain(p); err != nil {
+			log.Fatalf("ACS_SIGNING_CERT_CHAIN: %v", err)
+		}
+	}
 	var signer *acs.Signer
 	for i := 0; ; i++ {
 		var err error
-		if signer, err = acs.HSMSigner(hsmURL); err == nil {
+		if signer, err = acs.HSMSignerWithChain(hsmURL, chain); err == nil {
 			break
 		} else if i == 60 {
 			log.Fatalf("security module signing certificate: %v", err)
 		}
 		time.Sleep(2 * time.Second)
 	}
-	a := acs.New(acs.Config{FrictionlessLimitMinor: limit, ChallengeURL: env("ACS_CHALLENGE_URL", "http://acs/3ds/creq"), Signer: signer,
-		MAC: acs.HSMMAC(hsmURL)},
+	host, _ := os.Hostname()
+	cfg := acs.Config{FrictionlessLimitMinor: limit, ChallengeURL: env("ACS_CHALLENGE_URL", "http://acs/3ds/creq"), Signer: signer,
+		MAC: acs.HSMMAC(hsmURL), Instance: env("ACS_INSTANCE", host)}
+	if url := os.Getenv("ACS_DATABASE_URL"); url != "" {
+		store, err := acs.NewPostgresStore(context.Background(), url)
+		if err != nil {
+			log.Fatalf("ACS_DATABASE_URL: %v", err)
+		}
+		defer store.Close()
+		cfg.Store = store
+	}
+	a := acs.New(cfg,
 		acs.NewCMSClient(env("ACS_CMS_URL", "http://127.0.0.1:8080")), frm, threeds.NewHSMClient(env("HSM_URL", "http://127.0.0.1:8700")),
 		acs.LogOTP{}, acs.LogOOB{}, acs.NewDSClient(os.Getenv("ACS_DS_URL")))
+	if n, err := a.Recover(context.Background()); err != nil {
+		log.Fatalf("challenge store: %v", err)
+	} else if n > 0 {
+		log.Printf("ended %d app-channel challenge(s) whose session keys were lost with the previous process (transStatus U)", n)
+	}
 	go func() { // decoupled authentications past their maximum time get their RReq
 		for range time.Tick(30 * time.Second) {
 			a.Expire(context.Background())

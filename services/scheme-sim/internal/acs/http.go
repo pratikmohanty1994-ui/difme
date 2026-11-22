@@ -3,15 +3,18 @@ package acs
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -170,6 +173,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // HSMSigner signs acsSignedContent in the security module (key "acs-sign"; its certificate from /v1/certs/acs-sign).
 func HSMSigner(hsmURL string) (*Signer, error) {
+	return HSMSignerWithChain(hsmURL, nil)
+}
+
+// HSMSignerWithChain signs in the security module (key "acs-sign") but presents chain (leaf first; e.g. the
+// scheme-issued ACS certificate chain from ACS_SIGNING_CERT_CHAIN) in x5c. The leaf's public key must be the
+// security module's acs-sign key, and each certificate must be signed by the next. A nil chain uses the security
+// module's own certificate.
+func HSMSignerWithChain(hsmURL string, chain []*x509.Certificate) (*Signer, error) {
 	c := &http.Client{Timeout: 3 * time.Second}
 	r, err := c.Get(hsmURL + "/v1/certs/acs-sign")
 	if err != nil {
@@ -190,13 +201,59 @@ func HSMSigner(hsmURL string) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Signer{Chain: []*x509.Certificate{cert}, Remote: func(in []byte) ([]byte, error) {
+	if chain == nil {
+		chain = []*x509.Certificate{cert}
+	} else if err := checkChain(chain, cert.PublicKey); err != nil {
+		return nil, err
+	}
+	return &Signer{Chain: chain, Remote: func(in []byte) ([]byte, error) {
 		v, err := hsmCall(c, hsmURL+"/v1/sign/ps256", map[string]string{"key": "acs-sign", "data": hex.EncodeToString(in)}, "signature")
 		if err != nil {
 			return nil, err
 		}
 		return hex.DecodeString(v)
 	}}, nil
+}
+
+// LoadCertChain reads a PEM file of certificates, leaf first (ACS_SIGNING_CERT_CHAIN). Private keys are refused:
+// the signing key stays in the security module.
+func LoadCertChain(path string) ([]*x509.Certificate, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var chain []*x509.Certificate
+	for {
+		var blk *pem.Block
+		if blk, b = pem.Decode(b); blk == nil {
+			break
+		}
+		if blk.Type != "CERTIFICATE" {
+			return nil, fmt.Errorf("%s: unexpected PEM block %q (certificates only; the key stays in the security module)", path, blk.Type)
+		}
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		chain = append(chain, c)
+	}
+	if len(chain) == 0 {
+		return nil, fmt.Errorf("%s: no certificates", path)
+	}
+	return chain, nil
+}
+
+func checkChain(chain []*x509.Certificate, key any) error {
+	pub, ok := key.(interface{ Equal(crypto.PublicKey) bool })
+	if !ok || !pub.Equal(chain[0].PublicKey) {
+		return errors.New("ACS signing certificate: leaf public key is not the security module's acs-sign key")
+	}
+	for i := 0; i+1 < len(chain); i++ {
+		if err := chain[i].CheckSignatureFrom(chain[i+1]); err != nil {
+			return fmt.Errorf("ACS signing certificate chain: certificate %d not signed by %d: %w", i, i+1, err)
+		}
+	}
+	return nil
 }
 
 // HSMMAC computes HMAC-SHA-256 with the security module's "acs-hmac" key.

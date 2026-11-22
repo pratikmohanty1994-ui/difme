@@ -54,7 +54,7 @@ func (a *ACS) browserChallenge(w http.ResponseWriter, r *http.Request) {
 			ThreeDSServerTransID: r.PostForm.Get("threeDSServerTransID"), ChallengeDataEntry: r.PostForm.Get("challengeDataEntry"),
 			OOBContinue: r.PostForm.Get("oobContinue"), ChallengeCancel: r.PostForm.Get("challengeCancel"), ResendChallenge: r.PostForm.Get("resendChallenge")}
 	}
-	notify := a.notificationURL(q.ACSTransID)
+	notify := a.notificationURL(r.Context(), q.ACSTransID)
 	res, err := a.Challenge(r.Context(), q)
 	if err != nil {
 		http.Error(w, err.Error(), 400)

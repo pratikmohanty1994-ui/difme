@@ -195,6 +195,11 @@ type Config struct {
 	// PayerKey is used locally (tests only).
 	MAC func(ctx context.Context, data []byte) ([]byte, error)
 	Now func() time.Time
+	// Store keeps pending challenges (nil: in memory, lost on restart; PostgresStore survives restarts).
+	Store ChallengeStore
+	// Instance names this ACS process (e.g. the pod's host name) so that, after a restart, Recover can end the
+	// app-channel challenges whose session keys died with the previous process.
+	Instance string
 }
 
 type ACS struct {
@@ -206,23 +211,8 @@ type ACS struct {
 	oob     OOBNotifier
 	results Results
 	mu      sync.Mutex
-	pending map[string]*challenge
-}
-
-// challenge state: step "select" (choose OTP channel), "otp", "oob" or "decoupled".
-type challenge struct {
-	areq     AReq
-	card     Card
-	version  string
-	acsID    string
-	step     string
-	otpMAC   []byte
-	expires  time.Time
-	attempts int
-	oob      string      // "", "approved", "declined"
-	app      *AppSession // app channel keys
-	done     bool
-	result   *RReq
+	store   ChallengeStore
+	apps    map[string]*AppSession // app-channel session keys by acsTransID: process memory only, never stored
 }
 
 func New(cfg Config, cards Cards, frm FRM, hsm threeds.HSM, otp OTPSender, oob OOBNotifier, results Results) *ACS {
@@ -235,7 +225,10 @@ func New(cfg Config, cards Cards, frm FRM, hsm threeds.HSM, otp OTPSender, oob O
 	if cfg.OTPTTL == 0 {
 		cfg.OTPTTL = 5 * time.Minute
 	}
-	return &ACS{cfg: cfg, cards: cards, frm: frm, hsm: hsm, otp: otp, oob: oob, results: results, pending: map[string]*challenge{}}
+	if cfg.Store == nil {
+		cfg.Store = NewMemoryStore()
+	}
+	return &ACS{cfg: cfg, cards: cards, frm: frm, hsm: hsm, otp: otp, oob: oob, results: results, store: cfg.Store, apps: map[string]*AppSession{}}
 }
 
 var ErrBadRequest = errors.New("bad request")
@@ -350,7 +343,7 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 		slog.Info("3ds authentication", "acsTransID", res.ACSTransID, "version", q.MessageVersion, "status", "Y", "flow", "frictionless")
 		return res, nil
 	}
-	ch := &challenge{areq: q, card: c, version: q.MessageVersion, acsID: res.ACSTransID, expires: a.cfg.Now().Add(a.cfg.OTPTTL)}
+	ch := &ChallengeState{AReq: q, Card: c, Version: q.MessageVersion, ACSTransID: res.ACSTransID, Expires: a.cfg.Now().Add(a.cfg.OTPTTL)}
 	hasApp := slices.Contains(c.Channels, "app")
 	switch {
 	case q.DecReqInd == "Y" && hasApp:
@@ -359,21 +352,21 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 		if maxMin <= 0 || maxMin > 10080 {
 			maxMin = 10
 		}
-		ch.step, ch.expires = "decoupled", a.cfg.Now().Add(time.Duration(maxMin)*time.Minute)
-		if err := a.oob.Notify(ctx, q.AcctNumber, ch.acsID, q.MerchantName, amount, currencyAlpha(q.PurchaseCurrency)); err != nil {
+		ch.Step, ch.Expires = "decoupled", a.cfg.Now().Add(time.Duration(maxMin)*time.Minute)
+		if err := a.oob.Notify(ctx, q.AcctNumber, ch.ACSTransID, q.MerchantName, amount, currencyAlpha(q.PurchaseCurrency)); err != nil {
 			return no("U", ReasonSecurity)
 		}
 		res.TransStatus, res.ACSDecConInd, res.AuthenticationType = "D", "Y", AuthDecoupled
 		res.CardholderInfo = "Approve this purchase in your DIFME app"
 	case hasApp:
-		ch.step = "oob"
-		if err := a.oob.Notify(ctx, q.AcctNumber, ch.acsID, q.MerchantName, amount, currencyAlpha(q.PurchaseCurrency)); err != nil {
+		ch.Step = "oob"
+		if err := a.oob.Notify(ctx, q.AcctNumber, ch.ACSTransID, q.MerchantName, amount, currencyAlpha(q.PurchaseCurrency)); err != nil {
 			return no("U", ReasonSecurity)
 		}
 		res.TransStatus, res.AuthenticationType = "C", AuthOOB
 		res.ACSRenderingType = rendering(q.DeviceChannel, "04")
 	case len(otpChannels(c)) > 1:
-		ch.step = "select" // single-select: where to send the passcode
+		ch.Step = "select" // single-select: where to send the passcode
 		res.TransStatus, res.AuthenticationType = "C", AuthOTP
 		res.ACSRenderingType = rendering(q.DeviceChannel, "02")
 	default:
@@ -383,23 +376,33 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 		res.TransStatus, res.AuthenticationType = "C", AuthOTP
 		res.ACSRenderingType = rendering(q.DeviceChannel, "01")
 	}
+	var sess *AppSession
 	if res.TransStatus == "C" {
 		res.ACSChallengeMandated, res.ACSURL = "Y", a.cfg.ChallengeURL
 		if q.DeviceChannel == "01" { // app: key agreement with the SDK, CReq/CRes encrypted
 			if q.SDKEphemPubKey == nil || a.cfg.Signer == nil {
 				return no("U", ReasonSecurity)
 			}
-			sess, signed, err := NewAppSession(*q.SDKEphemPubKey, q.SDKReferenceNumber, a.cfg.ChallengeURL, a.cfg.Signer)
-			if err != nil {
+			var signed string
+			if sess, signed, err = NewAppSession(*q.SDKEphemPubKey, q.SDKReferenceNumber, a.cfg.ChallengeURL, a.cfg.Signer); err != nil {
 				return ARes{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
 			}
-			ch.app, res.ACSSignedContent, res.ACSURL = sess, signed, ""
+			ch.App, ch.Owner, res.ACSSignedContent, res.ACSURL = true, a.cfg.Instance, signed, ""
 		}
 	}
 	a.mu.Lock()
-	a.pending[ch.acsID] = ch
+	err = a.store.Create(ctx, ch)
+	if err == nil && sess != nil {
+		a.apps[ch.ACSTransID] = sess
+	}
 	a.mu.Unlock()
-	slog.Info("3ds authentication", "acsTransID", ch.acsID, "version", q.MessageVersion, "status", res.TransStatus, "step", ch.step, "verdict", verdict)
+	if err != nil {
+		slog.Error("3ds: challenge store", "acsTransID", ch.ACSTransID, "err", err)
+		res = ARes{MessageType: res.MessageType, MessageVersion: res.MessageVersion, ThreeDSServerTransID: res.ThreeDSServerTransID,
+			DSTransID: res.DSTransID, ACSTransID: res.ACSTransID, SDKTransID: res.SDKTransID}
+		return no("U", ReasonSecurity)
+	}
+	slog.Info("3ds authentication", "acsTransID", ch.ACSTransID, "version", q.MessageVersion, "status", res.TransStatus, "step", ch.Step, "verdict", verdict)
 	return res, nil
 }
 
@@ -413,49 +416,68 @@ func rendering(channel, template string) *Rend {
 	return &Rend{Interface: "01", Template: template}
 }
 
-func (a *ACS) sendOTP(ctx context.Context, ch *challenge, channel string) error {
+func (a *ACS) sendOTP(ctx context.Context, ch *ChallengeState, channel string) error {
 	otp := randomDigits(6)
-	ch.otpMAC, ch.step, ch.expires = a.otpMAC(ch.acsID, otp), "otp", a.cfg.Now().Add(a.cfg.OTPTTL)
-	if ch.otpMAC == nil {
+	ch.OTPMAC, ch.Step, ch.Expires = a.otpMAC(ch.ACSTransID, otp), "otp", a.cfg.Now().Add(a.cfg.OTPTTL)
+	if ch.OTPMAC == nil {
 		return errors.New("security module unavailable for the passcode")
 	}
-	return a.otp.Send(ctx, ch.areq.AcctNumber, ch.card, channel, otp)
+	return a.otp.Send(ctx, ch.AReq.AcctNumber, ch.Card, channel, otp)
+}
+
+// storeErr maps a store outcome for a request: the challenge vanished or changed under us (finished elsewhere) is the
+// requestor's problem (400); anything else is the store's (500).
+func storeErr(err error) error {
+	if errors.Is(err, ErrNoChallenge) || errors.Is(err, ErrConflict) {
+		return fmt.Errorf("%w: challenge already completed or changed", ErrBadRequest)
+	}
+	return err
 }
 
 // Challenge handles a CReq (app or browser).
 func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	ch, ok := a.pending[q.ACSTransID]
-	if q.MessageType != "CReq" || !ok || ch.areq.ThreeDSServerTransID != q.ThreeDSServerTransID || ch.step == "decoupled" {
+	if q.MessageType != "CReq" {
 		return CRes{}, fmt.Errorf("%w: unknown challenge", ErrBadRequest)
 	}
-	if ch.done {
-		return CRes{}, fmt.Errorf("%w: challenge already completed", ErrBadRequest)
+	ch, err := a.store.Get(ctx, q.ACSTransID)
+	if err != nil && !errors.Is(err, ErrNoChallenge) {
+		return CRes{}, err
 	}
-	res := CRes{MessageType: "CRes", MessageVersion: ch.version, ThreeDSServerTransID: q.ThreeDSServerTransID, ACSTransID: q.ACSTransID,
+	if err != nil || ch.AReq.ThreeDSServerTransID != q.ThreeDSServerTransID || ch.Step == "decoupled" {
+		return CRes{}, fmt.Errorf("%w: unknown challenge", ErrBadRequest)
+	}
+	res := CRes{MessageType: "CRes", MessageVersion: ch.Version, ThreeDSServerTransID: q.ThreeDSServerTransID, ACSTransID: q.ACSTransID,
 		SDKTransID: q.SDKTransID, ChallengeCompletionInd: "N"}
 	authType := AuthOTP
-	if ch.step == "oob" {
+	if ch.Step == "oob" {
 		authType = AuthOOB
 	}
 	finish := func(status, reason string, result, factor int) (CRes, error) {
-		rr := a.finishLocked(ctx, ch, status, reason, authType, result, factor)
-		if q.ChallengeCancel != "" {
-			rr.ChallengeCancel = q.ChallengeCancel
+		rr, err := a.finishLocked(ctx, ch, status, reason, authType, result, factor, q.ChallengeCancel)
+		if err != nil {
+			return CRes{}, storeErr(err)
 		}
 		res.ChallengeCompletionInd, res.TransStatus = "Y", rr.TransStatus
+		return res, nil
+	}
+	// save persists the challenge's new state before an intermediate CRes goes out.
+	save := func() (CRes, error) {
+		if err := a.store.Update(ctx, ch); err != nil {
+			return CRes{}, storeErr(err)
+		}
 		return res, nil
 	}
 	switch {
 	case q.ChallengeCancel != "":
 		return finish("N", ReasonAuthFailed, 0, 0)
-	case a.cfg.Now().After(ch.expires):
+	case a.cfg.Now().After(ch.Expires):
 		return finish("N", ReasonTimedOut, 0, 0)
 	}
-	switch ch.step {
+	switch ch.Step {
 	case "select":
-		chs := otpChannels(ch.card)
+		chs := otpChannels(ch.Card)
 		if !slices.Contains(chs, q.ChallengeDataEntry) {
 			res.ACSUIType, res.ChallengeInfoHeader, res.ChallengeInfoText = "02", "Verify your purchase", "Where should we send your code?"
 			for _, c := range chs {
@@ -467,12 +489,12 @@ func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 			return finish("U", ReasonSecurity, 0, 0)
 		}
 		res.ACSUIType, res.ChallengeInfoHeader, res.ChallengeInfoText = "01", "Verify your purchase", "Enter the code we sent you"
-		return res, nil
+		return save()
 	case "oob":
 		switch {
-		case ch.oob == "approved":
+		case ch.OOB == "approved":
 			return finish("Y", "", threeds.ResultChallenge, 2)
-		case ch.oob == "declined":
+		case ch.OOB == "declined":
 			return finish("N", ReasonAuthFailed, 0, 0)
 		}
 		res.ACSUIType, res.ChallengeInfoHeader = "04", "Approve in your DIFME app"
@@ -481,25 +503,25 @@ func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 	}
 	// step "otp"
 	if q.ResendChallenge == "Y" {
-		if err := a.sendOTP(ctx, ch, otpChannels(ch.card)[0]); err != nil {
+		if err := a.sendOTP(ctx, ch, otpChannels(ch.Card)[0]); err != nil {
 			return finish("U", ReasonSecurity, 0, 0)
 		}
 		res.ACSUIType, res.ChallengeInfoText = "01", "We sent you a new code"
-		return res, nil
+		return save()
 	}
 	if q.ChallengeDataEntry == "" {
 		res.ACSUIType, res.ChallengeInfoHeader, res.ChallengeInfoText, res.ResendInformationLabel = "01", "Verify your purchase", "Enter the code we sent you", "Send a new code"
 		return res, nil
 	}
-	ch.attempts++
-	if got := a.otpMAC(ch.acsID, q.ChallengeDataEntry); got != nil && hmac.Equal(ch.otpMAC, got) {
+	ch.Attempts++
+	if got := a.otpMAC(ch.ACSTransID, q.ChallengeDataEntry); got != nil && hmac.Equal(ch.OTPMAC, got) {
 		return finish("Y", "", threeds.ResultChallenge, 1)
 	}
-	if ch.attempts >= a.cfg.MaxAttempts {
+	if ch.Attempts >= a.cfg.MaxAttempts {
 		return finish("N", ReasonMaxChallenge, 0, 0)
 	}
-	res.ACSUIType, res.ChallengeInfoText = "01", fmt.Sprintf("Incorrect code, %d attempt(s) left", a.cfg.MaxAttempts-ch.attempts)
-	return res, nil
+	res.ACSUIType, res.ChallengeInfoText = "01", fmt.Sprintf("Incorrect code, %d attempt(s) left", a.cfg.MaxAttempts-ch.Attempts)
+	return save()
 }
 
 // OOBResult records the DIFME app's answer for an out-of-band or decoupled authentication. In production the app
@@ -508,46 +530,102 @@ func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 func (a *ACS) OOBResult(ctx context.Context, acsTransID string, approved bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	ch, ok := a.pending[acsTransID]
-	if !ok || ch.done || (ch.step != "oob" && ch.step != "decoupled") {
+	ch, err := a.store.Get(ctx, acsTransID)
+	if err != nil && !errors.Is(err, ErrNoChallenge) {
+		return err
+	}
+	if err != nil || (ch.Step != "oob" && ch.Step != "decoupled") {
 		return fmt.Errorf("%w: no out-of-band authentication pending", ErrBadRequest)
 	}
-	if a.cfg.Now().After(ch.expires) {
-		a.finishLocked(ctx, ch, "N", ReasonDecoupledExp, AuthDecoupled, 0, 0)
-		return nil
+	switch {
+	case a.cfg.Now().After(ch.Expires):
+		_, err = a.finishLocked(ctx, ch, "N", ReasonDecoupledExp, AuthDecoupled, 0, 0, "")
+	case ch.Step == "decoupled" && approved:
+		_, err = a.finishLocked(ctx, ch, "Y", "", AuthDecoupled, threeds.ResultChallenge, 2, "")
+	case ch.Step == "decoupled":
+		_, err = a.finishLocked(ctx, ch, "N", ReasonAuthFailed, AuthDecoupled, 0, 0, "")
+	default:
+		ch.OOB = map[bool]string{true: "approved", false: "declined"}[approved]
+		err = a.store.Update(ctx, ch)
 	}
-	if ch.step == "decoupled" {
-		if approved {
-			a.finishLocked(ctx, ch, "Y", "", AuthDecoupled, threeds.ResultChallenge, 2)
-		} else {
-			a.finishLocked(ctx, ch, "N", ReasonAuthFailed, AuthDecoupled, 0, 0)
-		}
-		return nil
+	if err != nil {
+		return storeErr(err)
 	}
-	ch.oob = map[bool]string{true: "approved", false: "declined"}[approved]
 	return nil
 }
 
-// Expire finishes decoupled authentications past their maximum time (call periodically).
+// abandonedAfter is how long an expired, never-finished challenge (cardholder walked away) stays in the store before
+// Expire removes it without an RReq; until then a late CReq still gets its N/14 answer.
+const abandonedAfter = 24 * time.Hour
+
+// Expire finishes decoupled authentications past their maximum time and removes long-abandoned challenges (call
+// periodically).
 func (a *ACS) Expire(ctx context.Context) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, ch := range a.pending {
-		if !ch.done && ch.step == "decoupled" && a.cfg.Now().After(ch.expires) {
-			a.finishLocked(ctx, ch, "N", ReasonDecoupledExp, AuthDecoupled, 0, 0)
+	all, err := a.store.List(ctx)
+	if err != nil {
+		slog.Error("3ds: challenge store", "err", err)
+		return
+	}
+	now := a.cfg.Now()
+	for _, ch := range all {
+		switch {
+		case ch.Step == "decoupled" && now.After(ch.Expires):
+			if _, err := a.finishLocked(ctx, ch, "N", ReasonDecoupledExp, AuthDecoupled, 0, 0, ""); err != nil {
+				slog.Error("3ds: expire", "acsTransID", ch.ACSTransID, "err", err)
+			}
+		case now.After(ch.Expires.Add(abandonedAfter)):
+			if err := a.store.Delete(ctx, ch.ACSTransID, ch.Rev); err == nil {
+				delete(a.apps, ch.ACSTransID)
+			}
 		}
 	}
 }
 
-// finishLocked ends a challenge: CAVV on success, RReq to the directory server. Caller holds a.mu.
-func (a *ACS) finishLocked(ctx context.Context, ch *challenge, status, reason, authType string, result, factor int) RReq {
-	ch.done = true
-	delete(a.pending, ch.acsID)
-	rr := RReq{MessageType: "RReq", MessageVersion: ch.version, MessageCategory: ch.areq.MessageCategory, ThreeDSServerTransID: ch.areq.ThreeDSServerTransID,
-		DSTransID: ch.areq.DSTransID, ACSTransID: ch.acsID, TransStatus: status, TransStatusReason: reason,
-		InteractionCounter: fmt.Sprintf("%02d", ch.attempts), AuthenticationType: authType}
+// Recover ends, with transStatus U (reason 09), the app-channel challenges this instance (Config.Instance) started
+// before a restart: their session keys lived only in the old process, so CReq/CRes can no longer be decrypted.
+// Call once at start-up with a durable store. Returns how many were ended.
+func (a *ACS) Recover(ctx context.Context) (int, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	all, err := a.store.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, ch := range all {
+		if ch.App && ch.Owner == a.cfg.Instance && a.apps[ch.ACSTransID] == nil {
+			if _, err := a.finishLocked(ctx, ch, "U", ReasonSecurity, authTypeOf(ch), 0, 0, ""); err == nil {
+				n++
+			}
+		}
+	}
+	return n, nil
+}
+
+func authTypeOf(ch *ChallengeState) string {
+	switch ch.Step {
+	case "oob":
+		return AuthOOB
+	case "decoupled":
+		return AuthDecoupled
+	}
+	return AuthOTP
+}
+
+// finishLocked ends a challenge: it removes it from the store (which fails if another request or replica changed or
+// finished it), then builds the CAVV on success and sends the RReq to the directory server. Caller holds a.mu.
+func (a *ACS) finishLocked(ctx context.Context, ch *ChallengeState, status, reason, authType string, result, factor int, cancel string) (RReq, error) {
+	if err := a.store.Delete(ctx, ch.ACSTransID, ch.Rev); err != nil {
+		return RReq{}, err
+	}
+	delete(a.apps, ch.ACSTransID)
+	rr := RReq{MessageType: "RReq", MessageVersion: ch.Version, MessageCategory: ch.AReq.MessageCategory, ThreeDSServerTransID: ch.AReq.ThreeDSServerTransID,
+		DSTransID: ch.AReq.DSTransID, ACSTransID: ch.ACSTransID, TransStatus: status, TransStatusReason: reason,
+		InteractionCounter: fmt.Sprintf("%02d", ch.Attempts), AuthenticationType: authType, ChallengeCancel: cancel}
 	if status == "Y" {
-		v, _, err := threeds.Build(ctx, a.hsm, ch.areq.AcctNumber, result, factor)
+		v, _, err := threeds.Build(ctx, a.hsm, ch.AReq.AcctNumber, result, factor)
 		if err != nil {
 			slog.Error("3ds: security module", "err", err)
 			rr.TransStatus, rr.TransStatusReason = "U", ReasonSecurity
@@ -555,20 +633,19 @@ func (a *ACS) finishLocked(ctx context.Context, ch *challenge, status, reason, a
 			rr.AuthenticationValue, rr.ECI = v, "05"
 		}
 	}
-	ch.result = &rr
 	if err := a.results.Send(ctx, rr); err != nil {
-		slog.Error("3ds: RReq", "acsTransID", ch.acsID, "err", err)
+		slog.Error("3ds: RReq", "acsTransID", ch.ACSTransID, "err", err)
 	}
-	slog.Info("3ds challenge", "acsTransID", ch.acsID, "status", rr.TransStatus, "reason", reason, "type", authType, "attempts", ch.attempts)
-	return rr
+	slog.Info("3ds challenge", "acsTransID", ch.ACSTransID, "status", rr.TransStatus, "reason", reason, "type", authType, "attempts", ch.Attempts)
+	return rr, nil
 }
 
 // NotificationURL returns where a browser challenge's CRes goes (the AReq's notificationURL).
-func (a *ACS) notificationURL(acsTransID string) string {
+func (a *ACS) notificationURL(ctx context.Context, acsTransID string) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if ch, ok := a.pending[acsTransID]; ok {
-		return ch.areq.NotificationURL
+	if ch, err := a.store.Get(ctx, acsTransID); err == nil {
+		return ch.AReq.NotificationURL
 	}
 	return ""
 }
@@ -609,12 +686,22 @@ func (a *ACS) AppChallenge(ctx context.Context, jwe string) (string, error) {
 		return "", fmt.Errorf("%w: JWE header", ErrBadRequest)
 	}
 	a.mu.Lock()
-	ch, ok := a.pending[hdr.Kid]
+	sess := a.apps[hdr.Kid]
+	if sess == nil {
+		// Not in this process's memory: if the store still has it as an app-channel challenge, its session key was
+		// lost (restart, or another replica): the channel cannot continue, so the challenge ends with U.
+		if ch, err := a.store.Get(ctx, hdr.Kid); err == nil && ch.App {
+			if _, err := a.finishLocked(ctx, ch, "U", ReasonSecurity, authTypeOf(ch), 0, 0, ""); err == nil {
+				a.mu.Unlock()
+				return "", fmt.Errorf("%w: app session lost; challenge ended (transStatus U)", ErrBadRequest)
+			}
+		}
+	}
 	a.mu.Unlock()
-	if !ok || ch.app == nil {
+	if sess == nil {
 		return "", fmt.Errorf("%w: unknown app challenge", ErrBadRequest)
 	}
-	pt, enc, err := ch.app.DecryptCReq(jwe)
+	pt, enc, err := sess.DecryptCReq(jwe)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
@@ -627,5 +714,5 @@ func (a *ACS) AppChallenge(ctx context.Context, jwe string) (string, error) {
 		return "", err
 	}
 	out, _ := json.Marshal(res)
-	return ch.app.EncryptCRes(out, enc, hdr.Kid)
+	return sess.EncryptCRes(out, enc, hdr.Kid)
 }
