@@ -475,4 +475,5 @@ OpenBao and an HMAC token cryptogram become the standard algorithms in the secur
   `TAZAMA_BUDGET_MS` (3 s) → REVIEW, or capture with `TAZAMA_FAIL_OPEN=true`. These are Hyperswitch FRM's
   CancelTxn / ManualReview actions; AutoRefund isn't needed because the check runs before capture. Tests: 23 (fake
   Hyperswitch and Tazama on real HTTP, settlement in Temporal's test environment); `TazamaLiveTest` checks the client
-  against a real Tazama.
+  against a real Tazama: run against `ci/tazama-e2e.sh`'s stack (2026-11-22), TMS accepted the hub's messages and the
+  hub read the real report as **INTERDICT** (901+902 = 200, fraud model = 400), so it would cancel the authorisation.
