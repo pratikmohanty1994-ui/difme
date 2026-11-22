@@ -1,0 +1,27 @@
+DIFME patch (ADR-023): @tazama-lf dependencies from the vendored copies (ci/tazama-local-deps.py) instead of GitHub's
+token-gated npm registry; .npmrc without the registry line.
+
+diff --git a/.npmrc b/.npmrc
+index 82bea8f..9881313 100644
+--- a/.npmrc
++++ b/.npmrc
+@@ -1,3 +1 @@
+ # SPDX-License-Identifier: Apache-2.0
+-@tazama-lf:registry=https://npm.pkg.github.com
+-//npm.pkg.github.com/:_authToken=${GH_TOKEN}
+\ No newline at end of file
+diff --git a/package.json b/package.json
+index c3ea2b5..0e8d76e 100644
+--- a/package.json
++++ b/package.json
+@@ -26,8 +26,8 @@
+   "author": "tazama",
+   "license": "Apache-2.0",
+   "dependencies": {
+-    "@tazama-lf/frms-coe-lib": "8.2.0",
+-    "@tazama-lf/frms-coe-startup-lib": "3.1.0",
++    "@tazama-lf/frms-coe-lib": "file:../frms-coe-lib",
++    "@tazama-lf/frms-coe-startup-lib": "file:../frms-coe-startup-lib",
+     "dotenv": "^17.2.1",
+     "tslib": "^2.8.1",
+     "uuid": "^11.1.1"

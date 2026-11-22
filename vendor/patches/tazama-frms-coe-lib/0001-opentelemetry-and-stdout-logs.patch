@@ -1,11 +1,21 @@
-DIFME patch (ADR-023): OpenTelemetry in place of Elastic APM (same Apm API; OTLP to Alloy → Tempo), and logs to
-stdout only (Alloy → Loki) in place of the Elasticsearch stream (pino-elasticsearch, ECS format removed).
+DIFME patch (ADR-023): OpenTelemetry in place of Elastic APM (same Apm API, Elastic-only options accepted and
+ignored; OTLP to Alloy → Tempo); logs to stdout only (Alloy → Loki) in place of the Elasticsearch stream; tslib is a
+runtime dependency (the compiled lib requires it: importHelpers); .npmrc without GitHub's registry.
 
+diff --git a/.npmrc b/.npmrc
+index c2700d0..db43924 100644
+--- a/.npmrc
++++ b/.npmrc
+@@ -1,4 +1,2 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-@tazama-lf:registry=https://npm.pkg.github.com
+-//npm.pkg.github.com/:_authToken=${GH_TOKEN}
 diff --git a/package.json b/package.json
-index 4d5f4455..50a157a4 100644
+index 4d5f445..5bb86d8 100644
 --- a/package.json
 +++ b/package.json
-@@ -31,20 +31,23 @@
+@@ -31,23 +31,27 @@
      "prepare": "husky"
    },
    "dependencies": {
@@ -31,9 +41,22 @@ index 4d5f4455..50a157a4 100644
 -    "pino-elasticsearch": "^8.1.0",
      "protobufjs": "^7.5.5",
      "uuid": "^11.1.1",
-     "zod": "^4.4.3"
+-    "zod": "^4.4.3"
++    "zod": "^4.4.3",
++    "tslib": "^2.8.1"
+   },
+   "overrides": {
+     "uuid": "^11.1.1",
+@@ -75,7 +79,6 @@
+     "rimraf": "^6.0.1",
+     "ts-jest": "^29.4.4",
+     "ts-node": "^10.9.2",
+-    "tslib": "^2.8.1",
+     "typescript": "^5.9.2"
+   },
+   "lint-staged": {
 diff --git a/src/helpers/logUtilities.ts b/src/helpers/logUtilities.ts
-index 4636d7f6..5ba40012 100644
+index 4636d7f..5ba4001 100644
 --- a/src/helpers/logUtilities.ts
 +++ b/src/helpers/logUtilities.ts
 @@ -1,38 +1,6 @@
@@ -78,10 +101,10 @@ index 4636d7f6..5ba40012 100644
  
  export type LogCallback = (...args: unknown[]) => unknown;
 diff --git a/src/services/apm.ts b/src/services/apm.ts
-index 1763ce6a..c5d74794 100644
+index 1763ce6..9b754ef 100644
 --- a/src/services/apm.ts
 +++ b/src/services/apm.ts
-@@ -1,33 +1,94 @@
+@@ -1,33 +1,95 @@
  // SPDX-License-Identifier: Apache-2.0
 +// DIFME patch (ADR-023): OpenTelemetry in place of Elastic APM. DIFME's traces go OTLP → Alloy → Tempo; an Elastic APM
 +// server would be a second, redundant tracing stack. Same public API as the Elastic version, so no service changes:
@@ -143,7 +166,8 @@ index 1763ce6a..c5d74794 100644
 +  readonly #current = new AsyncLocalStorage<Context>();
  
 -  constructor(apmConfig?: AgentConfigOptions) {
-+  constructor(apmConfig?: { serviceName?: string; serverUrl?: string }) {
++  // Elastic-only options the services still pass (e.g. usePathAsTransactionName) are accepted and ignored.
++  constructor(apmConfig?: { serviceName?: string; serverUrl?: string; [elasticOnly: string]: unknown }) {
      const config = validateAPMConfig();
 -    if (config.apmActive) {
 -      const apmOptions: AgentConfigOptions = {
@@ -198,7 +222,7 @@ index 1763ce6a..c5d74794 100644
 +  };
  }
 diff --git a/src/services/logger.ts b/src/services/logger.ts
-index d798612f..7095f940 100644
+index d798612..7095f94 100644
 --- a/src/services/logger.ts
 +++ b/src/services/logger.ts
 @@ -3,25 +3,14 @@

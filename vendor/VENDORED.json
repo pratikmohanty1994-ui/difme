@@ -186,5 +186,14 @@
       ".husky",
       ".vscode"
     ]
+  },
+  "tazama-tcs-lib": {
+    "upstream": "https://github.com/tazama-lf/tcs-lib",
+    "tag": "v4.0.0",
+    "commit": "3a5ab6ba8d37e58dec749bd55a9255eff0f73870",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
   }
 }

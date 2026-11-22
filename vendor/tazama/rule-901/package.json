@@ -42,7 +42,7 @@
   },
   "homepage": "https://github.com/tazama-lf/rule-901#readme",
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "8.2.0",
+    "@tazama-lf/frms-coe-lib": "file:../frms-coe-lib",
     "zod": "4.4.3"
   },
   "devDependencies": {

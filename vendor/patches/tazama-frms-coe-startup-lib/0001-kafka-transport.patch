@@ -1,10 +1,19 @@
 DIFME patch (ADR-023): Kafka transport for Tazama's transaction plane and service channel, in place of NATS.
-STARTUP_TYPE=kafka selects it (nats stays the default); frms-coe-lib comes from the vendored copy; live test in
+STARTUP_TYPE=kafka selects it (nats stays the default); frms-coe-lib from the vendored copy; live test in
 __tests__/kafka-live.cjs (real broker: subject mapping, group load sharing, broadcast, runtime subscribe).
 
+diff --git a/.npmrc b/.npmrc
+index c2700d0..db43924 100644
+--- a/.npmrc
++++ b/.npmrc
+@@ -1,4 +1,2 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-@tazama-lf:registry=https://npm.pkg.github.com
+-//npm.pkg.github.com/:_authToken=${GH_TOKEN}
 diff --git a/__tests__/kafka-live.cjs b/__tests__/kafka-live.cjs
 new file mode 100644
-index 00000000..2a9c9031
+index 0000000..2a9c903
 --- /dev/null
 +++ b/__tests__/kafka-live.cjs
 @@ -0,0 +1,97 @@
@@ -106,7 +115,7 @@ index 00000000..2a9c9031
 +  process.exit(0);
 +})().catch((e) => { console.error('FAIL:', e.message); for (const c of Object.values(kids)) c.kill(); process.exit(1); });
 diff --git a/package.json b/package.json
-index ac532fe9..b94ad308 100644
+index ac532fe..b94ad30 100644
 --- a/package.json
 +++ b/package.json
 @@ -30,10 +30,11 @@
@@ -124,7 +133,7 @@ index ac532fe9..b94ad308 100644
    "overrides": {
      "uuid": "^11.1.1",
 diff --git a/src/interfaces/iStartupConfig.ts b/src/interfaces/iStartupConfig.ts
-index 5ee7d125..ada91019 100644
+index 5ee7d12..ada9101 100644
 --- a/src/interfaces/iStartupConfig.ts
 +++ b/src/interfaces/iStartupConfig.ts
 @@ -16,7 +16,7 @@ export interface IStartupConfig {
@@ -149,7 +158,7 @@ index 5ee7d125..ada91019 100644
    functionName: validateFunctionName(),
 diff --git a/src/services/kafkaService.ts b/src/services/kafkaService.ts
 new file mode 100644
-index 00000000..56c62fae
+index 0000000..56c62fa
 --- /dev/null
 +++ b/src/services/kafkaService.ts
 @@ -0,0 +1,280 @@
@@ -434,7 +443,7 @@ index 00000000..56c62fae
 +  }
 +}
 diff --git a/src/services/startupFactory.ts b/src/services/startupFactory.ts
-index ae4ba479..580b351b 100644
+index ae4ba47..580b351 100644
 --- a/src/services/startupFactory.ts
 +++ b/src/services/startupFactory.ts
 @@ -4,6 +4,7 @@ import type { IStartupService, onMessageFunction } from '..';

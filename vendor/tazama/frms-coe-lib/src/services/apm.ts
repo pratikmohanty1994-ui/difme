@@ -54,7 +54,8 @@ export class Apm {
   readonly #tracer?: Tracer;
   readonly #current = new AsyncLocalStorage<Context>();
 
-  constructor(apmConfig?: { serviceName?: string; serverUrl?: string }) {
+  // Elastic-only options the services still pass (e.g. usePathAsTransactionName) are accepted and ignored.
+  constructor(apmConfig?: { serviceName?: string; serverUrl?: string; [elasticOnly: string]: unknown }) {
     const config = validateAPMConfig();
     if (!config.apmActive) return;
     const provider = new NodeTracerProvider({

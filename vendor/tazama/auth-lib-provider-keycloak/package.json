@@ -61,7 +61,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@tazama-lf/auth-lib": "4.0.0"
+    "@tazama-lf/auth-lib": "file:../auth-lib"
   },
   "lint-staged": {
     "*.{js,ts}": [
