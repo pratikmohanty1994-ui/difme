@@ -160,6 +160,7 @@ public final class HsmServer {
         switch (path) {
             case "/v1/cavv" -> out.put("cavv", hsm.cavv(d(in, "pan"), cvk(in), d(in, "upn"), d(in, "authrc"), d(in, "sfarc")));
             case "/v1/cavv/verify" -> valid(out, hsm.verifyCavv(d(in, "pan"), cvk(in), d(in, "cavv"), d(in, "upn"), d(in, "authrc"), d(in, "sfarc")));
+            case "/v1/cvv2" -> out.put("cvv2", hsm.cvv2(d(in, "pan"), d(in, "expiry"), cvk(in))); // card issuance (card-issuer only)
             case "/v1/cvv2/verify" -> valid(out, hsm.verifyCvv2(d(in, "pan"), d(in, "expiry"), cvk(in), d(in, "cvv2")));
             case "/v1/cvv/verify" -> valid(out, hsm.cvv(d(in, "pan"), d(in, "expiry"), d(in, "serviceCode"), cvk(in)).equals(d(in, "cvv")));
             case "/v1/dcvv2" -> out.put("code", hsm.dcvv2(key(in, "key", "dcvv2", SMAdapter.TYPE_CVK), d(in, "pan"), step()));
