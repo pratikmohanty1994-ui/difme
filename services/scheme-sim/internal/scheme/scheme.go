@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/moov-io/iso8583"
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/tokens"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/wire"
 )
 
@@ -55,7 +56,7 @@ type Txn struct {
 	RRN          string    `json:"rrn"`
 	AuthCode     string    `json:"authCode,omitempty"`
 	ResponseCode string    `json:"responseCode"`
-	State        string    `json:"state"` // AUTHORISED, DECLINED, REVERSED, REFUNDED (a refund credit)
+	State        string    `json:"state"`                 // AUTHORISED, DECLINED, REVERSED, REFUNDED (a refund credit)
 	OriginalRRN  string    `json:"originalRrn,omitempty"` // refunds: the purchase they credit back
 
 	pan           string // full PAN, never serialised: reversals and refunds find the card by it, not by the mask
@@ -64,18 +65,19 @@ type Txn struct {
 
 // Network is the simulated scheme plus issuers. Safe for concurrent use.
 type Network struct {
+	Tokens *tokens.Vault // network tokens (ADR-024): swapped for the card number before the issuer sees them
 	mu     sync.Mutex
 	cards  map[string]*Card
-	down   map[string]bool   // BIN (first 6) -> issuer unavailable
-	byRRN  map[string]*Txn   // approved authorisations by RRN (for reversals)
-	seen   map[string]*Txn   // terminal|STAN -> answer, for retransmissions
+	down   map[string]bool // BIN (first 6) -> issuer unavailable
+	byRRN  map[string]*Txn // approved authorisations by RRN (for reversals)
+	seen   map[string]*Txn // terminal|STAN -> answer, for retransmissions
 	log    []*Txn
 	now    func() time.Time
 	keep   int
 }
 
 func New() *Network {
-	return &Network{cards: map[string]*Card{}, down: map[string]bool{}, byRRN: map[string]*Txn{}, seen: map[string]*Txn{},
+	return &Network{Tokens: tokens.New(), cards: map[string]*Card{}, down: map[string]bool{}, byRRN: map[string]*Txn{}, seen: map[string]*Txn{},
 		now: time.Now, keep: 10_000}
 }
 
@@ -200,10 +202,26 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 	t := &Txn{At: n.now(), MTI: mti, PAN: Mask(pan), AmountMinor: amount, Currency: wire.Get(req, 49), MCC: wire.Get(req, 18),
 		Merchant: wire.Get(req, 42), STAN: stan, State: "DECLINED"}
 	t.pan = pan
+	// A network token: check it (status, requestor = merchant field 42, cryptogram in field 48) and swap in the card
+	// number; the response keeps the token (field 2 is echoed from the request).
+	var tokenErr error
+	if tokens.IsToken(pan) {
+		var real string
+		real, tokenErr = n.Tokens.Detokenize(pan, wire.Get(req, 42), amount, wire.Get(req, 48))
+		if tokenErr == nil {
+			pan = real
+		}
+	}
 	c, ok := n.cards[pan]
 	switch {
 	case stan == "" || pan == "" || aerr != nil:
 		t.ResponseCode = FormatError
+	case errors.Is(tokenErr, tokens.ErrUnknown):
+		t.ResponseCode = InvalidCard
+	case errors.Is(tokenErr, tokens.ErrNotActive), errors.Is(tokenErr, tokens.ErrDomain):
+		t.ResponseCode = Restricted
+	case tokenErr != nil: // cryptogram missing, invalid or replayed
+		t.ResponseCode = DoNotHonour
 	case amount <= 0:
 		t.ResponseCode = InvalidAmount
 	case !ok:

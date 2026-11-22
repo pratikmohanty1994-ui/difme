@@ -477,3 +477,11 @@ OpenBao and an HMAC token cryptogram become the standard algorithms in the secur
   Hyperswitch and Tazama on real HTTP, settlement in Temporal's test environment); `TazamaLiveTest` checks the client
   against a real Tazama: run against `ci/tazama-e2e.sh`'s stack (2026-11-22), TMS accepted the hub's messages and the
   hub read the real report as **INTERDICT** (901+902 = 200, fraud model = 400), so it would cancel the authorisation.
+- **ADR-024 progress (2026-11-22): network tokens built** in `services/scheme-sim` (`internal/tokens`): tokens in their
+  own range (489537…, Luhn-valid) bound to a requestor; single-use cryptograms (HMAC over token, requestor, amount,
+  counter; per-token key in the TSP) carried in ISO 8583 field 48; on 0100/0200 the network checks status, requestor
+  (field 42), cryptogram and counter, swaps in the card number for the issuer and keeps the token in the response
+  (decline codes: unknown 14, suspended/other requestor 62, cryptogram missing/wrong/replayed 05); lifecycle
+  suspend/resume/delete and card replacement. Admin API: `POST /v1/tokens`, `POST /v1/tokens/{t}/cryptogram`,
+  `PUT /v1/tokens/{t}/status`. Tests: approve-and-hold, every decline, lifecycle (race detector). Remaining for ADR-024:
+  Hyperswitch's network-tokenization contract (JWE) in front of this API, the card vault, the card-issuer service.

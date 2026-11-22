@@ -90,6 +90,52 @@ func Admin(n *scheme.Network) http.Handler {
 		n.SetIssuerDown(bin, b.Down)
 		writeJSON(w, 200, map[string]any{"bin": bin, "down": b.Down})
 	})
+	// Token service (ADR-024). Provision returns the token and the masked card, never the card number.
+	mux.HandleFunc("POST /v1/tokens", func(w http.ResponseWriter, r *http.Request) {
+		var b struct{ PAN, Requestor string }
+		if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&b) != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pan and requestor are required"})
+			return
+		}
+		if _, ok := n.Card(b.PAN); !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown card"})
+			return
+		}
+		t, err := n.Tokens.Provision(b.PAN, b.Requestor)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"token": t.Number, "requestor": t.Requestor, "status": t.Status, "pan": scheme.Mask(b.PAN)})
+	})
+	mux.HandleFunc("POST /v1/tokens/{token}/cryptogram", func(w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			Requestor   string
+			AmountMinor int64
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&b) != nil || b.AmountMinor <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requestor and a positive amountMinor are required"})
+			return
+		}
+		cg, err := n.Tokens.Cryptogram(r.PathValue("token"), b.Requestor, b.AmountMinor)
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"cryptogram": cg})
+	})
+	mux.HandleFunc("PUT /v1/tokens/{token}/status", func(w http.ResponseWriter, r *http.Request) {
+		var b struct{ Status string }
+		if json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&b) != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status is required"})
+			return
+		}
+		if err := n.Tokens.SetStatus(r.PathValue("token"), b.Status); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": b.Status})
+	})
 	mux.HandleFunc("GET /v1/transactions", func(w http.ResponseWriter, r *http.Request) {
 		limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 		if err != nil || limit < 1 || limit > 1000 {
