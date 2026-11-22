@@ -3,6 +3,7 @@ package dev.difme.hsm;
 import java.nio.file.Path;
 import java.util.Properties;
 import org.jpos.core.SimpleConfiguration;
+import org.jpos.security.EncryptedPIN;
 import org.jpos.security.SMAdapter;
 import org.jpos.security.SMException;
 import org.jpos.security.SecureDESKey;
@@ -16,8 +17,107 @@ import org.jpos.security.jceadapter.JCESecurityModule;
  */
 public final class SecurityModule {
     private final SMAdapter<SecureDESKey> sm;
+    private final DifmeSecurityModule ext; // DIFME extensions; null on a hardware HSM adapter that has them natively
 
-    public SecurityModule(SMAdapter<SecureDESKey> sm) { this.sm = sm; }
+    public SecurityModule(SMAdapter<SecureDESKey> sm) {
+        this.sm = sm;
+        this.ext = sm instanceof DifmeSecurityModule d ? d : null;
+    }
+
+    private DifmeSecurityModule ext() throws SMException {
+        if (ext == null) throw new SMException("function not available on this security module");
+        return ext;
+    }
+
+    // ---- key management (phase 0) -------------------------------------------------------------------------------
+
+    /** Key ceremony for any key type (SMAdapter.TYPE_*): double-length key from clear components, under the LMK. */
+    public SecureDESKey keyFromComponents(String type, String... clearHexComponents) throws SMException {
+        return sm.formKEYfromClearComponents(SMAdapter.LENGTH_DES3_2KEY, type, clearHexComponents);
+    }
+
+    /** A new random double-length key of a type, under the LMK. */
+    public SecureDESKey generateKey(String type) throws SMException {
+        return sm.generateKey(SMAdapter.LENGTH_DES3_2KEY, type);
+    }
+
+    /** Key exchange: a key encrypted under a zone master key (ZMK) for another party, and back. */
+    public byte[] exportKey(SecureDESKey key, SecureDESKey zmk) throws SMException { return sm.exportKey(key, zmk); }
+
+    public SecureDESKey importKey(String type, byte[] underZmk, SecureDESKey zmk) throws SMException {
+        return sm.importKey(SMAdapter.LENGTH_DES3_2KEY, type, underZmk, zmk, false);
+    }
+
+    // ---- PIN (phase 2) ----------------------------------------------------------------------------------------
+
+    /** A PIN block (ISO 9564 format 0) encrypted under a ZPK, as received from a network or acquirer. */
+    public static EncryptedPIN pinBlock(String hex, String pan) {
+        return new EncryptedPIN(hex, SMAdapter.FORMAT01, pan, true);
+    }
+
+    /** Translates a PIN block from one zone PIN key to another (network to issuer), format 0 out. */
+    public String translatePin(EncryptedPIN pinUnderZpk1, SecureDESKey zpk1, SecureDESKey zpk2) throws SMException {
+        return org.jpos.iso.ISOUtil.hexString(sm.translatePIN(pinUnderZpk1, zpk1, zpk2, SMAdapter.FORMAT01).getPINBlock());
+    }
+
+    /** Visa PVV for a PIN arriving under a ZPK (PIN issuance / change). */
+    public String pvv(EncryptedPIN pinUnderZpk, SecureDESKey zpk, SecureDESKey pvk, int pvki) throws SMException {
+        return sm.calculatePVV(pinUnderZpk, zpk, pvk, null, pvki);
+    }
+
+    /** Online PIN verification, Visa PVV method. */
+    public boolean verifyPvv(EncryptedPIN pinUnderZpk, SecureDESKey zpk, SecureDESKey pvk, int pvki, String pvv) throws SMException {
+        return sm.verifyPVV(pinUnderZpk, zpk, pvk, null, pvki, pvv);
+    }
+
+    /** IBM 3624 offset for a PIN under a ZPK (DIFME extension). */
+    public String ibm3624Offset(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, SecureDESKey pvk, String decimalisation, int start, int length)
+            throws SMException {
+        return ext().ibm3624Offset(sm.importPIN(pinUnderZpk, zpk), pan, pvk, decimalisation, start, length);
+    }
+
+    public boolean verifyIbm3624Offset(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, SecureDESKey pvk, String decimalisation, int start,
+            int length, String offset) throws SMException {
+        return ibm3624Offset(pinUnderZpk, pan, zpk, pvk, decimalisation, start, length).equals(offset);
+    }
+
+    // ---- chip (phase 3) ---------------------------------------------------------------------------------------
+
+    /** Chip cryptogram profiles: master-key derivation, session-key derivation and ARPC method per scheme CVN. */
+    public enum Cvn {
+        // Visa CVN 10: card master key as session key, zero padding (jPOS's MAC default), ARPC method 1
+        VISA_10(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.VSDC, org.jpos.security.ARPCMethod.METHOD_1, false),
+        // Visa CVN 18: EMV common session key from the ATC, ISO 9797 method 2 padding, ARPC method 2 (CSU)
+        VISA_18(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_2, true),
+        // Mastercard M/Chip CVN 16: session key from ATC and unpredictable number, method 2 padding, ARPC method 1
+        MASTERCARD_16(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true);
+        final org.jpos.security.MKDMethod mkd;
+        final org.jpos.security.SKDMethod skd;
+        final org.jpos.security.ARPCMethod arpc;
+        final boolean method2Padding;
+        Cvn(org.jpos.security.MKDMethod m, org.jpos.security.SKDMethod s, org.jpos.security.ARPCMethod a, boolean p) { mkd = m; skd = s; arpc = a; method2Padding = p; }
+        byte[] pad(byte[] d) {
+            if (!method2Padding) return d;
+            byte[] out = new byte[(d.length / 8 + 1) * 8];
+            System.arraycopy(d, 0, out, 0, d.length);
+            out[d.length] = (byte) 0x80;
+            return out;
+        }
+    }
+
+    /**
+     * Verifies an ARQC and returns the ARPC (null when the ARQC is wrong). {@code arcOrCsu}: the response code for
+     * method 1, the card status update for method 2. {@code upn}: the unpredictable number (tag 9F37).
+     */
+    public byte[] verifyArqcGenerateArpc(Cvn cvn, SecureDESKey imkAc, String pan, String psn, byte[] arqc, byte[] atc, byte[] upn, byte[] txnData,
+            byte[] arcOrCsu) throws SMException {
+        return sm.verifyARQCGenerateARPC(cvn.mkd, cvn.skd, imkAc, pan, psn, arqc, atc, upn, cvn.pad(txnData), cvn.arpc, arcOrCsu, null);
+    }
+
+    /** Visa dCVV (contactless MSD): CVV over PAN, expiry, service code and ATC with the card's derived key. */
+    public boolean verifyDcvv(SecureDESKey imkDcvv, String pan, String dcvv, String expiryYymm, String serviceCode, byte[] atc) throws SMException {
+        return sm.verifydCVV(pan, imkDcvv, dcvv, expiryYymm, serviceCode, atc, org.jpos.security.MKDMethod.OPTION_A);
+    }
 
     /** The software module on an LMK file; {@code rebuild} generates a fresh random LMK (tests and dev only). */
     public static SecurityModule software(Path lmk, boolean rebuild) throws SMException {
@@ -25,7 +125,7 @@ public final class SecurityModule {
         p.setProperty("lmk", lmk.toString());
         p.setProperty("rebuildlmk", Boolean.toString(rebuild));
         try {
-            JCESecurityModule m = new JCESecurityModule();
+            DifmeSecurityModule m = new DifmeSecurityModule();
             m.setConfiguration(new SimpleConfiguration(p));
             return new SecurityModule(m);
         } catch (org.jpos.core.ConfigurationException e) {
