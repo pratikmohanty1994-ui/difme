@@ -1,0 +1,17 @@
+DIFME patch: router feature v1 no longer implies common_default (default still lists it), so DIFME's image
+can build only the features it uses (no payouts, frm, stripe compat, kv_store) and fit the 16 GB runners.
+
+diff --git crates/router/Cargo.toml crates/router/Cargo.toml
+index 2acbafb7..245953bd 100644
+--- a/crates/router/Cargo.toml
++++ b/crates/router/Cargo.toml
+@@ -123,8 +123,8 @@ v2 = [
+     "tokenization_v2",
+     "subscriptions/v2",
+ ]
++# DIFME patch 0001: v1 no longer implies common_default (default still lists it), so a build can pick features.
+ v1 = [
+-    "common_default",
+     "api_models/v1",
+     "diesel_models/v1",
+     "hyperswitch_domain_models/v1",
