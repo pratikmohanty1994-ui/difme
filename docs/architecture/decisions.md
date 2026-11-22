@@ -398,6 +398,16 @@ Not used: `sebastianrm/cards-service` has no licence (all rights reserved), so i
 - **Gate before building credit:** a live test against Fineract of the full cycle — spend, repay, re-spend within the
   limit, interest, a late payment moving into a delinquency bucket, a chargeback. If the loan model does not hold, the
   revolving module lives in card-issuer and Fineract keeps only the accounting entries.
+- **Gate result (2026-11-22, `ci/fineract-credit-gate.sh`, Fineract 1.16-line image):** spend → repay → re-spend
+  works on a multi-disbursement loan, and Fineract's principal outstanding follows actual repayments. **The native
+  `maxOutstandingLoanBalance` is not a revolving limit:** it is checked against the *scheduled* balance (repayments not
+  counted: after spend 3000 / repay 2000, a 2500 spend is refused at limit 5000) and not at all for a second tranche on
+  the schedule's first day. So the limit is **enforced by card-issuer** (open-to-buy = limit − Fineract principal
+  outstanding − open holds; the gate's part 2 passes: re-spend to exactly the limit, over-limit refused, cleared to 0),
+  loans carry no `maxOutstandingLoanBalance`, and the approved principal is a large lifetime ceiling renewed by
+  card-issuer. Fineract also caps tranches per loan (`maxTrancheCount`), so card-issuer books clearings to Fineract as
+  one disbursement per day (or per statement cycle), not per purchase. Interest, delinquency bucket and chargeback
+  are still to be run through the same script.
 - **LOS on the existing process stack (ADR-008):** Form.io application forms; Fluxnova BPMN for KYC → appraisal →
   approval → disbursement; DMN for credit-decision rules; Tazama (ADR-023) for fraud screening; Fineract holds the
   application, approval and disbursement records. Frappe Lending is the checklist for steps and Indian regulatory

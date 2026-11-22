@@ -15,7 +15,7 @@ Hyperswitch: deep readiness check timed out; Fineract service-users: Keycloak re
 `fraud`), end to end locally (`ci/tazama-e2e.sh`: ALRT); attested key release verified (`ci/tee-key-release-test.sh`,
 ADR-026); all non-Hyperswitch images built and signed under the new owner.
 **Designed, to build:** Tazama DIFME rules, payment-hub hooks and cluster run (ADR-023); card vault, network
-tokens, card-issuer with debit/prepaid first (ADR-024); Fineract credit gate test and loan origination (ADR-025);
+tokens, card-issuer with debit/prepaid first (ADR-024); loan origination, plus interest/delinquency/chargeback in the credit gate (ADR-025; spend/repay/re-spend gate passed 2026-11-22, limit enforced by card-issuer);
 security module: CVV2/CAVV first, then PIN, ARQC/ARPC, issuer scripts (ADR-026); PH-EE modernisation and rails
 manifests (PH-EE, Mojaloop); retire the interim Temporal hub.
 **Needs Actions runs:** rails profile on a cluster; all profiles at once (run 5); ml + fraud scorer and the FAIL path
