@@ -10,7 +10,7 @@ trap 'kill "${pids[@]}" 2>/dev/null || true; rm -rf "$W"' EXIT
 [[ -x /opt/jdk25/bin/java ]] && export JAVA_HOME=/opt/jdk25 PATH=/opt/jdk25/bin:$PATH  # services/hsm targets Java 25
 (cd services/hsm && mvn -q -B -DskipTests package dependency:build-classpath -Dmdep.outputFile="$W/cp" >/dev/null)
 (cd services/scheme-sim && go build -o "$W/" ./cmd/scheme-sim ./cmd/acs ./cmd/iso-adapter)
-HSM_DEV_INSECURE=true HSM_DEV_REBUILD_LMK=true HSM_DEV_CVK_COMPONENTS=1111111111111111FFFFFFFFFFFFFFFF,1032547698BADCFE0123456789ABCDEF HSM_ADDR=127.0.0.1:18700 \
+HSM_DEV_INSECURE=true HSM_DEV_REBUILD_LMK=true HSM_DEV_KEYS='cvk=CVK:1111111111111111FFFFFFFFFFFFFFFF,1032547698BADCFE0123456789ABCDEF;acs-hmac=AES/M7;acs-sign=RSA' HSM_ADDR=127.0.0.1:18700 \
   java -cp "services/hsm/target/classes:$(cat "$W/cp")" dev.difme.hsm.HsmServer >"$W/hsm.log" 2>&1 & pids+=($!)
 EXP=$(date -d '+2 years' +%y%m); PAN=4375510000000001
 HSM_URL=http://127.0.0.1:18700 ISO_LISTEN=127.0.0.1:18583 ADMIN_LISTEN=127.0.0.1:18080 HTTP_LISTEN=127.0.0.1:18080 \
@@ -23,7 +23,7 @@ class H(http.server.BaseHTTPRequestHandler):
         b=s.rfile.read(int(s.headers['content-length'])); open('$W/rreq.json','wb').write(b); s.send_response(200); s.end_headers()
     def log_message(s,*a): pass
 http.server.HTTPServer(('127.0.0.1',18082),H).serve_forever()" & pids+=($!)
-ACS_PAYER_KEY=dev-only-key-0123456789 ACS_ADDR=127.0.0.1:18090 ACS_CMS_URL=http://127.0.0.1:18080 HSM_URL=http://127.0.0.1:18700 \
+ACS_ADDR=127.0.0.1:18090 ACS_CMS_URL=http://127.0.0.1:18080 HSM_URL=http://127.0.0.1:18700 \
   ACS_DS_URL=http://127.0.0.1:18082/rreq "$W/acs" >"$W/acs.log" 2>&1 & pids+=($!)
 for u in 18700/healthz 18080/healthz 18081/healthz 18090/healthz; do
   for i in $(seq 60); do curl -sf "http://127.0.0.1:$u" >/dev/null && break; sleep 0.5; done

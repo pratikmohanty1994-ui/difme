@@ -93,6 +93,11 @@ public final class HsmServer {
             for (String entry : spec.split(";")) {
                 if (entry.isBlank()) continue;
                 String[] lv = entry.trim().split("=", 2), tc = lv[1].split(":", 2);
+                if (tc.length == 1) { // type only: generated inside the module
+                    HsmServer.KeyStore g = KeyRelease.generate(hsm, entry.trim());
+                    ks.des.putAll(g.des); ks.aes.putAll(g.aes); ks.rsa.putAll(g.rsa); ks.certs.putAll(g.certs);
+                    continue;
+                }
                 String[] comps = tc[1].split(",");
                 if (tc[0].startsWith("AES/")) ks.putAes(lv[0], hsm.aesKeyFromComponents(tc[0].substring(4), comps));
                 else ks.put(lv[0], hsm.keyFromComponents(tc[0], comps));

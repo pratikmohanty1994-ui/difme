@@ -191,7 +191,10 @@ type Config struct {
 	ChallengeURL           string        // acsURL (browser challenge page / app CReq endpoint)
 	PayerKey               []byte        // HMAC key for the opaque card reference sent to FRM and for passcode hashing
 	Signer                 *Signer       // app channel: signs acsSignedContent (nil: app-channel challenges refused)
-	Now                    func() time.Time
+	// MAC computes HMAC-SHA-256 inside the security module (card references for FRM, passcode hashes); when nil,
+	// PayerKey is used locally (tests only).
+	MAC func(ctx context.Context, data []byte) ([]byte, error)
+	Now func() time.Time
 }
 
 type ACS struct {
@@ -237,16 +240,31 @@ func New(cfg Config, cards Cards, frm FRM, hsm threeds.HSM, otp OTPSender, oob O
 
 var ErrBadRequest = errors.New("bad request")
 
-func (a *ACS) payerRef(pan string) string {
+func (a *ACS) mac(ctx context.Context, data string) ([]byte, error) {
+	if a.cfg.MAC != nil {
+		return a.cfg.MAC(ctx, []byte(data))
+	}
 	m := hmac.New(sha256.New, a.cfg.PayerKey)
-	m.Write([]byte(pan))
-	return "card-" + hex.EncodeToString(m.Sum(nil))[:24]
+	m.Write([]byte(data))
+	return m.Sum(nil), nil
 }
 
+func (a *ACS) payerRef(ctx context.Context, pan string) (string, error) {
+	m, err := a.mac(ctx, "payer|"+pan)
+	if err != nil {
+		return "", err
+	}
+	return "card-" + hex.EncodeToString(m)[:24], nil
+}
+
+// otpMAC is the stored form of a passcode; nil when the security module cannot be reached (no passcode matches).
 func (a *ACS) otpMAC(acsID, otp string) []byte {
-	m := hmac.New(sha256.New, a.cfg.PayerKey)
-	m.Write([]byte(acsID + "|" + otp))
-	return m.Sum(nil)
+	m, err := a.mac(context.Background(), "otp|"+acsID+"|"+otp)
+	if err != nil {
+		slog.Error("3ds: passcode MAC", "err", err)
+		return nil
+	}
+	return m
 }
 
 func otpChannels(c Card) []string {
@@ -301,7 +319,12 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 	case c.Expiry < a.cfg.Now().Format("0601") || (q.CardExpiryDate != "" && q.CardExpiryDate != c.Expiry):
 		return no("N", ReasonExpiredCard)
 	}
-	verdict, detail := a.frm.Evaluate(ctx, "3ds-"+res.ACSTransID, a.payerRef(q.AcctNumber), q.AcquirerMerchantID, amount, currencyAlpha(q.PurchaseCurrency))
+	ref, err := a.payerRef(ctx, q.AcctNumber)
+	if err != nil {
+		slog.Error("3ds: security module", "err", err)
+		return no("U", ReasonSecurity)
+	}
+	verdict, detail := a.frm.Evaluate(ctx, "3ds-"+res.ACSTransID, ref, q.AcquirerMerchantID, amount, currencyAlpha(q.PurchaseCurrency))
 	slog.Info("3ds risk", "acsTransID", res.ACSTransID, "verdict", verdict, "detail", detail)
 	if verdict == Interdict {
 		return no("R", ReasonFraud)
@@ -393,6 +416,9 @@ func rendering(channel, template string) *Rend {
 func (a *ACS) sendOTP(ctx context.Context, ch *challenge, channel string) error {
 	otp := randomDigits(6)
 	ch.otpMAC, ch.step, ch.expires = a.otpMAC(ch.acsID, otp), "otp", a.cfg.Now().Add(a.cfg.OTPTTL)
+	if ch.otpMAC == nil {
+		return errors.New("security module unavailable for the passcode")
+	}
 	return a.otp.Send(ctx, ch.areq.AcctNumber, ch.card, channel, otp)
 }
 
@@ -466,7 +492,7 @@ func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 		return res, nil
 	}
 	ch.attempts++
-	if hmac.Equal(ch.otpMAC, a.otpMAC(ch.acsID, q.ChallengeDataEntry)) {
+	if got := a.otpMAC(ch.acsID, q.ChallengeDataEntry); got != nil && hmac.Equal(ch.otpMAC, got) {
 		return finish("Y", "", threeds.ResultChallenge, 1)
 	}
 	if ch.attempts >= a.cfg.MaxAttempts {

@@ -80,8 +80,10 @@ type AppSession struct {
 
 // Signer signs acsSignedContent (the ACS's RSA key and certificate chain, leaf first).
 type Signer struct {
-	Key   *rsa.PrivateKey
+	Key   *rsa.PrivateKey // local key (tests / DevSigner); nil when Remote signs
 	Chain []*x509.Certificate
+	// Remote signs inside the security module (PS256 over the JWS signing input); the ACS then holds no key.
+	Remote func(signingInput []byte) ([]byte, error)
 }
 
 // NewAppSession runs the ACS side of the key agreement and returns the session plus acsSignedContent.
@@ -113,8 +115,14 @@ func (s *Signer) sign(payload []byte) (string, error) {
 	}
 	hdr, _ := json.Marshal(map[string]any{"alg": "PS256", "x5c": x5c})
 	in := b64.EncodeToString(hdr) + "." + b64.EncodeToString(payload)
-	d := sha256.Sum256([]byte(in))
-	sig, err := rsa.SignPSS(rand.Reader, s.Key, crypto.SHA256, d[:], &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	var sig []byte
+	var err error
+	if s.Remote != nil {
+		sig, err = s.Remote([]byte(in))
+	} else {
+		d := sha256.Sum256([]byte(in))
+		sig, err = rsa.SignPSS(rand.Reader, s.Key, crypto.SHA256, d[:], &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	}
 	if err != nil {
 		return "", err
 	}

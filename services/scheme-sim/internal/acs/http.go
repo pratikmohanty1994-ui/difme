@@ -3,6 +3,9 @@ package acs
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -163,4 +166,61 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// HSMSigner signs acsSignedContent in the security module (key "acs-sign"; its certificate from /v1/certs/acs-sign).
+func HSMSigner(hsmURL string) (*Signer, error) {
+	c := &http.Client{Timeout: 3 * time.Second}
+	r, err := c.Get(hsmURL + "/v1/certs/acs-sign")
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+	var out struct {
+		X5C string `json:"x5c"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&out); err != nil || r.StatusCode != 200 {
+		return nil, fmt.Errorf("security module certificate: HTTP %d", r.StatusCode)
+	}
+	der, err := base64.StdEncoding.DecodeString(out.X5C)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, err
+	}
+	return &Signer{Chain: []*x509.Certificate{cert}, Remote: func(in []byte) ([]byte, error) {
+		v, err := hsmCall(c, hsmURL+"/v1/sign/ps256", map[string]string{"key": "acs-sign", "data": hex.EncodeToString(in)}, "signature")
+		if err != nil {
+			return nil, err
+		}
+		return hex.DecodeString(v)
+	}}, nil
+}
+
+// HSMMAC computes HMAC-SHA-256 with the security module's "acs-hmac" key.
+func HSMMAC(hsmURL string) func(ctx context.Context, data []byte) ([]byte, error) {
+	c := &http.Client{Timeout: 2 * time.Second}
+	return func(_ context.Context, data []byte) ([]byte, error) {
+		v, err := hsmCall(c, hsmURL+"/v1/hmac", map[string]string{"key": "acs-hmac", "data": hex.EncodeToString(data)}, "mac")
+		if err != nil {
+			return nil, err
+		}
+		return hex.DecodeString(v)
+	}
+}
+
+func hsmCall(c *http.Client, url string, in map[string]string, field string) (string, error) {
+	b, _ := json.Marshal(in)
+	r, err := c.Post(url, "application/json", bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	defer r.Body.Close()
+	var out map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&out); err != nil || r.StatusCode != 200 || out[field] == "" {
+		return "", fmt.Errorf("security module %s: HTTP %d", url, r.StatusCode)
+	}
+	return out[field], nil
 }
