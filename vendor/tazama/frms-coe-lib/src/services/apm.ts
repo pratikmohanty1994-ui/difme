@@ -1,33 +1,94 @@
 // SPDX-License-Identifier: Apache-2.0
+// DIFME patch (ADR-023): OpenTelemetry in place of Elastic APM. DIFME's traces go OTLP → Alloy → Tempo; an Elastic APM
+// server would be a second, redundant tracing stack. Same public API as the Elastic version, so no service changes:
+//  - startTransaction(name, { childOf }) starts a span whose parent is the W3C traceparent in `childOf` (the services
+//    forward it in message metadata) and makes it current for the rest of that async execution, as Elastic's agent did;
+//  - startSpan(name) starts a child of the current transaction;
+//  - getCurrentTraceparent() returns the W3C traceparent of the current span, to forward downstream.
+// The returned objects expose end(), which is all the services call. Configuration: APM_ACTIVE, APM_SERVICE_NAME,
+// APM_URL = the OTLP gRPC endpoint (e.g. http://alloy.observability.svc:4317); standard OTEL_* variables (sampler,
+// headers) are honoured by the SDK. APM_SECRET_TOKEN is no longer used.
 
-import apm, { type AgentConfigOptions, type TransactionOptions } from 'elastic-apm-node';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import {
+  context as otelContext,
+  propagation,
+  ROOT_CONTEXT,
+  trace,
+  SpanKind,
+  type Context,
+  type Span,
+  type Tracer,
+} from '@opentelemetry/api';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { validateAPMConfig } from '../config/monitoring.config';
 
-export class Apm {
-  readonly #transaction: (name: string, options?: TransactionOptions) => apm.Transaction | null = () => null;
-  readonly #span: (name: string) => apm.Span | null = () => null;
-  readonly #traceParent: () => string | null = () => null;
+/** Options accepted by startTransaction (the subset of Elastic's TransactionOptions the services use). */
+export interface TransactionOptions {
+  childOf?: string;
+}
 
-  constructor(apmConfig?: AgentConfigOptions) {
+/** What the services use of a transaction or span. */
+export interface ApmSpan {
+  end: (endTime?: number) => void;
+}
+
+const propagator = new W3CTraceContextPropagator();
+
+type Carrier = Record<string, string>;
+const getter = { get: (c: Carrier, k: string): string | undefined => c[k], keys: (c: Carrier): string[] => Object.keys(c) };
+const setter = {
+  set: (c: Carrier, k: string, v: string): void => {
+    c[k] = v;
+  },
+};
+
+const fromTraceparent = (traceparent?: string): Context =>
+  traceparent ? propagator.extract(ROOT_CONTEXT, { traceparent }, getter) : ROOT_CONTEXT;
+
+export class Apm {
+  readonly #tracer?: Tracer;
+  readonly #current = new AsyncLocalStorage<Context>();
+
+  constructor(apmConfig?: { serviceName?: string; serverUrl?: string }) {
     const config = validateAPMConfig();
-    if (config.apmActive) {
-      const apmOptions: AgentConfigOptions = {
-        active: config.apmActive,
-        secretToken: config.apmSecretToken,
-        serviceName: config.apmServiceName,
-        serverUrl: config.apmUrl,
-        ...apmConfig,
-      };
-      apm.start(apmOptions);
-      this.#transaction = (name: string, options?: TransactionOptions): apm.Transaction | null => apm.startTransaction(name, options);
-      this.#span = (name: string): apm.Span | null => apm.startSpan(name);
-      this.#traceParent = (): string | null => apm.currentTraceparent;
-    }
+    if (!config.apmActive) return;
+    const provider = new NodeTracerProvider({
+      resource: resourceFromAttributes({ 'service.name': apmConfig?.serviceName ?? config.apmServiceName }),
+      spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter({ url: apmConfig?.serverUrl ?? config.apmUrl }))],
+    });
+    provider.register();
+    propagation.setGlobalPropagator(propagator);
+    this.#tracer = trace.getTracer('tazama');
+    const shutdown = (): void => {
+      void provider.shutdown();
+    };
+    process.once('SIGTERM', shutdown);
+    process.once('beforeExit', shutdown);
   }
 
-  startTransaction = (name: string, options?: TransactionOptions): apm.Transaction | null => this.#transaction(name, options);
+  startTransaction = (name: string, options?: TransactionOptions): ApmSpan | null => {
+    if (!this.#tracer) return null;
+    const span = this.#tracer.startSpan(name, { kind: SpanKind.CONSUMER }, fromTraceparent(options?.childOf));
+    // Current for the rest of this async execution, like Elastic's agent: later startSpan() calls become children.
+    this.#current.enterWith(trace.setSpan(ROOT_CONTEXT, span));
+    return span;
+  };
 
-  startSpan = (name: string): apm.Span | null => this.#span(name);
+  startSpan = (name: string): ApmSpan | null => {
+    if (!this.#tracer) return null;
+    return this.#tracer.startSpan(name, {}, this.#current.getStore() ?? otelContext.active());
+  };
 
-  getCurrentTraceparent = (): string | null => this.#traceParent();
+  getCurrentTraceparent = (): string | null => {
+    const span: Span | undefined = trace.getSpan(this.#current.getStore() ?? otelContext.active());
+    if (!span) return null;
+    const carrier: Carrier = {};
+    propagator.inject(trace.setSpan(ROOT_CONTEXT, span), carrier, setter);
+    return Object.hasOwn(carrier, 'traceparent') ? carrier.traceparent : null;
+  };
 }

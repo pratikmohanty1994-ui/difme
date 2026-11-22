@@ -7,6 +7,7 @@ SPDX headers carried it.
 ## DIFME patches (vendor/patches/tazama-<repo>/, re-applied by vendor-sync)
 | Repo | Patch | Why |
 |---|---|---|
+| frms-coe-lib | 0001-opentelemetry-and-stdout-logs | OpenTelemetry (OTLP gRPC to Alloy → Tempo) in place of Elastic APM, same `Apm` API so no service changes; `APM_URL` is the OTLP endpoint. Logs to stdout only (Alloy → Loki); the Elasticsearch log stream and its dependencies are removed. Library tests 205/205; trace continuation checked with interleaved transactions. |
 | frms-coe-startup-lib | 0001-kafka-transport | Kafka transport (`STARTUP_TYPE=kafka`) in place of NATS: DIFME already runs Kafka. `@tazama-lf/frms-coe-lib` resolves to `../frms-coe-lib` (upstream publishes it only on GitHub's token-gated npm registry). Live test: `node __tests__/kafka-live.cjs` against a real broker. |
 
 ## Building

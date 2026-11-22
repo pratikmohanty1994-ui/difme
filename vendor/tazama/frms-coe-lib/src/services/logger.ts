@@ -3,25 +3,14 @@
 import pino, { type DestinationStream, type Logger } from 'pino';
 import { validateLogConfig } from '../config/index';
 import type { ProcessorConfig } from '../config/processor.config';
-import { type LogCallback, createElasticStream } from '../helpers/logUtilities';
+import type { LogCallback } from '../helpers/logUtilities';
 import type { LogLevel } from '../helpers/proto/lumberjack/LogLevel';
 import type { LumberjackGRPCService } from './lumberjackGRPCService';
 
 const config = validateLogConfig();
 
-const pinoStream = (): DestinationStream | undefined => {
-  if (config.pinoElasticOpts?.elasticHost.length) {
-    const { stream } = createElasticStream(
-      config.pinoElasticOpts.elasticHost,
-      config.pinoElasticOpts.elasticVersion,
-      config.pinoElasticOpts.elasticUsername,
-      config.pinoElasticOpts.elasticPassword,
-      config.pinoElasticOpts.flushBytes,
-      config.pinoElasticOpts.elasticIndex,
-    );
-    return stream;
-  }
-};
+// DIFME patch (ADR-023): stdout only (Alloy → Loki); the Elasticsearch stream is removed.
+const pinoStream = (): DestinationStream | undefined => undefined;
 
 const LOGLEVEL = config.logLevel.toLowerCase();
 
