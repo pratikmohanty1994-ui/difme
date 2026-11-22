@@ -168,5 +168,16 @@ class PinAndChipTest {
         assertEquals("D098DBA429F16895", ISOUtil.hexString(hsm.retailMac(tak, "0200 DIFME ISO8583 MESSAGE".getBytes())));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        // pyemv MasterCardCVN17/20/21 (counters 000000000000000000 for 17 and 21)
+        "MASTERCARD_17, F7ACDD54A1BF319A, A00003220000000000000000000000, 5F7CBDA460896472",
+        "MASTERCARD_20, 7EA06BAF83E5FB9D, A00003220000, 997964DA9361AF84",
+        "MASTERCARD_21, ACF138CE49AD37FA, A00003220000000000000000000000, BDF69E6DCCC70B0B" })
+    void mastercardCvn17To21MatchPyemv(SecurityModule.Cvn cvn, String arqc, String cvrAndCounters, String arpc) throws Exception {
+        assertArrayEquals(ISOUtil.hex2byte(arpc), hsm.verifyArqcGenerateArpc(cvn, imk, PAN, "00", ISOUtil.hex2byte(arqc), ATC, UPN,
+                ISOUtil.hex2byte(TXN + cvrAndCounters), ISOUtil.hex2byte("0010")));
+    }
+
     static final String REF_DUKPT_UNDER_ZPK = "EE8E9B1F429DEA0F";
 }

@@ -92,7 +92,12 @@ public final class SecurityModule {
         // Visa CVN 22: master key option B, common session keys for AC and secure messaging, method 2 padding, ARPC method 2
         VISA_22(org.jpos.security.MKDMethod.OPTION_B, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_2, true, org.jpos.security.SKDMethod.EMV_CSKD),
         // Mastercard M/Chip CVN 16: session key from ATC and unpredictable number, method 2 padding, ARPC method 1
-        MASTERCARD_16(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.MCHIP);
+        MASTERCARD_16(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.MCHIP),
+        // Mastercard CVN 17: as 16, transaction data also carries the counters
+        MASTERCARD_17(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.EMV_CSKD),
+        // Mastercard CVN 20 / 21 (21 with counters): EMV common session keys for AC and ARPC, ARPC method 1
+        MASTERCARD_20(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.EMV_CSKD),
+        MASTERCARD_21(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.EMV_CSKD);
         final org.jpos.security.MKDMethod mkd;
         final org.jpos.security.SKDMethod skd;
         final org.jpos.security.ARPCMethod arpc;
