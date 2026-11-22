@@ -142,3 +142,9 @@ router's memory is the compiler front end, so a lower optimisation level helps o
 an option: hyperswitch_connectors does not compile without `payouts`/`frm` (1,348 errors) and router not without
 `kv_store` (12 errors); upstream builds only full feature sets. **Fix:** `-j 1` so the peaks never overlap, router at
 opt-level 0, default features; the 24 GB swapfile stays as a backstop.
+
+**Resolved (2026-11-22):** the Hyperswitch image builds on standard 16 GB runners for both platforms (run 44997634903:
+amd64, arm64 and the signed multi-arch manifest green). Two fixes: `-j 1` with the router at opt-level 0 (memory, above),
+and on arm64 the LLD linker: the unoptimised router's code exceeds a direct branch's ±128 MB reach, so GNU ld failed with
+"relocation truncated to fit: R_AARCH64_CALL26"; LLD inserts range-extension thunks
+(`CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld"`). Build time ≈ 2.3 h per platform.

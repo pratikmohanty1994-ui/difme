@@ -4,9 +4,10 @@ Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIB
 
 ## Where things stand
 ## Pending for completion (2026-11-22)
-**In flight:** Hyperswitch image memory (trims beyond the Stripe compatibility layer don't compile upstream; next:
-one-crate-at-a-time build, router at opt-level 0 measured at 13.6 GB peak, swap as backstop, then the image on
-Actions); TEE key-release test (Trustee + OpenBao, emulated TEE) → ADR-026.
+**Done 2026-11-22 (later):** Hyperswitch image built and signed for both platforms (memory: `-j 1`, router opt-level 0;
+arm64: LLD linker); payment hub fraud check on Tazama before capture (verified against the real pipeline: INTERDICT);
+Tazama rule D01 (ONNX model) end to end.
+**In flight:** Tazama images rebuild (rule-d01 after a test-timing fix).
 **Done 2026-11-22:** Tazama builds from source with Kafka/OpenTelemetry swaps, images (7) in CI, manifests (profile
 `fraud`), end to end locally (`ci/tazama-e2e.sh`: ALRT); attested key release verified (`ci/tee-key-release-test.sh`,
 ADR-026); all non-Hyperswitch images built and signed under the new owner.
