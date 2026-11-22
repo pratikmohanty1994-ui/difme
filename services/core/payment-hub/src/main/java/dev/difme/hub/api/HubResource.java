@@ -27,7 +27,9 @@ public class HubResource {
     @Inject Hub hub;
 
     public record CardIn(String number, String expiryMonth, String expiryYear, String cvc, String holder) {}
-    public record PayIn(String paymentId, String merchant, Long amountMinor, String currency, CardIn card) {}
+    /** payer: DIFME's account id for the cardholder (fraud check); optional. */
+    public record PayIn(String paymentId, String merchant, Long amountMinor, String currency, CardIn card, String payer) {}
+    public record ReviewIn(String merchant, Boolean approve) {}
     public record RefundIn(String refundId, String merchant, Long amountMinor, String reason) {}
     public record TransferIn(String transferId, String from, String to, Long amountMinor, String note) {}
     public record DepositIn(String depositId, Long amountMinor) {}
@@ -41,7 +43,14 @@ public class HubResource {
         if (!CURRENCIES.contains(cur)) return bad("currency: INR only");
         CardIn c = in.card();
         return guard(() -> hub.pay(in.paymentId(), in.merchant(), in.amountMinor(), cur,
-                new Hyperswitch.Card(c.number(), c.expiryMonth(), c.expiryYear(), c.cvc(), c.holder() == null ? "" : c.holder())));
+                new Hyperswitch.Card(c.number(), c.expiryMonth(), c.expiryYear(), c.cvc(), c.holder() == null ? "" : c.holder()), in.payer()));
+    }
+
+    /** Decision on a card payment held for fraud review (status REVIEW): approve captures and settles, reject releases. */
+    @POST @Path("/card-payments/{paymentId}/review")
+    public Response review(@PathParam("paymentId") String paymentId, ReviewIn in) {
+        if (in == null || in.merchant() == null || in.approve() == null) return bad("merchant and approve are required");
+        return guard(() -> hub.review(paymentId, in.merchant(), in.approve()));
     }
 
     @POST @Path("/card-payments/{paymentId}/refunds")

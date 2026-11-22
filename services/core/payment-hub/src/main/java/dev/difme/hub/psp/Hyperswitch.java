@@ -27,6 +27,8 @@ public final class Hyperswitch {
     /** Outcome of a charge or refund. errorCode is the card network's response code when it declined. */
     public record Outcome(String id, String status, long amountMinor, String errorCode, String errorMessage, String connectorRef) {
         public boolean succeeded() { return "succeeded".equals(status); }
+        /** Authorised, not yet captured (charge with manual capture). */
+        public boolean authorised() { return "requires_capture".equals(status); }
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -67,16 +69,41 @@ public final class Hyperswitch {
 
     /** Charges a card (authorise + capture). paymentId is DIFME's id: a retry with the same id returns the first result. */
     public Outcome charge(String paymentId, long amountMinor, String currency, Card card, String description) {
+        return charge(paymentId, amountMinor, currency, card, description, false);
+    }
+
+    /**
+     * Charges a card; with authoriseOnly the payment stops at requires_capture, so a fraud check can run before money
+     * is taken (then {@link #capture} or {@link #cancel}).
+     */
+    public Outcome charge(String paymentId, long amountMinor, String currency, Card card, String description, boolean authoriseOnly) {
         bootstrap();
         ObjectNode p = JSON.createObjectNode();
         p.put("payment_id", paymentId).put("amount", amountMinor).put("currency", currency).put("confirm", true)
-                .put("capture_method", "automatic").put("payment_method", "card").put("payment_method_type", "credit")
+                .put("capture_method", authoriseOnly ? "manual" : "automatic").put("payment_method", "card").put("payment_method_type", "credit")
                 .put("description", description).put("authentication_type", "no_three_ds");
         p.putObject("payment_method_data").putObject("card").put("card_number", card.number()).put("card_exp_month", card.expiryMonth())
                 .put("card_exp_year", card.expiryYear()).put("card_holder_name", card.holder()).put("card_cvc", card.cvc());
         Reply r = call("POST", "payments", p, apiKey, "api-key");
         if (r.status() >= 400 && duplicate(r.body())) return payment(paymentId);
         return payment(ok(r, "charge"));
+    }
+
+    /** Captures an authorised payment in full. Idempotent: an already captured payment is returned as it is. */
+    public Outcome capture(String paymentId) {
+        bootstrap();
+        Outcome now = payment(paymentId);
+        if (!now.authorised()) return now;
+        return payment(ok(call("POST", "payments/" + paymentId + "/capture", JSON.createObjectNode(), apiKey, "api-key"), "capture"));
+    }
+
+    /** Releases an authorised payment without taking money (fraud interdiction, rejected review). Idempotent. */
+    public Outcome cancel(String paymentId, String reason) {
+        bootstrap();
+        Outcome now = payment(paymentId);
+        if (!now.authorised()) return now;
+        ObjectNode b = JSON.createObjectNode().put("cancellation_reason", reason);
+        return payment(ok(call("POST", "payments/" + paymentId + "/cancel", b, apiKey, "api-key"), "cancel"));
     }
 
     public Outcome payment(String paymentId) {

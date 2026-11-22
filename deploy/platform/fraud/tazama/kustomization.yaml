@@ -4,6 +4,8 @@ namespace: fraud
 resources: [tazama.yaml]
 generatorOptions: { disableNameSuffixHash: true }
 configMapGenerator:
+  - name: tazama-admin-service
+    envs: [env/admin-service.env]
   - name: tazama-event-adjudicator
     envs: [env/event-adjudicator.env]
   - name: tazama-event-director

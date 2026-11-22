@@ -44,7 +44,9 @@ public class HubSetup {
         factory = WorkerFactory.newInstance(client);
         Hub.register(factory, cbs, psp);
         factory.start();
-        hub = new Hub(client, cbs, psp);
+        // Fraud check on Tazama when TAZAMA_TMS_URL and TAZAMA_ADMIN_URL are set (ADR-023); TAZAMA_FAIL_OPEN=true captures
+        // payments Tazama gave no verdict on, otherwise they are held for review.
+        hub = new Hub(client, cbs, psp, dev.difme.hub.frm.Tazama.fromEnv(), Boolean.parseBoolean(System.getenv("TAZAMA_FAIL_OPEN")));
     }
 
     void stop(@Observes ShutdownEvent ev) {

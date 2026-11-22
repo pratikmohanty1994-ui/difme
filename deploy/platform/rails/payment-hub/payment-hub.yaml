@@ -21,6 +21,12 @@ spec:
         - name: payment-hub
           image: ghcr.io/pratikmohanty1994-ui/difme-payment-hub:0.1.0
           env:
+            # Fraud check before capture on Tazama (fraud profile, ADR-023): no alert → capture, alert → hold for review,
+            # interdiction → cancel. Without a verdict within the budget the payment is held for review (fail closed).
+            - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
+            - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
+            - { name: TAZAMA_BUDGET_MS, value: "3000" }
+            - { name: TAZAMA_FAIL_OPEN, value: "false" }
             - { name: TEMPORAL_TARGET, value: "temporal-frontend.temporal.svc:7233" }
             - { name: FINERACT_URL, value: "http://fineract.rails.svc:8080/fineract-provider" }
             - { name: FINERACT_TOKEN_URL, value: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token" }

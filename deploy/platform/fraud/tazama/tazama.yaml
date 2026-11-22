@@ -191,9 +191,42 @@ spec:
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-admin-service, labels: { app: tazama-admin-service } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-admin-service } }
+  template:
+    metadata: { labels: { app: tazama-admin-service, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: admin-service
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-admin-service:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-admin-service } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-admin-service }
+            - { name: EVALUATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: EVENT_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: RAW_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          ports: [{ name: http, containerPort: 3100 }]
+          readinessProbe: { httpGet: { path: /health, port: 3100 }, periodSeconds: 10 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 320Mi } }
+---
 apiVersion: v1
 kind: Service
 metadata: { name: tazama-tms }
 spec:
   selector: { app: tazama-tms }
   ports: [{ name: http, port: 3000, targetPort: http }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: tazama-admin-service }
+spec:
+  selector: { app: tazama-admin-service }
+  ports: [{ name: http, port: 3100, targetPort: http }]
