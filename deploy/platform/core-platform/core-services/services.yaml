@@ -9,7 +9,7 @@ data:
   services.yaml: |
     - { name: quarkus-cmd-svc,     port: 8080, image: difme-cmd-svc,            team: payments,   metric: payment-processing, cpu: 100m, mem: 448Mi, rollout: true }   # Argo Rollout (canary-gates) owns replicas
     - { name: quarkus-qry-svc,     port: 8081, image: difme-qry-svc,            team: payments,   metric: account-query,      cpu: 50m,  mem: 256Mi }
-    - { name: saga-orchestrator,   port: 8082, image: difme-saga-orchestrator,  team: payments,   metric: settlement-saga,    cpu: 50m,  mem: 320Mi }
+    - { name: saga-orchestrator,   port: 8082, image: difme-saga-orchestrator,  team: payments,   metric: settlement-saga,    cpu: 50m,  mem: 320Mi, loans: true }   # loan origination workflows (ADR-025)
     - { name: consistency-router,  port: 8083, image: difme-consistency-router, team: platform,   metric: payment-processing, cpu: 10m,  mem: 48Mi }
     - { name: rate-limiter,        port: 8084, image: difme-rate-limiter,       team: platform,   metric: rate-limiting,      cpu: 20m,  mem: 64Mi }
     - { name: rehydration-svc,     port: 8085, image: difme-rehydration-svc,    team: edge,       metric: offline-rehydration, cpu: 50m, mem: 224Mi, group: streaming, autoscaled: true }   # KEDA (keda-scalers)

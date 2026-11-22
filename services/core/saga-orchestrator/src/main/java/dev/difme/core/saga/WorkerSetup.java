@@ -33,7 +33,8 @@ public class WorkerSetup {
         factory.newWorker(dev.difme.core.common.process.LoanActivities.TASK_QUEUE).registerActivitiesImplementations(new LoanActivitiesImpl(
                 env.getOrDefault("FINERACT_URL", "http://fineract.rails.svc:8080/fineract-provider"), env.get("FINERACT_TOKEN_URL"),
                 env.get("FINERACT_CLIENT_ID"), env.get("FINERACT_CLIENT_SECRET"), env.get("FINERACT_BASIC_AUTH"),
-                Long.parseLong(env.getOrDefault("LOAN_PRODUCT_ID", "1")), env.get("TAZAMA_TMS_URL"), env.get("TAZAMA_ADMIN_URL")));
+                Long.parseLong(env.getOrDefault("LOAN_PRODUCT_ID", "0")), env.get("TAZAMA_TMS_URL"), env.get("TAZAMA_ADMIN_URL"))
+                .productNamed(env.getOrDefault("LOAN_PRODUCT_NAME", "DIFME term loan")));
         factory.start();
     }
 

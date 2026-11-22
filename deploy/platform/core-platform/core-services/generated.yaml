@@ -216,6 +216,13 @@ spec:
             memory: 320Mi
           limits:
             memory: 320Mi
+        envFrom:
+        - configMapRef:
+            name: loan-origination
+            optional: true
+        - secretRef:
+            name: loan-origination-oauth
+            optional: true
         volumeMounts:
         - name: tmp
           mountPath: /tmp

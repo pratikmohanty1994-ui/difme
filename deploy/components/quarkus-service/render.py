@@ -51,6 +51,10 @@ def manifests(s: dict) -> list[dict]:
     # Without it the exchange keeps its simulated rails, so the core profile works on its own.
     if s.get("rails"):
         container.setdefault("envFrom", []).append({"configMapRef": {"name": "exchange-rails", "optional": True}})
+    # Loan origination (ADR-025): Fineract/Tazama endpoints and the Keycloak client, shipped by the rails profile.
+    if s.get("loans"):
+        container.setdefault("envFrom", []).append({"configMapRef": {"name": "loan-origination", "optional": True}})
+        container["envFrom"].append({"secretRef": {"name": "loan-origination-oauth", "optional": True}})
     if mounts:
         container["volumeMounts"] = mounts
     # No service-link env (KUBERNETES-style <SVC>_PORT=tcp://...): our services resolve by DNS, and those variables

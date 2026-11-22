@@ -30,7 +30,21 @@ public class LoanActivitiesImpl implements LoanActivities {
     static final DateTimeFormatter D = DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.ENGLISH);
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String fineract, tokenUrl, clientId, clientSecret, basicAuth, tms, admin;
-    private final long loanProductId;
+    private long loanProductId;
+    private String productName;
+
+    /** Resolve the loan product by name in Fineract when no id is configured. */
+    public LoanActivitiesImpl productNamed(String name) {
+        this.productName = name;
+        return this;
+    }
+
+    private long productId() throws IOException, InterruptedException {
+        if (loanProductId > 0) return loanProductId;
+        for (JsonNode p : call("GET", "loanproducts", null))
+            if (p.path("name").asText().equals(productName)) return loanProductId = p.path("id").asLong();
+        throw new IOException("loan product '" + productName + "' not found in Fineract");
+    }
 
     public LoanActivitiesImpl(String fineract, String tokenUrl, String clientId, String clientSecret, String basicAuth, long loanProductId,
             String tazamaTms, String tazamaAdmin) {
@@ -101,7 +115,7 @@ public class LoanActivitiesImpl implements LoanActivities {
                 loanId = items.get(0).path("id").asLong();
             } else {
                 String today = LocalDate.now().format(D);
-                ObjectNode b = JSON.createObjectNode().put("clientId", a.fineractClientId()).put("productId", loanProductId)
+                ObjectNode b = JSON.createObjectNode().put("clientId", a.fineractClientId()).put("productId", productId())
                         .put("principal", a.amountMinor() / 100.0).put("loanTermFrequency", a.termMonths()).put("loanTermFrequencyType", 2)
                         .put("numberOfRepayments", a.termMonths()).put("repaymentEvery", 1).put("repaymentFrequencyType", 2)
                         .put("interestRatePerPeriod", 1.5).put("amortizationType", 1).put("interestType", 0).put("interestCalculationPeriodType", 1)

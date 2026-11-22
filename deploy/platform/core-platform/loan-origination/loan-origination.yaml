@@ -1,0 +1,11 @@
+# Loan origination (ADR-025): where saga-orchestrator's loan workflows book loans and screen applications. Shipped with
+# the rails profile (Fineract, Tazama); without it the workflows refer every application to an underwriter.
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: loan-origination }
+data:
+  FINERACT_URL: "http://fineract.rails.svc:8080/fineract-provider"
+  FINERACT_TOKEN_URL: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token"
+  LOAN_PRODUCT_NAME: "DIFME term loan"
+  TAZAMA_TMS_URL: "http://tazama-tms.fraud.svc:3000"
+  TAZAMA_ADMIN_URL: "http://tazama-admin-service.fraud.svc:3100"

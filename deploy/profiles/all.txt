@@ -45,6 +45,7 @@ feast
 onnx-serving
 mlflow
 scheme-sim
+loan-origination
 card-security
 fineract
 hyperswitch

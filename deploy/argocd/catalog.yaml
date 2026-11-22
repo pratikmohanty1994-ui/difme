@@ -82,6 +82,7 @@ components:
 
   # ── Payment-rail simulators (profile: rails; owner 2026-11-21) ─────────────
   - { name: scheme-sim,        ns: rails,           kind: path, profile: rails, wave: 0, pdf: "rails" }   # card scheme + ISO 8583 adapter
+  - { name: loan-origination,  ns: core-platform,   kind: path, profile: rails, wave: 0, pdf: "ADR-025" }   # loan workflows' endpoints (ConfigMap)
   - { name: card-security,     ns: rails,           kind: path, profile: rails, wave: 0, pdf: "rails" }   # security module (hsm) + 3DS ACS (ADR-026/027)
   - { name: fineract,          ns: rails,           kind: path, profile: rails, wave: 1, pdf: "rails" }   # CBS (Fineract 1.16.1, shared Postgres)
   - { name: hyperswitch,       ns: rails,           kind: path, profile: rails, wave: 1, pdf: "rails" }   # PSP (Hyperswitch v1.129.0, dummy connector)

@@ -142,5 +142,16 @@ spec:
               issuer=$(role "Card issuer" "DIFME card issuer (card-issuer): debit holds and withdrawals, credit-line disbursements" \
                 READ_SAVINGSACCOUNT HOLDAMOUNT_SAVINGSACCOUNT RELEASEAMOUNT_SAVINGSACCOUNT WITHDRAWAL_SAVINGSACCOUNT READ_LOAN DISBURSE_LOAN READ_CLIENT)
               user card-issuer "$issuer"
+              lo=$(role "Loan origination" "DIFME loan origination workflows: book, approve and disburse term loans" \
+                READ_LOAN CREATE_LOAN APPROVE_LOAN DISBURSE_LOAN READ_CLIENT READ_LOANPRODUCT)
+              user loan-origination "$lo"
+              # the term-loan product loan origination books against (found by name)
+              if [ -z "$(id_of "$(api "$FINERACT/api/v1/loanproducts")" name "DIFME term loan")" ]; then
+                api -X POST "$FINERACT/api/v1/loanproducts" -d '{"name":"DIFME term loan","shortName":"DTL","currencyCode":"INR","digitsAfterDecimal":2,
+              "inMultiplesOf":0,"principal":100000,"minPrincipal":1000,"maxPrincipal":5000000,"numberOfRepayments":12,"repaymentEvery":1,"repaymentFrequencyType":2,
+              "interestRatePerPeriod":1.5,"interestRateFrequencyType":2,"amortizationType":1,"interestType":0,"interestCalculationPeriodType":1,
+              "transactionProcessingStrategyCode":"mifos-standard-strategy","accountingRule":1,"daysInYearType":1,"daysInMonthType":1,
+              "isInterestRecalculationEnabled":false,"locale":"en"}' >/dev/null && echo "loan product DIFME term loan created"
+              fi
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }

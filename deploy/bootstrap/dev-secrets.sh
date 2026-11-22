@@ -44,8 +44,9 @@ secret rails         fineract-db password="$FINERACT_PG" master-password="$(rand
 secret database-tier fineract-db password="$FINERACT_PG"
 secret rails         fineract-s3 access-key="$S3_KEY" secret-key="$S3_SECRET"   # documents on SeaweedFS (component reuse)
 # Keycloak confidential clients: the same secret in Keycloak's namespace and in each client's namespace.
-PHEE_AMS_CS=$(rand 32); EXCHANGE_CS=$(rand 32); FIN_ADMIN_CS=$(rand 32); CARD_ISSUER_CS=$(rand 32)
-secret security      keycloak-clients ph-ee-ams="$PHEE_AMS_CS" difme-exchange="$EXCHANGE_CS" fineract-admin="$FIN_ADMIN_CS" card-issuer="$CARD_ISSUER_CS"
+PHEE_AMS_CS=$(rand 32); EXCHANGE_CS=$(rand 32); FIN_ADMIN_CS=$(rand 32); CARD_ISSUER_CS=$(rand 32); LOAN_ORIG_CS=$(rand 32)
+secret security      keycloak-clients ph-ee-ams="$PHEE_AMS_CS" difme-exchange="$EXCHANGE_CS" fineract-admin="$FIN_ADMIN_CS" card-issuer="$CARD_ISSUER_CS" loan-origination="$LOAN_ORIG_CS"
+secret core-platform loan-origination-oauth FINERACT_CLIENT_ID=loan-origination FINERACT_CLIENT_SECRET="$LOAN_ORIG_CS"
 secret rails         card-issuer-oauth client-id=card-issuer client-secret="$CARD_ISSUER_CS"
 secret rails         ph-ee-ams-oauth client-id=ph-ee-ams client-secret="$PHEE_AMS_CS"
 secret rails         fineract-admin-oauth client-id=fineract-admin client-secret="$FIN_ADMIN_CS"
