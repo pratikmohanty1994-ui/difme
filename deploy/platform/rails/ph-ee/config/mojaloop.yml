@@ -1,0 +1,24 @@
+# connector-mojaloop, DIFME profile: FSP "difme" on the central switch (deploy/platform/rails/mojaloop-switch).
+dfspids: "default"
+zeebe:
+  broker:
+    contactpoint: "${FLUXNOVA_ENGINE_URL}"
+connector:
+  ilp-secret: "${ILP_SECRET}"
+switch:
+  quotes-host: "http://mojaloop-switch.rails.svc:4040"
+  als-host: "http://mojaloop-switch.rails.svc:4040"
+  transfers-host: "http://mojaloop-switch.rails.svc:4040"
+  transactions-host: "http://mojaloop-switch.rails.svc:4040"
+  oracle-host: "http://mojaloop-switch.rails.svc:4040"
+parties:
+  - tenantId: default
+    fspId: difme
+    domain: ""
+logging:
+  level: { root: INFO }
+server:
+  port: 8080
+  ssl: { enabled: false }
+management:
+  endpoints: { web: { exposure: { include: "health,info,prometheus" } } }

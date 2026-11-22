@@ -1,0 +1,28 @@
+# connector-ams-mifos, DIFME profile (active with fin12: Fineract 1.2 interoperation API).
+# One tenant: Fineract's "default" tenant, which is DIFME's FSP "difme" on the Mojaloop switch. The connector logs in to
+# Fineract through Keycloak (patch ph-ee-ams-mifos/0001): user/password are the ph-ee-ams client id/secret.
+dfspids: "default"
+zeebe:
+  broker:
+    contactpoint: "${FLUXNOVA_ENGINE_URL}"
+ams:
+  local:
+    enabled: true
+    server-cert-check: true
+    interop: { host: "http://fineract.rails.svc:8080" }
+    customer: { host: "http://fineract.rails.svc:8080" }
+    account: { host: "http://fineract.rails.svc:8080" }
+    auth: { host: "http://fineract.rails.svc:8080" }
+    loan: { host: "http://fineract.rails.svc:8080" }
+    oauth:
+      token-url: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token"
+    tenants:
+      - name: "default"
+        user: "${AMS_CLIENT_ID}"
+        password: "${AMS_CLIENT_SECRET}"
+        authtype: oauth
+        fspId: difme
+server:
+  ssl: { enabled: false }
+management:
+  endpoints: { web: { exposure: { include: "health,info,prometheus" } } }

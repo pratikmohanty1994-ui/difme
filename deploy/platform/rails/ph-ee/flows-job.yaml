@@ -1,0 +1,44 @@
+# Deploys the PH-EE flows DIFME runs to Fluxnova after each sync: converted from Zeebe's dialect by
+# ci/zeebe-bpmn-to-fluxnova.py (shipped in the ConfigMap, run as-is) for tenant "default" (Fineract's tenant = FSP
+# difme), then deployed with deploy-changed-only (unchanged flows are skipped). The vendored files stay untouched.
+apiVersion: batch/v1
+kind: Job
+metadata: { name: ph-ee-deploy-flows, annotations: { argocd.argoproj.io/hook: PostSync, argocd.argoproj.io/hook-delete-policy: BeforeHookCreation } }
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 100, seccompProfile: { type: RuntimeDefault } }
+      initContainers:
+        - name: convert
+          image: python:3.13.1-alpine3.21
+          command: [sh, -c]
+          args:
+            - |
+              set -e
+              mkdir -p /work/in && cp /flows/*.bpmn /work/in/
+              python3 -I /flows/zeebe-bpmn-to-fluxnova.py /work/in /work/out --tenant default
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: flows, mountPath: /flows }, { name: work, mountPath: /work }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
+      containers:
+        - name: deploy
+          image: curlimages/curl:8.12.1
+          env: [{ name: AUTH, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-basic } } }]   # user:password
+          command: [sh, -c]
+          args:
+            - |
+              set -e
+              args=""
+              for f in /work/out/*.bpmn; do args="$args -F $(basename $f)=@$f"; done
+              curl -sf -u "$AUTH" http://fluxnova.process.svc:8080/engine-rest/deployment/create \
+                -F deployment-name=ph-ee-flows -F deploy-changed-only=true -F deployment-source=gitops $args >/dev/null
+              echo "deployed: $(ls /work/out/*.bpmn | xargs -n1 basename | tr '\n' ' ')"
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: work, mountPath: /work }]
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
+      volumes:
+        - { name: flows, configMap: { name: ph-ee-flows } }
+        - { name: work, emptyDir: { sizeLimit: 16Mi } }

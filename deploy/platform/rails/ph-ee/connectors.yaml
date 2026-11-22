@@ -1,0 +1,143 @@
+# Mifos Payment Hub EE connectors (vendor/mifos-ph-ee, MPL-2.0) on Fluxnova instead of Zeebe (owner 2026-11-21).
+# Each one is a Fluxnova external-task worker (services/zeebe-on-fluxnova speaks Fluxnova's engine REST API in place of
+# the Zeebe client): channel starts flows for callers, ams books them on Fineract, mojaloop talks FSPIOP to the switch.
+# Runtime settings: Spring profile "difme" from the generated ConfigMaps (config/*.yml); secrets from Secrets.
+# Metrics: VictoriaMetrics scrapes pods labelled difme/metrics on the port named "http" (observability/dashboards).
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: ph-ee-connector-ams-mifos }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ph-ee-connector-ams-mifos, labels: { app: ph-ee-connector-ams-mifos } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ph-ee-connector-ams-mifos } }
+  template:
+    metadata:
+      labels: { app: ph-ee-connector-ams-mifos, difme/team: rails, business.metric: payment-hub, difme/metrics: "true" }
+      annotations: { difme/metrics-path: /fineract/actuator/prometheus }
+    spec:
+      serviceAccountName: ph-ee-connector-ams-mifos
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: connector
+          image: ghcr.io/pratikmohanty1994-ui/difme-ph-ee-ams:0.1.0
+          env:
+            # Fluxnova's engine REST API; user:password in the URL becomes Basic auth (services/zeebe-on-fluxnova).
+            - { name: FLUXNOVA_BASIC, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-basic } } }
+            - { name: FLUXNOVA_ENGINE_URL, value: "http://$(FLUXNOVA_BASIC)@fluxnova.process.svc:8080/engine-rest" }
+            # Messages correlated on another variable than transactionId (from ci/zeebe-bpmn-to-fluxnova.py's output).
+            - { name: ZEEBE_FLUXNOVA_MESSAGES, value: "quote-callback=quoteId,quote-error=quoteId" }
+            - { name: SPRING_PROFILES_ACTIVE, value: "fin12,difme" }
+            - { name: SPRING_CONFIG_ADDITIONAL_LOCATION, value: "file:/config/" }
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
+            - { name: AMS_CLIENT_ID, valueFrom: { secretKeyRef: { name: ph-ee-ams-oauth, key: client-id } } }
+            - { name: AMS_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: ph-ee-ams-oauth, key: client-secret } } }
+          ports: [{ name: http, containerPort: 7070 }]
+          startupProbe: { httpGet: { path: /fineract/actuator/health/liveness, port: 7070 }, periodSeconds: 5, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /fineract/actuator/health/readiness, port: 7070 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /fineract/actuator/health/liveness, port: 7070 }, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: config, mountPath: /config, readOnly: true }, { name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 50m, memory: 384Mi }, limits: { memory: 512Mi } }
+      volumes:
+        - { name: config, configMap: { name: ph-ee-ams-config } }
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: ph-ee-connector-channel }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ph-ee-connector-channel, labels: { app: ph-ee-connector-channel } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ph-ee-connector-channel } }
+  template:
+    metadata:
+      labels: { app: ph-ee-connector-channel, difme/team: rails, business.metric: payment-hub, difme/metrics: "true" }
+      annotations: { difme/metrics-path: /actuator/prometheus }
+    spec:
+      serviceAccountName: ph-ee-connector-channel
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: connector
+          image: ghcr.io/pratikmohanty1994-ui/difme-ph-ee-channel:0.1.0
+          env:
+            # Fluxnova's engine REST API; user:password in the URL becomes Basic auth (services/zeebe-on-fluxnova).
+            - { name: FLUXNOVA_BASIC, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-basic } } }
+            - { name: FLUXNOVA_ENGINE_URL, value: "http://$(FLUXNOVA_BASIC)@fluxnova.process.svc:8080/engine-rest" }
+            # Messages correlated on another variable than transactionId (from ci/zeebe-bpmn-to-fluxnova.py's output).
+            - { name: ZEEBE_FLUXNOVA_MESSAGES, value: "quote-callback=quoteId,quote-error=quoteId" }
+            - { name: SPRING_PROFILES_ACTIVE, value: "difme" }
+            - { name: SPRING_CONFIG_ADDITIONAL_LOCATION, value: "file:/config/" }
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
+          ports: [{ name: http-api, containerPort: 8080 }, { name: http, containerPort: 8081 }]
+          startupProbe: { httpGet: { path: /actuator/health/liveness, port: 8081 }, periodSeconds: 5, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 8081 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /actuator/health/liveness, port: 8081 }, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: config, mountPath: /config, readOnly: true }, { name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 50m, memory: 384Mi }, limits: { memory: 512Mi } }
+      volumes:
+        - { name: config, configMap: { name: ph-ee-channel-config } }
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+# The channel API; callers are checked at the waypoint (channel-auth.yaml).
+apiVersion: v1
+kind: Service
+metadata: { name: ph-ee-connector-channel, labels: { istio.io/use-waypoint: ph-ee-waypoint } }
+spec: { selector: { app: ph-ee-connector-channel }, ports: [{ name: http-api, port: 8080, targetPort: http-api }] }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: ph-ee-connector-mojaloop }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ph-ee-connector-mojaloop, labels: { app: ph-ee-connector-mojaloop } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ph-ee-connector-mojaloop } }
+  template:
+    metadata:
+      labels: { app: ph-ee-connector-mojaloop, difme/team: rails, business.metric: payment-hub, difme/metrics: "true" }
+      annotations: { difme/metrics-path: /actuator/prometheus }
+    spec:
+      serviceAccountName: ph-ee-connector-mojaloop
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: connector
+          image: ghcr.io/pratikmohanty1994-ui/difme-ph-ee-mojaloop:0.1.0
+          env:
+            # Fluxnova's engine REST API; user:password in the URL becomes Basic auth (services/zeebe-on-fluxnova).
+            - { name: FLUXNOVA_BASIC, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-basic } } }
+            - { name: FLUXNOVA_ENGINE_URL, value: "http://$(FLUXNOVA_BASIC)@fluxnova.process.svc:8080/engine-rest" }
+            # Messages correlated on another variable than transactionId (from ci/zeebe-bpmn-to-fluxnova.py's output).
+            - { name: ZEEBE_FLUXNOVA_MESSAGES, value: "quote-callback=quoteId,quote-error=quoteId" }
+            - { name: SPRING_PROFILES_ACTIVE, value: "difme" }
+            - { name: SPRING_CONFIG_ADDITIONAL_LOCATION, value: "file:/config/" }
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
+            # Secret for the ILP fulfilments this FSP issues as payee (upstream ships a public default: never used).
+            - { name: ILP_SECRET, valueFrom: { secretKeyRef: { name: ph-ee-mojaloop, key: ilp-secret } } }
+          ports: [{ name: http, containerPort: 8080 }, { name: http-switch, containerPort: 5000 }]
+          startupProbe: { httpGet: { path: /actuator/health/liveness, port: 8080 }, periodSeconds: 5, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 8080 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /actuator/health/liveness, port: 8080 }, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: config, mountPath: /config, readOnly: true }, { name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 50m, memory: 384Mi }, limits: { memory: 512Mi } }
+      volumes:
+        - { name: config, configMap: { name: ph-ee-mojaloop-config } }
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+# FSPIOP callbacks from the central switch (participants.json: endpoint http://ph-ee-connector-mojaloop.rails.svc:5000/switch).
+apiVersion: v1
+kind: Service
+metadata: { name: ph-ee-connector-mojaloop }
+spec: { selector: { app: ph-ee-connector-mojaloop }, ports: [{ name: http-switch, port: 5000, targetPort: http-switch }] }

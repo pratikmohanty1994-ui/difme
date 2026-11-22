@@ -51,6 +51,7 @@ card-security
 fineract
 hyperswitch
 payment-hub
+ph-ee
 exchange-rails
 tazama
 victoria-metrics

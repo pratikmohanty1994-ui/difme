@@ -1,0 +1,26 @@
+# connector-channel, DIFME profile. Callers are checked in the mesh (channel-auth.yaml), not by upstream's
+# rest.authorization (dead code in 1.9.0: the controllers drop the Authorization header).
+dfspids: "default"
+destination: { dfspid: "default" }
+zeebe:
+  broker:
+    contactpoint: "${FLUXNOVA_ENGINE_URL}"
+bpmns:
+  tenants:
+    - id: "default"
+      flows:
+        payment-transfer: "PayerFundTransfer-{dfspid}"
+# Idempotency of channel calls on DIFME's shared cache (Valkey, no auth inside the mesh).
+redis:
+  host: "valkey.cache-tier.svc"
+  port: 6379
+  password: ""
+  database: 2
+operations:
+  url: "http://ph-ee-operations.rails.svc:5000/api/v1"   # not deployed: PH-EE's operations app is not used by DIFME
+server:
+  port: 8080
+  ssl: { enabled: false }
+management:
+  server: { port: 8081 }   # metrics/probes on their own port: the API port is reachable only through the waypoint
+  endpoints: { web: { exposure: { include: "health,info,prometheus" } } }

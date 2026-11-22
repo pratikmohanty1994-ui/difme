@@ -1,0 +1,17 @@
+# Mifos Payment Hub EE connectors on Fluxnova (owner 2026-11-21; vendor/mifos-ph-ee, MPL-2.0).
+resources: [connectors.yaml, channel-auth.yaml, flows-job.yaml]
+namespace: rails
+configMapGenerator:
+  # DIFME's runtime settings for each connector (Spring profile "difme", loaded from /config). Secrets are ${ENV}
+  # placeholders filled from Kubernetes Secrets, never values.
+  - { name: ph-ee-ams-config,      files: [application-difme.yml=config/ams.yml] }
+  - { name: ph-ee-channel-config,  files: [application-difme.yml=config/channel.yml] }
+  - { name: ph-ee-mojaloop-config, files: [application-difme.yml=config/mojaloop.yml] }
+  # The PH-EE flows DIFME runs, converted for Fluxnova by the PostSync job (flows-job.yaml) with the converter itself.
+  - name: ph-ee-flows
+    files:
+      - PayerFundTransfer-DFSPID.bpmn=../../../../vendor/mifos-ph-ee/flows/PayerFundTransfer-DFSPID.bpmn
+      - PayeePartyLookup-DFSPID.bpmn=../../../../vendor/mifos-ph-ee/flows/PayeePartyLookup-DFSPID.bpmn
+      - PayeeQuoteTransfer-DFSPID.bpmn=../../../../vendor/mifos-ph-ee/flows/PayeeQuoteTransfer-DFSPID.bpmn
+      - DifmeOnUsTransfer-DFSPID.bpmn=../../../../processes/ph-ee/DifmeOnUsTransfer-DFSPID.bpmn
+      - zeebe-bpmn-to-fluxnova.py=../../../../ci/zeebe-bpmn-to-fluxnova.py

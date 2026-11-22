@@ -5,4 +5,5 @@ card-security
 fineract
 hyperswitch
 payment-hub
+ph-ee
 exchange-rails

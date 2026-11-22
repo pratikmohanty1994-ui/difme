@@ -1,0 +1,71 @@
+# Who may call the PH-EE channel API (component reuse: Keycloak instead of the channel's own token check, which is dead
+# code in channel 1.9.0). The JWT is checked at an ambient waypoint, because ztunnel (L4) cannot read tokens:
+#   1. the channel Service routes through the waypoint (label istio.io/use-waypoint in connectors.yaml);
+#   2. RequestAuthentication: tokens must be signed by Keycloak's realm difme (its JWKS) and issued by the realm;
+#   3. AuthorizationPolicy at the waypoint: a valid token from client difme-exchange carrying realm role ph-ee-transfer
+#      (Keycloak puts realm roles in realm_access.roles and the client in azp);
+#   4. ztunnel on the channel pods: the API port only from the waypoint (no way round it by pod IP), the metrics/probe
+#      port only from vmagent's namespace (kubelet probes are allowed by ztunnel itself).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: { name: ph-ee-waypoint, labels: { istio.io/waypoint-for: service } }
+spec:
+  gatewayClassName: istio-waypoint
+  listeners: [{ name: mesh, port: 15008, protocol: HBONE }]
+---
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata: { name: ph-ee-channel-jwt }
+spec:
+  targetRefs: [{ kind: Service, group: "", name: ph-ee-connector-channel }]
+  jwtRules:
+    - issuer: "https://id.difme.local/realms/difme"     # KC_HOSTNAME + realm (security/keycloak), as Fineract checks it
+      jwksUri: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/certs"
+      forwardOriginalToken: false
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: ph-ee-channel-callers }
+spec:
+  targetRefs: [{ kind: Service, group: "", name: ph-ee-connector-channel }]
+  action: ALLOW
+  rules:
+    - from: [{ source: { requestPrincipals: ["https://id.difme.local/realms/difme/*"] } }]
+      when:
+        - { key: "request.auth.claims[azp]", values: ["difme-exchange"] }
+        - { key: "request.auth.claims[realm_access][roles]", values: ["ph-ee-transfer"] }
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: ph-ee-channel-pods }
+spec:
+  selector: { matchLabels: { app: ph-ee-connector-channel } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/ph-ee-waypoint"] } }]
+      to: [{ operation: { ports: ["8080"] } }]
+    - from: [{ source: { namespaces: [observability] } }]
+      to: [{ operation: { ports: ["8081"] } }]
+---
+# The other connectors take no calls except metrics, and (mojaloop) the switch's FSPIOP callbacks from the rails namespace.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: ph-ee-ams-pods }
+spec:
+  selector: { matchLabels: { app: ph-ee-connector-ams-mifos } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { namespaces: [observability] } }]
+      to: [{ operation: { ports: ["7070"] } }]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: ph-ee-mojaloop-pods }
+spec:
+  selector: { matchLabels: { app: ph-ee-connector-mojaloop } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { namespaces: [observability] } }]
+      to: [{ operation: { ports: ["8080"] } }]
+    - from: [{ source: { namespaces: [rails] } }]
+      to: [{ operation: { ports: ["5000"] } }]
