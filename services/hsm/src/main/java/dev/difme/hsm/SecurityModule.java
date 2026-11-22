@@ -172,6 +172,15 @@ public final class SecurityModule {
 
     public byte[] aesCmac(String macKey, byte[] data) throws SMException { return ext().aesCmac(macKey, data); }
 
+    public String dcvv2(SecureDESKey imkDcvv2, String pan, long step) throws SMException { return ext().dcvv2(imkDcvv2, pan, step); }
+
+    public boolean verifyDcvv2(SecureDESKey imkDcvv2, String pan, long step, int window, String code) throws SMException {
+        return ext().verifyDcvv2(imkDcvv2, pan, step, window, code);
+    }
+
+    /** ISO 9797-1 MAC algorithm 3 (retail MAC, method 2 padding) with a TAK/ZAK, for ISO 8583 message authentication. */
+    public byte[] retailMac(SecureDESKey mak, byte[] data) throws SMException { return sm.generateCBC_MAC(data, mak); }
+
     /** Visa dCVV (contactless MSD): CVV over PAN, expiry, service code and ATC with the card's derived key. */
     public boolean verifyDcvv(SecureDESKey imkDcvv, String pan, String dcvv, String expiryYymm, String serviceCode, byte[] atc) throws SMException {
         return sm.verifydCVV(pan, imkDcvv, dcvv, expiryYymm, serviceCode, atc, org.jpos.security.MKDMethod.OPTION_A);
@@ -182,6 +191,7 @@ public final class SecurityModule {
         Properties p = new Properties();
         p.setProperty("lmk", lmk.toString());
         p.setProperty("rebuildlmk", Boolean.toString(rebuild));
+        p.setProperty("provider", "org.bouncycastle.jce.provider.BouncyCastleProvider"); // ISO 9797-1 MACs
         try {
             DifmeSecurityModule m = new DifmeSecurityModule();
             m.setConfiguration(new SimpleConfiguration(p));

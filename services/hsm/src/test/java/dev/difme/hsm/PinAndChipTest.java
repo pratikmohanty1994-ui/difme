@@ -143,5 +143,30 @@ class PinAndChipTest {
                 ISOUtil.hex2byte("841E000004")));
     }
 
+    @Test
+    void dcvvMatchesAnIndependentImplementation() throws Exception {
+        SecureDESKey dcvvKey = hsm.keyFromComponents(SMAdapter.TYPE_MK_AC, KEY);
+        // Python: psec generate_cvv(pyemv derive_icc_mk_a(KEY, PAN, "00"), "0005" + PAN[4:], "2812", "101") = 021
+        assertTrue(hsm.verifyDcvv(dcvvKey, PAN, "021", "2812", "101", ISOUtil.hex2byte("0005")));
+        assertFalse(hsm.verifyDcvv(dcvvKey, PAN, "021", "2812", "101", ISOUtil.hex2byte("0006")), "another ATC");
+    }
+
+    @Test
+    void dcvv2DifmeProfile() throws Exception {
+        SecureDESKey k = hsm.keyFromComponents(SMAdapter.TYPE_CVK, KEY);
+        // Python: psec generate_cvv(derive_icc_mk_a(KEY, PAN, "00"), PAN, "5900", "000") = 063; step - 1 -> 020
+        assertEquals("063", hsm.dcvv2(k, PAN, 5_900_000));
+        assertTrue(hsm.verifyDcvv2(k, PAN, 5_900_000, 1, "063"));
+        assertTrue(hsm.verifyDcvv2(k, PAN, 5_900_000, 1, "020"), "previous step within the window");
+        assertFalse(hsm.verifyDcvv2(k, PAN, 5_900_002, 1, "063"), "two steps old");
+    }
+
+    @Test
+    void retailMacMatchesPsec() throws Exception {
+        SecureDESKey tak = hsm.keyFromComponents(SMAdapter.TYPE_TAK, KEY);
+        // psec generate_retail_mac(KEY[:8], KEY[8:], b"0200 DIFME ISO8583 MESSAGE", 2)
+        assertEquals("D098DBA429F16895", ISOUtil.hexString(hsm.retailMac(tak, "0200 DIFME ISO8583 MESSAGE".getBytes())));
+    }
+
     static final String REF_DUKPT_UNDER_ZPK = "EE8E9B1F429DEA0F";
 }

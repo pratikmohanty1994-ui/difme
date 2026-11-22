@@ -101,4 +101,27 @@ public class DifmeSecurityModule extends JCESecurityModule {
         }
         return off.toString();
     }
+
+    /**
+     * DIFME dCVV2 profile (no public scheme profile exists): a time-based 3-digit code for card-not-present payments.
+     * Per-card key = EMV option A derivation of IMK-DCVV2 with PAN and PSN 00; code = CVV algorithm over the PAN, the
+     * time step's digits 4-7 (from the right) in the expiry slot and its last 3 digits in the service-code slot.
+     * {@code step} = seconds since the epoch / step length (300 s by default in card-issuer).
+     */
+    public String dcvv2(SecureDESKey imkDcvv2, String pan, long step) throws SMException {
+        String panpsn = (pan + "00");
+        panpsn = panpsn.substring(panpsn.length() - 16);
+        try {
+            Key card = deriveICCMasterKey(decryptFromLMK(imkDcvv2), ISOUtil.hex2byte(panpsn));
+            return calculateCVD(pan, card, String.format("%04d", step / 1000 % 10000), String.format("%03d", step % 1000));
+        } catch (Exception e) {
+            throw e instanceof SMException s ? s : new SMException(e);
+        }
+    }
+
+    /** Accepts the code for the current step and the {@code window} steps before it (clock skew, typing time). */
+    public boolean verifyDcvv2(SecureDESKey imkDcvv2, String pan, long step, int window, String code) throws SMException {
+        for (int i = 0; i <= window; i++) if (dcvv2(imkDcvv2, pan, step - i).equals(code)) return true;
+        return false;
+    }
 }
