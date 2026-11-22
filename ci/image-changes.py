@@ -29,6 +29,7 @@ GROUPS = [
     ("notary", "notary", r"^(services/notary/|deploy/images/notary/)"),
     ("fraud", "fraud-scorer", r"^(services/fraud-scorer/|ml/fraud/|deploy/images/fraud-scorer/)"),
     ("hsm", "hsm", r"^(services/hsm/|deploy/images/hsm/)"),
+    ("cardissuer", "card-issuer", r"^(services/card-issuer/|deploy/images/card-issuer/)"),
     ("scheme", "scheme-sim", r"^(services/scheme-sim/|vendor/moov-iso8583/|deploy/images/scheme-sim/)"),
     ("fineract", "fineract", r"^(vendor/fineract/|deploy/images/fineract/)"),
     ("hyperswitch", "hyperswitch", r"^(vendor/hyperswitch/|deploy/images/hyperswitch/)"),

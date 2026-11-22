@@ -28,6 +28,7 @@ spec:
             - { name: FINERACT_DB_PASSWORD, valueFrom: { secretKeyRef: { name: fineract-db, key: password, optional: true } } }
             - { name: HYPERSWITCH_DB_PASSWORD, valueFrom: { secretKeyRef: { name: hyperswitch-db, key: password, optional: true } } }
             - { name: TAZAMA_DB_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password, optional: true } } }
+            - { name: CARD_ISSUER_DB_PASSWORD, valueFrom: { secretKeyRef: { name: card-issuer-db, key: password, optional: true } } }
             - { name: APICURIO_DB_PASSWORD, valueFrom: { secretKeyRef: { name: apicurio-db, key: password } } }
           ports: [{ containerPort: 5432 }]
           volumeMounts:
@@ -46,6 +47,7 @@ spec:
             - { name: init, mountPath: /docker-entrypoint-initdb.d/90-fineract.sh, subPath: 90-fineract.sh }
             - { name: init, mountPath: /docker-entrypoint-initdb.d/95-hyperswitch.sh, subPath: 95-hyperswitch.sh }
             - { name: init, mountPath: /docker-entrypoint-initdb.d/96-tazama.sh, subPath: 96-tazama.sh }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d/97-card-issuer.sh, subPath: 97-card-issuer.sh }
             - { name: init, mountPath: /docker-entrypoint-initdb.d/80-apicurio.sh, subPath: 80-apicurio.sh }
           resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
           readinessProbe: { exec: { command: [pg_isready, -U, difme] }, periodSeconds: 5 }
@@ -158,6 +160,15 @@ data:
     CREATE DATABASE tazama_raw_history OWNER tazama;
     CREATE DATABASE tazama_evaluation OWNER tazama;
     CREATE DATABASE tazama_enrichment OWNER tazama;
+    SQL
+  # Card issuer (ADR-024): cards (PAN only sealed by the card vault) and authorisations.
+  97-card-issuer.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    [ -n "${CARD_ISSUER_DB_PASSWORD:-}" ] || { echo "no card-issuer-db secret: skipping"; exit 0; }
+    psql -v ON_ERROR_STOP=1 -v pw="$CARD_ISSUER_DB_PASSWORD" --username "$POSTGRES_USER" --dbname postgres <<'SQL'
+    CREATE ROLE card_issuer LOGIN PASSWORD :'pw';
+    CREATE DATABASE card_issuer OWNER card_issuer;
     SQL
   # Apicurio Registry storage, moved off YugabyteDB (duplicate version rows under load).
   80-apicurio.sh: |

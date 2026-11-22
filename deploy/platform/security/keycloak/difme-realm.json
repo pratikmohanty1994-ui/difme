@@ -152,6 +152,38 @@
       ]
     },
     {
+      "clientId": "card-issuer",
+      "name": "card-issuer",
+      "description": "DIFME card issuer: calls Fineract (savings holds/withdrawals, credit-line disbursements) as Fineract user card-issuer",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${CARD_ISSUER_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "900"
+      },
+      "protocolMappers": [
+        {
+          "name": "fineract_user",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "fineract_user",
+            "claim.value": "card-issuer",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "fineract-admin",
       "name": "fineract-admin",
       "description": "Fineract bootstrap job only: acts as Fineract's admin user (mifos) to create the service users",

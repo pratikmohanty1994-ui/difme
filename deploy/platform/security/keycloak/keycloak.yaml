@@ -30,6 +30,7 @@ spec:
             - { name: PH_EE_AMS_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: ph-ee-ams } } }
             - { name: DIFME_EXCHANGE_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: difme-exchange } } }
             - { name: FINERACT_ADMIN_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: fineract-admin } } }
+            - { name: CARD_ISSUER_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: card-issuer } } }
             - { name: JAVA_OPTS_KC_HEAP, value: "-Xms128m -Xmx512m" }
             # Identity provider for back-office logins, not a hot path: Tier 2 low-footprint JVM flags.
             - { name: JAVA_OPTS_APPEND, value: "-XX:+UseSerialGC -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=64m -Xss256k" }

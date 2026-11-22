@@ -139,5 +139,8 @@ spec:
                 READ_INTERTRANSFER CREATE_INTERTRANSFER PREPARE_INTERTRANSFER RELEASE_INTERTRANSFER \
                 READ_SAVINGSACCOUNT READ_CLIENT READ_LOAN REPAYMENT_LOAN)
               user ph-ee-ams "$hub"
+              issuer=$(role "Card issuer" "DIFME card issuer (card-issuer): debit holds and withdrawals, credit-line disbursements" \
+                READ_SAVINGSACCOUNT HOLDAMOUNT_SAVINGSACCOUNT RELEASEAMOUNT_SAVINGSACCOUNT WITHDRAWAL_SAVINGSACCOUNT READ_LOAN DISBURSE_LOAN READ_CLIENT)
+              user card-issuer "$issuer"
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }

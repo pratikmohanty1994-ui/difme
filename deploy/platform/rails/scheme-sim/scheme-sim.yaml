@@ -22,6 +22,7 @@ spec:
           command: [/usr/local/bin/scheme-sim]
           env:
             - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }   # CAVV and TAVV checks (ADR-026/027)
+            - { name: ISSUER_URL, value: "http://card-issuer.rails.svc:8080" }   # issuer host for card-issuer's cards (ADR-024)
             # Bank X (BIN 437551, the FR-01 offer BIN) cards for buying partners, plus another issuer.
             - name: SEED_CARDS
               value: >-

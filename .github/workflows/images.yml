@@ -35,6 +35,7 @@ jobs:
       fraud: ${{ steps.d.outputs.fraud }}
       scheme: ${{ steps.d.outputs.scheme }}
       hsm: ${{ steps.d.outputs.hsm }}
+      cardissuer: ${{ steps.d.outputs.cardissuer }}
       fineract: ${{ steps.d.outputs.fineract }}
       hyperswitch: ${{ steps.d.outputs.hyperswitch }}
       debezium: ${{ steps.d.outputs.debezium }}
@@ -256,6 +257,14 @@ jobs:
           -e HSM_DEV_KEYS='cvk=CVK:0123456789ABCDEFFEDCBA9876543210' "$IMAGE:scan"
         for i in $(seq 30); do curl -fs localhost:18700/healthz >/dev/null && break; sleep 1; done
         curl -fsS -X POST -d '{"pan":"4375510000000001","expiry":"3012","cvv2":"523"}' localhost:18700/v1/cvv2/verify | grep -q '"valid":"true"' || { docker logs hsm; exit 1; }
+
+  card-issuer:
+    needs: changes
+    if: needs.changes.outputs.cardissuer == 'true'
+    uses: ./.github/workflows/_image.yml
+    with:
+      name: difme-card-issuer
+      dockerfile: deploy/images/card-issuer/Dockerfile
 
   fineract:
     needs: changes

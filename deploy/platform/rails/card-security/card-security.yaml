@@ -29,7 +29,7 @@ spec:
             - { name: HSM_TEE_SVN, value: "1" }          # emulated TEE: the measurement registered in Trustee (dev)
             - { name: HSM_TMPFS, value: /run/hsm }
             - { name: HSM_BOOTSTRAP_OPENBAO, value: "http://openbao.security.svc:8200" }
-            - { name: HSM_BOOTSTRAP_KEYS, value: "cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA" }
+            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA" }
             - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+DisableAttachMechanism -XX:-CreateCoredumpOnCrash" }
           ports: [{ name: http, containerPort: 8700 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8700 }, periodSeconds: 10 }
@@ -74,7 +74,7 @@ spec:
           command: [/usr/local/bin/acs]
           env:
             - { name: ACS_ADDR, value: ":8090" }
-            - { name: ACS_CMS_URL, value: "http://scheme-sim.rails.svc:8080" }
+            - { name: ACS_CMS_URL, value: "http://card-issuer.rails.svc:8080" }
             - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }
             - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
             - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
@@ -99,4 +99,56 @@ spec:
   selector: { matchLabels: { app: hsm } }
   action: ALLOW
   rules:
-    - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs", "difme.local/ns/rails/sa/scheme-sim"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs", "difme.local/ns/rails/sa/scheme-sim", "difme.local/ns/rails/sa/card-issuer"] } }]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: card-issuer }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: card-issuer, labels: { app: card-issuer } }
+spec:
+  replicas: 1                       # one decision at a time per card (open-to-buy); scale-out needs a per-card lock in Postgres
+  selector: { matchLabels: { app: card-issuer } }
+  template:
+    metadata: { labels: { app: card-issuer, difme/team: rails, business.metric: card-issuer } }
+    spec:
+      serviceAccountName: card-issuer
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: card-issuer
+          image: ghcr.io/pratikmohanty1994-ui/difme-card-issuer:0.1.0
+          env:
+            - { name: ADDR, value: ":8080" }
+            - { name: BIN, value: "437551" }
+            - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }
+            - { name: FINERACT_URL, value: "http://fineract.rails.svc:8080/fineract-provider" }
+            - { name: FINERACT_TOKEN_URL, value: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token" }
+            - { name: FINERACT_CLIENT_ID, valueFrom: { secretKeyRef: { name: card-issuer-oauth, key: client-id } } }
+            - { name: FINERACT_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: card-issuer-oauth, key: client-secret } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: card-issuer-db, key: password } } }
+            - { name: DATABASE_URL, value: "postgres://card_issuer:$(DB_PASSWORD)@postgres-docdb.database-tier.svc:5432/card_issuer" }
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 10 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 96Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: card-issuer }
+spec:
+  selector: { app: card-issuer }
+  ports: [{ name: http, port: 8080 }]
+---
+# Card operations: the switch (authorisations), the ACS (card lookups) and DIFME's own services in core-platform.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: card-issuer-callers }
+spec:
+  selector: { matchLabels: { app: card-issuer } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/scheme-sim", "difme.local/ns/rails/sa/acs"] } }]
+    - from: [{ source: { namespaces: ["core-platform"] } }]
