@@ -406,8 +406,10 @@ Not used: `sebastianrm/cards-service` has no licence (all rights reserved), so i
   outstanding − open holds; the gate's part 2 passes: re-spend to exactly the limit, over-limit refused, cleared to 0),
   loans carry no `maxOutstandingLoanBalance`, and the approved principal is a large lifetime ceiling renewed by
   card-issuer. Fineract also caps tranches per loan (`maxTrancheCount`), so card-issuer books clearings to Fineract as
-  one disbursement per day (or per statement cycle), not per purchase. Interest, delinquency bucket and chargeback
-  are still to be run through the same script.
+  one disbursement per day (or per statement cycle), not per purchase. **Gate complete (2026-11-22, night):** part 3
+  of the same script passes too: interest charged (24% a year), an unpaid instalment classified in delinquency bucket
+  D1 (1–30 days), and a chargeback of a repayment putting the amount back on the line. card-issuer
+  (`services/card-issuer`) implements the credit card on this basis (`ci/card-issuer-live.sh`).
 - **LOS on the existing process stack (ADR-008):** Form.io application forms; Fluxnova BPMN for KYC → appraisal →
   approval → disbursement; DMN for credit-decision rules; Tazama (ADR-023) for fraud screening; Fineract holds the
   application, approval and disbursement records. Frappe Lending is the checklist for steps and Indian regulatory
