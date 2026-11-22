@@ -89,6 +89,8 @@ public final class SecurityModule {
         VISA_10(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.VSDC, org.jpos.security.ARPCMethod.METHOD_1, false, org.jpos.security.SKDMethod.VSDC),
         // Visa CVN 18: EMV common session key from the ATC, ISO 9797 method 2 padding, ARPC method 2 (CSU)
         VISA_18(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_2, true, org.jpos.security.SKDMethod.VSDC),
+        // Visa CVN 22: master key option B, common session keys for AC and secure messaging, method 2 padding, ARPC method 2
+        VISA_22(org.jpos.security.MKDMethod.OPTION_B, org.jpos.security.SKDMethod.EMV_CSKD, org.jpos.security.ARPCMethod.METHOD_2, true, org.jpos.security.SKDMethod.EMV_CSKD),
         // Mastercard M/Chip CVN 16: session key from ATC and unpredictable number, method 2 padding, ARPC method 1
         MASTERCARD_16(org.jpos.security.MKDMethod.OPTION_A, org.jpos.security.SKDMethod.MCHIP, org.jpos.security.ARPCMethod.METHOD_1, true, org.jpos.security.SKDMethod.MCHIP);
         final org.jpos.security.MKDMethod mkd;
@@ -154,6 +156,22 @@ public final class SecurityModule {
         return org.jpos.iso.ISOUtil.hexString(sm.translatePIN(in, ksn, bdk, zpk, SMAdapter.FORMAT01, true).getPINBlock());
     }
 
+    // ---- AES (DIFME extensions: TR-31 version D key blocks under the module's KBPK) --------------------------------
+
+    public String generateAesKey(String usage, int bytes) throws SMException { return ext().generateAesKey(usage, bytes); }
+
+    public String aesKeyFromComponents(String usage, String... clearHex) throws SMException { return ext().aesKeyFromComponents(usage, clearHex); }
+
+    public String translateIso4ToZpk(byte[] iso4, String pan, String aesPinKey, SecureDESKey zpk) throws SMException {
+        return org.jpos.iso.ISOUtil.hexString(ext().translateIso4ToZpk(iso4, pan, aesPinKey, zpk).getPINBlock());
+    }
+
+    public byte[] translateZpkToIso4(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, String aesPinKey) throws SMException {
+        return ext().translateZpkToIso4(pinUnderZpk, pan, zpk, aesPinKey);
+    }
+
+    public byte[] aesCmac(String macKey, byte[] data) throws SMException { return ext().aesCmac(macKey, data); }
+
     /** Visa dCVV (contactless MSD): CVV over PAN, expiry, service code and ATC with the card's derived key. */
     public boolean verifyDcvv(SecureDESKey imkDcvv, String pan, String dcvv, String expiryYymm, String serviceCode, byte[] atc) throws SMException {
         return sm.verifydCVV(pan, imkDcvv, dcvv, expiryYymm, serviceCode, atc, org.jpos.security.MKDMethod.OPTION_A);
@@ -167,8 +185,16 @@ public final class SecurityModule {
         try {
             DifmeSecurityModule m = new DifmeSecurityModule();
             m.setConfiguration(new SimpleConfiguration(p));
+            // AES key block protection key next to the LMK (same release path); generated with a rebuilt LMK
+            Path aes = Path.of(lmk + ".aes");
+            if (rebuild) {
+                byte[] k = new byte[32];
+                new java.security.SecureRandom().nextBytes(k);
+                java.nio.file.Files.writeString(aes, java.util.HexFormat.of().formatHex(k));
+            }
+            if (java.nio.file.Files.exists(aes)) m.setKbpk(java.util.HexFormat.of().parseHex(java.nio.file.Files.readString(aes).trim()));
             return new SecurityModule(m);
-        } catch (org.jpos.core.ConfigurationException e) {
+        } catch (org.jpos.core.ConfigurationException | java.io.IOException e) {
             throw new SMException(e);
         }
     }

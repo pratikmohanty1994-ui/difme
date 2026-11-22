@@ -132,5 +132,16 @@ class PinAndChipTest {
         assertEquals("594DAD4E767AAE68", ISOUtil.hexString(out.getValue1()));
     }
 
+    @Test
+    void visaCvn22MatchesPyemv() throws Exception {
+        SecureDESKey smi = hsm.keyFromComponents(SMAdapter.TYPE_MK_SMI, KEY);
+        byte[] arqc = ISOUtil.hex2byte("729036126D3F8532");
+        // pyemv VisaCVN22: ARQC 729036126D3F8532, ARPC (CSU 00000000) 83EA9433, script MAC (841E000004) B59095156E296B96
+        assertArrayEquals(ISOUtil.hex2byte("83EA9433"), hsm.verifyArqcGenerateArpc(SecurityModule.Cvn.VISA_22, imk, PAN, "00", arqc, ATC, UPN,
+                ISOUtil.hex2byte(TXN + "1F42010103A00000"), ISOUtil.hex2byte("00000000")));
+        assertArrayEquals(ISOUtil.hex2byte("B59095156E296B96"), hsm.scriptMac(SecurityModule.Cvn.VISA_22, smi, PAN, "00", ATC, arqc,
+                ISOUtil.hex2byte("841E000004")));
+    }
+
     static final String REF_DUKPT_UNDER_ZPK = "EE8E9B1F429DEA0F";
 }
