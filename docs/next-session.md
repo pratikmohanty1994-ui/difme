@@ -51,8 +51,21 @@ core, streaming, security, **rails converged**; **fraud failed**:
   events + logs of every failing pod (`failing-pods.txt` in the artifact) to confirm. Fix options: map the service
   account's username claim to Fineract's seed user, or seed that user in Fineract's DB.
 
+## 3b. Crypto modules built this session (services/hsm, 31 tests, every value cross-checked)
+| Area | Done (reference) | Still open |
+|---|---|---|
+| Keys | ceremony from components, generate, KCV, export/import under ZMK (psec KCV); TR-31 version D wrap/unwrap (psec interop, key-length masking); AES KBPK next to the LMK | TR-31 version B (TDES); key store by label (keys under LMK in OpenBao) so the HTTP service holds more than the CVK; LMK rotation test |
+| CNP | CVV2, CVV, Visa CAVV (Visa vector, psec); **DIFME dCVV2** profile with time window (psec/pyemv); CAVV layout + ATN replay (ACS) | Mastercard AAV/SPA2, Amex AEVV; TAVV replacing scheme-sim's HMAC token cryptogram; attempts CAVV |
+| PIN | Visa PVV generate/verify, **IBM 3624 offset** (ext), ZPK→ZPK translation (psec); **DUKPT TDES** (X9.24-1 vector); **ISO 9564 format 4** AES PIN blocks ↔ format 0 (psec) | AES DUKPT (X9.24-3; needs published vectors); PIN generation/weak-PIN list; app PIN reveal |
+| Chip | ARQC verify + ARPC: Visa CVN 10, 18, **22**, Mastercard CVN 16 (pyemv); dCVV MSD (independent Python); CVC3 (pyemv) | Mastercard CVN 17/20/21, Interac; AES chip cryptograms (no open reference found); TC/AAC at clearing (same function); offline data authentication |
+| Scripts | script MAC Visa CVN 10/18/22 (pyemv); **offline PIN change** script, PIN + MAC byte-exact (pyemv) | Mastercard script formats; confidentiality-only commands |
+| Messages | ISO 9797-1 alg 3 retail MAC (psec); AES-CMAC (NIST SP 800-38B vectors) | MAC verify endpoints; P2PE data encryption |
+| Perso | — | issuer/ICC RSA keys and certificates (EMV Book 2), perso file |
+| Service | HTTP: CAVV, CVV2 | endpoints for PIN/ARQC/dCVV2/scripts, mTLS, image, manifests; callers (card-issuer, scheme-sim) |
+Correction to the plan: pyemv's Visa CVN 22 is TDES (option B, common session keys), not AES.
+
 ## 4. Owner's latest asks, still open
-1. **"Finish all crypto modules"**: build every row of `card-cryptography-plan.md` in `services/hsm` (keys/TR-31,
+1. **"Finish all crypto modules"** (progress in §3b): build every remaining row of `card-cryptography-plan.md` in `services/hsm` (keys/TR-31,
    CNP incl. dCVV2/AAV/TAVV, PIN incl. ISO-4/AES DUKPT/IBM 3624, chip ARQC/ARPC incl. AES CVN 22, dCVV/CVC3, issuer
    scripts, personalisation RSA, MACs/terminals), each cross-checked with psec/pyemv/published vectors, then wire the
    callers (card-issuer, scheme-sim TSP) and delete the stopgaps.
