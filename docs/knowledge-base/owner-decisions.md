@@ -47,6 +47,7 @@ Newest first within each section. When the owner answers a question, move it fro
 | 2026-11-20 | — reputation cold start, V_ref | Partners without history rank at the fixed prior 80; self-reported scores are ignored (gameable). V_ref stays ₹50,000. Applied in exchange-svc. |
 | 2026-11-20 | — money letters | v4.1 as implemented: A charged at the merchant, B = A + Y + F paid by the buyer; the PRD is the one to correct. |
 | 2026-11-20 | Payment routing: saga vs DIRECT | Keep saga (Temporal). |
+| 2026-11-22 | Authorisation switch: jPOS? | Keep the moov-io/iso8583 scheme simulator for now; migrate to jPOS (AGPL-3.0, OSI) later. jCard is not an option: it is source-available from Transactility, not open source (ADR-001). |
 | 2026-11-22 | Fraud scoring and FRM | Use Tazama (tazama-lf), vendored into the repo, with DIFME's stack in place of its redundant components (NATS → Kafka, own Postgres/Valkey/Keycloak → shared ones, Elastic APM/ELK → OpenTelemetry/Alloy/Loki). ADR-023. |
 | 2026-11-20 | Canary SLO thresholds | "Best possible value achievable": p99 ≤ 400 ms (measured worst p99 346 ms under the 200 req/s baseline, ~15 % headroom); success rate stays ≥ 99.5 %. Tighten as the payment path speeds up. |
 | 2026-11-20 | Argo CD → Flux? | Keep Argo CD. |
