@@ -16,6 +16,8 @@ configMapGenerator:
     envs: [env/rule-902.env]
   - name: tazama-rule-d01
     envs: [env/rule-d01.env]
+  - name: tazama-rule-d02
+    envs: [env/rule-d02.env]
   - name: tazama-tms-service
     envs: [env/tms-service.env]
   - name: tazama-typology-processor

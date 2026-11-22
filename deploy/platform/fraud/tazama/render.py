@@ -11,6 +11,7 @@ SERVICES = [  # deployment name, image, env file, HTTP port (None: no HTTP), mem
     ("rule-901", "rule-901", "rule-901", None, "256Mi"),
     ("rule-902", "rule-902", "rule-902", None, "256Mi"),
     ("rule-d01", "rule-d01", "rule-d01", None, "256Mi"),  # DIFME: ONNX fraud model (services/fraud-rules/rule-d01)
+    ("rule-d02", "rule-d02", "rule-d02", None, "256Mi"),  # DIFME: amount anomaly, PDF §7.4 L1 (services/fraud-rules/rule-d02)
     ("typology-processor", "typology-processor", "typology-processor", None, "256Mi"),
     ("event-adjudicator", "event-adjudicator", "event-adjudicator", None, "256Mi"),
     ("admin-service", "admin-service", "admin-service", 3100, "320Mi"),  # evaluation reports for the payment hub

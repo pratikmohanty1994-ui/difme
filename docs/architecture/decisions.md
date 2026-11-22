@@ -485,3 +485,10 @@ OpenBao and an HMAC token cryptogram become the standard algorithms in the secur
   suspend/resume/delete and card replacement. Admin API: `POST /v1/tokens`, `POST /v1/tokens/{t}/cryptogram`,
   `PUT /v1/tokens/{t}/status`. Tests: approve-and-hold, every decline, lifecycle (race detector). Remaining for ADR-024:
   Hyperswitch's network-tokenization contract (JWE) in front of this API, the card vault, the card-issuer service.
+- **2026-11-22, §7.4 business rules on Tazama:** L1 "amount z-score > 3" is rule **D02**
+  (`services/fraud-rules/rule-d02`, 9 tests): z-score x100 of this amount against the debtor's earlier pacs.008 in
+  Tazama's event history (90 days, ≥ 5 payments; otherwise `.x01`, no weight), banded at 2 and 3 standard deviations,
+  added to the fraud-model typology (.02 → 100, .03 → 200). L1 velocity = public rule 901; new device, geo jump and
+  weak edge attestation are not in ISO 20022 payment messages and reach Tazama through the ONNX model (rule D01).
+  Not yet re-run end to end (`ci/tazama-e2e.sh` now includes D02; a first-time debtor gives `.x01`, so its expected
+  scores are unchanged).

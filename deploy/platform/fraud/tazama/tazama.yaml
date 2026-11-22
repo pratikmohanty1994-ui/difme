@@ -149,6 +149,29 @@ spec:
 ---
 apiVersion: apps/v1
 kind: Deployment
+metadata: { name: tazama-rule-d02, labels: { app: tazama-rule-d02 } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-rule-d02 } }
+  template:
+    metadata: { labels: { app: tazama-rule-d02, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: rule-d02
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-d02:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-rule-d02 } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-rule-d02 }
+            - { name: RAW_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: EVENT_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
 metadata: { name: tazama-typology-processor, labels: { app: tazama-typology-processor } }
 spec:
   replicas: 1

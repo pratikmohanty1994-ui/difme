@@ -8,7 +8,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd); cd "$root"
 work=$(mktemp -d); pw=tazama-e2e
-svc=(tms:tms-service event-director:event-director rule-901:rule-901 rule-902:rule-902 rule-d01:rule-d01 typology-processor:typology-processor
+svc=(tms:tms-service event-director:event-director rule-901:rule-901 rule-902:rule-902 rule-d01:rule-d01 rule-d02:rule-d02 typology-processor:typology-processor
      event-adjudicator:event-adjudicator admin-service:admin-service)
 names=("${svc[@]%%:*}")  # entries are image:envfile; containers are named after the image
 cleanup() { docker rm -f tz-e2e-pg tz-e2e-valkey tz-e2e-kafka tz-e2e-scorer "${names[@]/#/tz-e2e-}" >/dev/null 2>&1 || true; }

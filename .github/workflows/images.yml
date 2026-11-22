@@ -157,6 +157,7 @@ jobs:
           - { image: rule-901,           service: rule-executer, rule: rule-901 }
           - { image: rule-902,           service: rule-executer, rule: rule-902 }
           - { image: rule-d01,           service: rule-executer, rule: rule-d01 }   # DIFME: ONNX fraud model
+          - { image: rule-d02,           service: rule-executer, rule: rule-d02 }   # DIFME: amount anomaly (§7.4)
     uses: ./.github/workflows/_image.yml
     with:
       name: difme-tazama-${{ matrix.image }}
