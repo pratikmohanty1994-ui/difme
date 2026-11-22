@@ -1,11 +1,12 @@
 // Command card-issuer runs DIFME's card issuer (ADR-024/025).
 //
-//	ADDR (":8080"), BIN ("437551"), HSM_URL, FINERACT_URL (…/fineract-provider), FINERACT_TENANT ("default"),
+//	DATABASE_URL (Postgres; without it cards live in memory), ADDR (":8080"), BIN ("437551"), HSM_URL, FINERACT_URL (…/fineract-provider), FINERACT_TENANT ("default"),
 //	FINERACT_PAYMENT_TYPE (Fineract payment type id for card withdrawals),
 //	FINERACT_TOKEN_URL + FINERACT_CLIENT_ID + FINERACT_CLIENT_SECRET (Keycloak, cluster) or FINERACT_USER + FINERACT_PASSWORD (local)
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -29,7 +30,20 @@ func main() {
 	if pt, err := strconv.ParseInt(os.Getenv("FINERACT_PAYMENT_TYPE"), 10, 64); err == nil {
 		f.PaymentTypeID = pt
 	}
-	i := issuer.New(env("BIN", "437551"), f, issuer.NewHSMClient(env("HSM_URL", "http://hsm.rails.svc:8700")), issuer.NewMemStore())
+	h := issuer.NewHSMClient(env("HSM_URL", "http://hsm.rails.svc:8700"))
+	var store issuer.Store = issuer.NewMemStore()
+	if dsn := os.Getenv("DATABASE_URL"); dsn != "" { // cluster: shared Postgres, PANs only sealed by the card vault
+		var err error
+		for i := 0; ; i++ {
+			if store, err = issuer.NewPGStore(context.Background(), dsn, h); err == nil {
+				break
+			} else if i == 30 {
+				log.Fatalf("database: %v", err)
+			}
+			time.Sleep(2 * time.Second)
+		}
+	}
+	i := issuer.New(env("BIN", "437551"), f, h, store)
 	addr := env("ADDR", ":8080")
 	log.Printf("card-issuer on %s", addr)
 	log.Fatal((&http.Server{Addr: addr, Handler: issuer.Handler(i), ReadHeaderTimeout: 5 * time.Second}).ListenAndServe())

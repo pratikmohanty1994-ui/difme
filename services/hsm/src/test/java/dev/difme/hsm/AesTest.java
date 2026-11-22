@@ -68,6 +68,18 @@ class AesTest {
     }
 
     @Test
+    void cardVaultEncryption() throws Exception {
+        String k = hsm.generateAesKey("D0", 32);
+        byte[] pan = "4375510000000001".getBytes(), aad = "card-1".getBytes();
+        byte[] ct = hsm.aesGcm(k, true, pan, aad);
+        assertArrayEquals(pan, hsm.aesGcm(k, false, ct, aad));
+        assertThrows(SMException.class, () -> hsm.aesGcm(k, false, ct, "card-2".getBytes()), "other record");
+        ct[20] ^= 1;
+        assertThrows(SMException.class, () -> hsm.aesGcm(k, false, ct, aad), "tampered");
+        assertThrows(SMException.class, () -> hsm.aesGcm(hsm.generateAesKey("M7", 32), true, pan, aad), "MAC key used for data");
+    }
+
+    @Test
     void cmacMatchesNistVectors() throws Exception {
         String k = hsm.aesKeyFromComponents("M7", "2B7E151628AED2A6ABF7158809CF4F3C");
         assertEquals("BB1D6929E95937287FA37D129B756746", H.formatHex(hsm.aesCmac(k, new byte[0])));

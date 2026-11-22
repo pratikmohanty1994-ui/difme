@@ -188,6 +188,10 @@ public final class HsmServer {
                     key(in, "key", "imk-smi", SMAdapter.TYPE_MK_SMI), d(in, "pan"), d(in, "psn"), h(in, "atc"), h(in, "arqc"), h(in, "command"))));
             case "/v1/mac/retail" -> out.put("mac", ISOUtil.hexString(hsm.retailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"))));
             case "/v1/sign/ps256" -> out.put("signature", ISOUtil.hexString(hsm.signPs256(keys.rsa(in.getOrDefault("key", "acs-sign")), h(in, "data"))));
+            case "/v1/data/encrypt" -> out.put("ciphertext", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), true,
+                    h(in, "data"), in.containsKey("aad") ? h(in, "aad") : null)));
+            case "/v1/data/decrypt" -> out.put("data", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), false,
+                    h(in, "ciphertext"), in.containsKey("aad") ? h(in, "aad") : null)));
             case "/v1/hmac" -> out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes(in.getOrDefault("key", "acs-hmac")), h(in, "data"))));
             case "/v1/mac/cmac" -> out.put("mac", ISOUtil.hexString(hsm.aesCmac(keys.aes(in.getOrDefault("aesKey", "aes-mac")), h(in, "data"))));
             default -> { return null; }

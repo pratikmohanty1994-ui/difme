@@ -35,10 +35,11 @@ echo "fineract: client $client savings $sav (INR 1000) credit line loan $loan"
 (cd services/hsm && mvn -q -B -DskipTests package dependency:build-classpath -Dmdep.outputFile="$W/cp" >/dev/null)
 AESPIN=00112233445566778899AABBCCDDEEFF
 HSM_DEV_INSECURE=true HSM_DEV_REBUILD_LMK=true HSM_ADDR=127.0.0.1:18702 \
-  HSM_DEV_KEYS="cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;aes-pin=AES/P0:$AESPIN;acs-hmac=AES/M7;acs-sign=RSA" java -cp "services/hsm/target/classes:$(cat "$W/cp")" dev.difme.hsm.HsmServer >"$W/hsm.log" 2>&1 & pids+=($!)
+  HSM_DEV_KEYS="cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;aes-pin=AES/P0:$AESPIN;acs-hmac=AES/M7;acs-sign=RSA;card-index=AES/M7;card-vault=AES/D0" java -cp "services/hsm/target/classes:$(cat "$W/cp")" dev.difme.hsm.HsmServer >"$W/hsm.log" 2>&1 & pids+=($!)
 (cd services/card-issuer && go build -o "$W/card-issuer" ./cmd/card-issuer)
 (cd services/scheme-sim && go build -o "$W/" ./cmd/scheme-sim ./cmd/iso-adapter ./cmd/acs)
-ADDR=127.0.0.1:18085 HSM_URL=http://127.0.0.1:18702 FINERACT_URL="$F" FINERACT_PAYMENT_TYPE="$pt" FINERACT_USER=mifos FINERACT_PASSWORD=password "$W/card-issuer" >"$W/issuer.log" 2>&1 & pids+=($!)
+PGC=${PG_CONTAINER:-fin-pg}; docker exec "$PGC" psql -qU fineract -c "DROP DATABASE IF EXISTS cards_test" -c "CREATE DATABASE cards_test" fineract_tenants >/dev/null
+DATABASE_URL=postgres://fineract:fin@127.0.0.1:5433/cards_test ADDR=127.0.0.1:18085 HSM_URL=http://127.0.0.1:18702 FINERACT_URL="$F" FINERACT_PAYMENT_TYPE="$pt" FINERACT_USER=mifos FINERACT_PASSWORD=password "$W/card-issuer" >"$W/issuer.log" 2>&1 & pids+=($!)
 for u in 18702 18085; do for i in $(seq 40); do curl -sf "localhost:$u/healthz" >/dev/null && break; sleep 1; done; done
 ci() { curl -s -X "$1" "localhost:18085$2" ${3:+-d "$3"}; }
 j() { python3 -c "import json,sys; print(json.load(sys.stdin).get('$1',''))"; }
@@ -47,6 +48,9 @@ bal() { api GET "savingsaccounts/$sav" | python3 -c "import json,sys; s=json.loa
 deb=$(ci POST /v1/cards "{\"product\":\"DEBIT\",\"account\":$sav,\"holder\":\"partner-1\",\"channels\":[\"sms\",\"app\"]}")
 pan=$(echo "$deb" | j pan); cvv=$(echo "$deb" | j cvv2); cid=$(echo "$deb" | j id); [ ${#pan} = 16 ] || fail "issue debit: $deb"
 echo "debit card ${pan:0:6}******${pan:12} issued (CVV2 from the security module)"
+docker exec "$PGC" psql -qtAU fineract -c "SELECT pan_index, pan_sealed, doc FROM cards" cards_test | grep -q "$pan" && fail "PAN stored in clear"
+[ "$(docker exec "$PGC" psql -qtAU fineract -c "SELECT count(*) FROM cards" cards_test)" = 1 ] || fail "card not in Postgres"
+echo "ok: card in Postgres with the PAN only as HMAC index + AES-GCM ciphertext (card vault keys in the security module)"
 a=$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":60000,\"currency\":\"356\",\"merchant\":\"M1\",\"cvv2\":\"$cvv\"}")
 [ "$(echo "$a" | j responseCode)" = 00 ] || fail "debit auth: $a"; [ "$(bal)" = 400.0 ] || fail "hold not in Fineract: $(bal)"; echo "ok: authorised INR 600 with CVV2, hold in Fineract (available 400)"
 [ "$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":50000,\"cvv2\":\"$cvv\"}" | j responseCode)" = 51 ] || fail "over balance"; echo "ok: INR 500 more declined 51"

@@ -3,6 +3,7 @@ package issuer
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -65,4 +66,23 @@ func (h *HSMClient) PVV(ctx context.Context, pan, block string) (string, error) 
 func (h *HSMClient) VerifyPVV(ctx context.Context, pan, block, pvv string) (bool, error) {
 	v, err := h.call(ctx, "/v1/pin/verify-pvv", map[string]string{"pan": pan, "pinBlock": block, "pvki": h.PVKI, "pvv": pvv}, "valid")
 	return v == "true", err
+}
+
+// Index, Seal and Open make HSMClient the card vault (keys card-index and card-vault in the security module).
+func (h *HSMClient) Index(ctx context.Context, pan string) (string, error) {
+	return h.call(ctx, "/v1/hmac", map[string]string{"key": "card-index", "data": hex.EncodeToString([]byte("pan|" + pan))}, "mac")
+}
+
+func (h *HSMClient) Seal(ctx context.Context, cardID, pan string) (string, error) {
+	return h.call(ctx, "/v1/data/encrypt", map[string]string{"key": "card-vault", "data": hex.EncodeToString([]byte(pan)),
+		"aad": hex.EncodeToString([]byte(cardID))}, "ciphertext")
+}
+
+func (h *HSMClient) Open(ctx context.Context, cardID, sealed string) (string, error) {
+	v, err := h.call(ctx, "/v1/data/decrypt", map[string]string{"key": "card-vault", "ciphertext": sealed, "aad": hex.EncodeToString([]byte(cardID))}, "data")
+	if err != nil {
+		return "", err
+	}
+	b, err := hex.DecodeString(v)
+	return string(b), err
 }

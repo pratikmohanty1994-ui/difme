@@ -175,6 +175,33 @@ public class DifmeSecurityModule extends JCESecurityModule {
         }
     }
 
+    /** AES-256-GCM with a data key block ("D0"): the card vault's PAN encryption. Output: 12-byte IV || ciphertext || tag. */
+    public byte[] aesGcm(String dataKeyBlock, boolean encrypt, byte[] data, byte[] aad) throws SMException {
+        byte[] k = aes(dataKeyBlock, "D0");
+        try {
+            javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            if (encrypt) {
+                byte[] iv = new byte[12];
+                new java.security.SecureRandom().nextBytes(iv);
+                c.init(javax.crypto.Cipher.ENCRYPT_MODE, new javax.crypto.spec.SecretKeySpec(k, "AES"), new javax.crypto.spec.GCMParameterSpec(128, iv));
+                if (aad != null) c.updateAAD(aad);
+                byte[] ct = c.doFinal(data);
+                byte[] out = java.util.Arrays.copyOf(iv, 12 + ct.length);
+                System.arraycopy(ct, 0, out, 12, ct.length);
+                return out;
+            }
+            if (data.length < 28) throw new SMException("ciphertext too short");
+            c.init(javax.crypto.Cipher.DECRYPT_MODE, new javax.crypto.spec.SecretKeySpec(k, "AES"),
+                    new javax.crypto.spec.GCMParameterSpec(128, java.util.Arrays.copyOf(data, 12)));
+            if (aad != null) c.updateAAD(aad);
+            return c.doFinal(data, 12, data.length - 12);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException("data decryption failed");
+        } finally {
+            java.util.Arrays.fill(k, (byte) 0);
+        }
+    }
+
     /** The KBPK in a form for the key release store (bootstrap only, inside the TEE). */
     byte[] kbpkForRelease() throws SMException { return kbpk().clone(); }
 }
