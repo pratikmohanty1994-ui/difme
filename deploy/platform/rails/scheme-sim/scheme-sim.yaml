@@ -21,6 +21,7 @@ spec:
           image: ghcr.io/pratikmohanty1994-ui/difme-scheme-sim:0.1.0
           command: [/usr/local/bin/scheme-sim]
           env:
+            - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }   # CAVV and TAVV checks (ADR-026/027)
             # Bank X (BIN 437551, the FR-01 offer BIN) cards for buying partners, plus another issuer.
             - name: SEED_CARDS
               value: >-

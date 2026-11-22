@@ -1,0 +1,94 @@
+# Card security (ADR-026, ADR-027): the security module (services/hsm, jPOS) and the 3-D Secure ACS
+# (services/scheme-sim cmd/acs). The hsm answers only the ACS and scheme-sim (AuthorizationPolicy); it returns no keys.
+# Keys: in dev a key ceremony at start-up from the card-security-dev secret (test keys, dev-secrets.sh). In production
+# HSM_LMK/HSM_KEYS come from the attested key release (Trustee + OpenBao, ADR-026) into memory-backed /run/hsm, and
+# HSM_DEV_* are absent.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: hsm }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: hsm, labels: { app: hsm } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: hsm } }
+  template:
+    metadata: { labels: { app: hsm, difme/team: rails, business.metric: security-module } }
+    spec:
+      serviceAccountName: hsm
+      securityContext: { runAsNonRoot: true, runAsUser: 185, runAsGroup: 185, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: hsm
+          image: ghcr.io/pratikmohanty1994-ui/difme-hsm:0.1.0
+          env:
+            - { name: HSM_DEV_REBUILD_LMK, value: "true" }
+            - { name: HSM_LMK, value: /run/hsm/lmk }
+            - { name: HSM_DEV_KEYS, valueFrom: { secretKeyRef: { name: card-security-dev, key: hsm-dev-keys } } }
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC" }
+          ports: [{ name: http, containerPort: 8700 }]
+          readinessProbe: { httpGet: { path: /healthz, port: 8700 }, periodSeconds: 10 }
+          volumeMounts: [{ name: run, mountPath: /run/hsm }, { name: tmp, mountPath: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 128Mi }, limits: { memory: 256Mi } }
+      volumes:
+        - { name: run, emptyDir: { medium: Memory, sizeLimit: 1Mi } }   # LMK never on disk
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: hsm }
+spec:
+  selector: { app: hsm }
+  ports: [{ name: http, port: 8700 }]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: acs }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: acs, labels: { app: acs } }
+spec:
+  replicas: 1                       # pending challenges live in this process (durable store: ADR-027 open item)
+  selector: { matchLabels: { app: acs } }
+  template:
+    metadata: { labels: { app: acs, difme/team: rails, business.metric: acs-3ds } }
+    spec:
+      serviceAccountName: acs
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: acs
+          image: ghcr.io/pratikmohanty1994-ui/difme-scheme-sim:0.1.0
+          command: [/usr/local/bin/acs]
+          env:
+            - { name: ACS_ADDR, value: ":8090" }
+            - { name: ACS_CMS_URL, value: "http://scheme-sim.rails.svc:8080" }
+            - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }
+            - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
+            - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
+            - { name: ACS_CHALLENGE_URL, value: "https://acs.difme.local/3ds/challenge" }
+            - { name: ACS_PAYER_KEY, valueFrom: { secretKeyRef: { name: card-security-dev, key: acs-payer-key } } }
+          ports: [{ name: http, containerPort: 8090 }]
+          readinessProbe: { httpGet: { path: /healthz, port: 8090 }, periodSeconds: 10 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: acs }
+spec:
+  selector: { app: acs }
+  ports: [{ name: http, port: 8090 }]
+---
+# Only the ACS and the authorisation switch may call the security module (ztunnel enforces the mesh identity; probes are plain kubelet).
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: hsm-callers }
+spec:
+  selector: { matchLabels: { app: hsm } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs", "difme.local/ns/rails/sa/scheme-sim"] } }]
