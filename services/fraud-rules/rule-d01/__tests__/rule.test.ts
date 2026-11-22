@@ -13,7 +13,8 @@ const ruleConfig = {
   tenantId: 'DEFAULT',
   desc: 'ONNX fraud model',
   config: {
-    parameters: { timeoutMs: 200 },
+    // Generous: image builds run these tests under arm64 emulation, where a first call took ~300 ms (2026-11-22).
+    parameters: { timeoutMs: 2000 },
     exitConditions: [{ subRuleRef: '.x00', reason: 'Incoming transaction is unsuccessful' }],
     bands: [
       { subRuleRef: '.01', upperLimit: 150, reason: 'Model: low fraud probability' },
@@ -70,7 +71,9 @@ const scored = (probability: number) => () => ({
   body: { probability, riskScore: Math.round((1 - probability) * 1000), decision: 'X', model: 'fraud-gbt-0.1.0', missing: ['device_*'] },
 });
 
-const run = async (req = request()) => handleTransaction(req, determineOutcome, result(), logger as never, ruleConfig);
+const run = async (req = request(), cfg: RuleConfig = ruleConfig) => handleTransaction(req, determineOutcome, result(), logger as never, cfg);
+const withTimeout = (timeoutMs: number): RuleConfig =>
+  ({ ...ruleConfig, config: { ...ruleConfig.config, parameters: { timeoutMs } } }) as unknown as RuleConfig;
 
 test.each([
   [0.05, '.01'],
@@ -100,12 +103,12 @@ test('an unsuccessful payment exits with .x00 and never calls the scorer', async
 });
 
 test('a slow scorer gives .err (no weight), not a hang', async () => {
-  reply = () => ({ ...scored(0.9)(), delayMs: 1000 });
+  reply = () => ({ ...scored(0.9)(), delayMs: 3000 });
   const t0 = Date.now();
-  const r = await run();
+  const r = await run(request(), withTimeout(200));
   expect(r.subRuleRef).toBe('.err');
   expect(r.reason).toMatch(/unavailable/);
-  expect(Date.now() - t0).toBeLessThan(900);
+  expect(Date.now() - t0).toBeLessThan(2500);
 });
 
 test('a scorer error status gives .err', async () => {
