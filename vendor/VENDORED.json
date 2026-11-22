@@ -78,5 +78,113 @@
     "upstream": "https://github.com/interledger/java-ilp-core",
     "tag": "(no release tag; pinned by commit)",
     "commit": "de476cd39c2fe6073e5eca2f504ec64ce56b41ee"
+  },
+  "tazama-frms-coe-lib": {
+    "upstream": "https://github.com/tazama-lf/frms-coe-lib",
+    "tag": "v4.0.1",
+    "commit": "902401696ab8a9ae8130d1212307773a8ca56148",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-frms-coe-startup-lib": {
+    "upstream": "https://github.com/tazama-lf/frms-coe-startup-lib",
+    "tag": "v4.0.1",
+    "commit": "45bbff8ea7c6aca02cd7a9cf2e369abfe3b8ea62",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-tms-service": {
+    "upstream": "https://github.com/tazama-lf/tms-service",
+    "tag": "v4.0.0",
+    "commit": "c668e36b4373a728916762f6fddce10e7343bc39",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-event-director": {
+    "upstream": "https://github.com/tazama-lf/event-director",
+    "tag": "v4.0.1",
+    "commit": "0a8054800e3fdd35517e9bfae0e2e46eeda9aa84",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-rule-executer": {
+    "upstream": "https://github.com/tazama-lf/rule-executer",
+    "tag": "v4.0.0",
+    "commit": "eb96f3a2bc577343957aa097e5136cbce8ba7a44",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-rule-901": {
+    "upstream": "https://github.com/tazama-lf/rule-901",
+    "tag": "v4.0.0",
+    "commit": "507872514ad40b4ad63c1e9cfc6fe9b84b057e39",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-rule-902": {
+    "upstream": "https://github.com/tazama-lf/rule-902",
+    "tag": "v4.0.0",
+    "commit": "ddab8a7f2365e62a7065788992e3f456b20bd200",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-typology-processor": {
+    "upstream": "https://github.com/tazama-lf/typology-processor",
+    "tag": "v4.0.0",
+    "commit": "d3806e9a1ab9280a5a4bcf7a4effb50ad98ded89",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-event-adjudicator": {
+    "upstream": "https://github.com/tazama-lf/event-adjudicator",
+    "tag": "v4.0.0",
+    "commit": "5e4993b52fd748236e7cd8b20e760572cb0757c5",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-admin-service": {
+    "upstream": "https://github.com/tazama-lf/admin-service",
+    "tag": "v4.0.0",
+    "commit": "2e72f034405fa2a55130f0a1b82d6827cd835538",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-auth-lib": {
+    "upstream": "https://github.com/tazama-lf/auth-lib",
+    "tag": "v4.0.0",
+    "commit": "d998bab9267bb104c47e4d6db7d7f98350817bd4",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
+  },
+  "tazama-auth-lib-provider-keycloak": {
+    "upstream": "https://github.com/tazama-lf/auth-lib-provider-keycloak",
+    "tag": "v4.0.0",
+    "commit": "66c980c3d4ab7e6d5da22cdc6f45ae1e96f0135a",
+    "omitted": [
+      ".husky",
+      ".vscode"
+    ]
   }
 }

@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: Apache-2.0
+
+import type { DatabaseManagerInstance, LoggerService, ManagerConfig } from '@tazama-lf/frms-coe-lib';
+import { isPacs002Transaction, isStructuredTransaction } from '@tazama-lf/frms-coe-lib';
+import type { OutcomeResult, RuleConfig, RuleRequest, RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
+
+export const RULE_ID = '902';
+
+export type RuleExecutorConfig = ManagerConfig &
+  Required<Pick<ManagerConfig, 'rawHistory' | 'eventHistory' | 'configuration' | 'localCacheConfig'>>;
+interface CountRow {
+  length: number;
+}
+export async function handleTransaction(
+  req: RuleRequest,
+  determineOutcome: (value: number, ruleConfig: RuleConfig, ruleResult: RuleResult) => RuleResult,
+  ruleRes: RuleResult,
+  loggerService: LoggerService,
+  ruleConfig: RuleConfig,
+  databaseManager: DatabaseManagerInstance<RuleExecutorConfig>,
+): Promise<RuleResult> {
+  const context = `Rule-${ruleConfig.id} handleTransaction()`;
+
+  if (!isStructuredTransaction(req.transaction)) {
+    loggerService.error('Unsupported transaction type', new Error('Unsupported transaction type'), context);
+    return { ...ruleRes, subRuleRef: '.err', reason: 'Unsupported transaction type' };
+  }
+
+  if (!isPacs002Transaction(req.transaction)) {
+    loggerService.error('Unsupported structured transaction type', new Error('Unsupported structured transaction type'), context);
+    return { ...ruleRes, subRuleRef: '.err', reason: 'Unsupported structured transaction type' };
+  }
+
+  const msgId = req.transaction.FIToFIPmtSts.GrpHdr.MsgId;
+
+  loggerService.trace('Start - handle transaction', context, msgId);
+
+  if (!req.DataCache.dbtrAcctId) throw new Error('Data Cache does not have required dbtrAcctId');
+
+  // Step 1: Early exit conditions
+
+  loggerService.trace('Step 1 - Early exit conditions', context, msgId);
+
+  const UnsuccessfulTransaction = ruleConfig.config.exitConditions!.find((b: OutcomeResult) => b.subRuleRef === '.x00')!;
+
+  if (req.transaction.FIToFIPmtSts.TxInfAndSts.TxSts !== 'ACCC') {
+    return {
+      ...ruleRes,
+      reason: UnsuccessfulTransaction.reason,
+      subRuleRef: UnsuccessfulTransaction.subRuleRef,
+    };
+  }
+
+  // Step 2: Query Setup
+
+  loggerService.trace('Step 2 - Query setup', context, msgId);
+
+  const currentPacs002TimeFrame = req.transaction.FIToFIPmtSts.GrpHdr.CreDtTm;
+  const creditorAccountId = req.DataCache.cdtrAcctId;
+  const maxQueryRange: number = ruleConfig.config.parameters!.maxQueryRange as number;
+  const tenantId = req.transaction.TenantId;
+
+  const values = [creditorAccountId, currentPacs002TimeFrame, maxQueryRange, tenantId];
+
+  const queryString = `SELECT COUNT(*)::int AS length
+FROM transaction tr
+WHERE tr.source = $1
+AND tr."txtp" = 'pacs.002.001.12'
+AND tr."credttm"::timestamptz <= $2::timestamptz
+AND ($2::timestamptz - tr."credttm"::timestamptz) <= $3 * interval '1 millisecond'
+AND tr.tenantId = $4;`;
+
+  // Step 3: Query Execution
+
+  loggerService.trace('Step 3 - Query execution', context, msgId);
+
+  const res = await databaseManager._eventHistory.query<CountRow>(queryString, values);
+
+  const [{ length }] = res.rows;
+
+  // Step 4: Query post-processing
+
+  loggerService.trace('Step 4 - Query post-processing', context, msgId);
+
+  // Return control to the rule-executer for rule result calculation
+
+  loggerService.trace('End - handle transaction', context, msgId);
+
+  return determineOutcome(length, ruleConfig, ruleRes);
+}

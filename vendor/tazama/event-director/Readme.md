@@ -1,0 +1,171 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+# Event Director (ED)
+
+<div align="center">
+<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/tazama-lf/channel-router-setup-processor/node.js.yml">
+</div>
+
+## Overview
+This application fetches an active network map either from cache or from a database, filters it for relevant messages, deduplicates rules, and dispatches them for processing
+
+### Services
+
+- [PostgreSQL](https://www.postgresql.org//): Database Management
+- [NATS](https://nats.io): Message queue
+
+You also need NodeJS to be installed in your system. The current [LTS](https://nodejs.org/en) should be suitable. Please open an issue if the application fails to build on the current LTS version. Unix platforms, you should be able to find `nodejs` in your package manager's repositories.
+
+#### Setting Up
+
+```sh
+git clone https://github.com/tazama-lf/event-director
+cd event-director
+```
+You then need to configure your environment: a [sample](.env.template) configuration file has been provided and you may adapt that to your environment. Copy it to `.env` and modify as needed:
+
+```sh
+cp .env.template .env
+```
+A [registry](https://github.com/tazama-lf/docs/blob/f292c9ddabf52d6fe62addc1c61957419ed4ad05/Technical/processor-startup-config-registry.md) of environment variables is provided to provide more context for what each variable is used for.
+
+##### Additional Variables
+
+| Variable                           | Purpose                         | Example                    |
+|------------------------------------|---------------------------------|----------------------------|
+| `CONFIGURATION_DATABASE`           | PostgreSQL database name        | `configuration`            |
+| `CONFIGURATION_DATABASE_HOST`      | PostgreSQL hostname or endpoint | `localhost`                |
+| `CONFIGURATION_DATABASE_PORT`      | PostgreSQL post used            | `5432`                     |
+| `CONFIGURATION_DATABASE_USER`      | PostgreSQL username             | `root`                     |
+| `CONFIGURATION_DATABASE_PASSWORD`  | PostgreSQL database password    | `password`                 |
+| `CONFIGURATION_DATABASE_CERT_PATH` | PostgreSQL certificate path     | `/path/to/certificate.crt` |
+
+##### Service Channel Variables
+
+| Variable                             | Purpose                                                       | Example                 |
+|--------------------------------------|---------------------------------------------------------------|-------------------------|
+| `SERVICE_CHANNEL_CONSUMER`           | Forward subject subscribed to for service-channel events      | `service-channel`       |
+| `SERVICE_CHANNEL_PRODUCER`           | Reply subject acknowledgements are published to               | `service-channel-ack`   |
+| `SERVICE_CHANNEL_SOURCE_URI_PREFIX`  | Optional prefix for CloudEvents source composition            | `urn:tazama:`           |
+| `SERVICE_CHANNEL_CLASS`              | Required service-channel audience class for this service      | `event-director`        |
+
+#### Build and Start
+
+```sh
+npm i
+npm run build
+npm run start
+```
+
+## Inputs
+
+```js
+const transactionRequest = {
+  metaData: { traceParent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" }, // https://www.w3.org/TR/trace-context/#examples-of-http-traceparent-headers
+  transaction: { TxTp: "pacs.002.001.12", "FIToFIPmtSts": { /* Pacs002 */ } },
+  DataCache: { /* cached data relevant to the transaction */ }
+};
+```
+A Pacs002 message is expected as an input as defined [here](https://github.com/tazama-lf/frms-coe-lib/blob/dev/src/interfaces/Pacs.002.001.12.ts)
+
+## Internal Process Flow
+
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant A as TMS API
+    participant B as NATS<br>(event-director)
+    participant C as EVENT<br>DIRECTOR
+    participant D as NATS<br>(sub-rule-*)
+
+    A->>B: Publish message
+    B->>+C: Read message
+    C->>C: handleTransaction()
+    C->>-D: Publish message/s
+```
+
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    start([Start]) --> postRequest[Accept NATS message from TMS]
+    postRequest --> note1["Data expected: Pacs002 with DataCache"]
+    note1 --> readCache[Read the tenant's network map from the in-process cache]
+    readCache --> note2["Cache key: tenantId:networkMap"]
+    note2 --> checkMemory{Cache entry for the tenant}
+    checkMemory -->|Network map| pruneMap[prune network map]
+    checkMemory -->|No map marker| logResult
+    checkMemory -->|Miss| readDB[Read the tenant's active network map from Database]
+    readDB --> checkDB{Network map is found}
+    checkDB -->|Yes| saveCache[Save the network map to cache]
+    saveCache --> note3["Required Parameter: Cache key, Active Network Map in JSON format, Expiry time based on environment"]
+    note3 --> pruneMap
+    checkDB -->|No| saveMarker[Save a no map marker to cache with the same expiry]
+    saveMarker --> logResult[Log no active network map and the result]
+    logResult --> note4["Results: metaData, networkMap empty, transaction, DataCache"]
+    note4 --> stop1([Stop])
+    pruneMap --> checkRoute{Message for the TxTp is found}
+    checkRoute -->|No| logNoRoute[Log no route in network map and the result]
+    logNoRoute --> note4
+    checkRoute -->|Yes| deduplicate[deduplicate all rules]
+    deduplicate --> ruleLoop{foreach rule in the network sub-map}
+    ruleLoop -->|More rules| sendData[Send Data]
+    sendData --> note5["Data sent: transaction, network sub-map"]
+    sendData --> ruleLoop
+    ruleLoop -->|No more rules| sendResponse[send response back to Data Preparation]
+    sendResponse --> note6["Response includes: Rules sent to, Rules not sent to, Transaction, Network sub-map"]
+    note6 --> stop2([Stop])
+```
+
+### Network map cache
+
+Network maps are cached in process (not in Redis), one entry per tenant under the key `${tenantId}:networkMap`. The tenant comes from the transaction's `TenantId`.
+
+On a cache miss, event-director reads only the transaction tenant's active network map from the database and caches it for `LOCAL_CACHETTL` seconds (`0` means no expiry). A transaction whose `TxTp` has no route in the cached map is served from the cache without another database read.
+
+If the tenant has no active network map, a "no map" marker is cached under the same key with the same expiry, so the next transactions for that tenant don't each read the database. A `network-map.activated` event clears the marker along with any cached map (see [Service-channel receive seam](#service-channel-receive-seam)).
+
+If a `network-map.activated` event for the tenant arrives while a database read is in flight, the transaction is still routed with the map that was read, but the result is not cached. The next transaction reloads the newly active map.
+
+## Outputs
+The output is the input with an added [NetworkMap](https://github.com/tazama-lf/frms-coe-lib/blob/dev/src/interfaces/NetworkMap.ts):
+
+```js
+{
+  metaData: { traceParent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" }, // https://www.w3.org/TR/trace-context/#examples-of-http-traceparent-headers
+  transaction: { TxTp: "pacs.002.001.12", "FIToFIPmtSts": { /* Pacs002 */ } },
+  networkMap: { /* Network Map */ },
+  DataCache: { /* cached data relevant to the transaction */ }
+};
+```
+
+
+## Troubleshooting
+#### npm install
+Ensure generated token has read package rights
+
+#### npm build
+Ensure that you're on the current LTS version of Node.JS
+
+### Runtime issues
+#### Network Map changes are not reflected on the application
+A `network-map.activated` event for the tenant evicts its cached entry, so the next transaction reloads the active map (see [Service-channel receive seam](#service-channel-receive-seam)). For deployments with more than one worker, see [Cache eviction across multiple workers](#cache-eviction-across-multiple-workers).
+
+#### Service-channel receive seam
+At startup, event-director subscribes to the service-channel forward subject and processes each received message through a validate, dispatch, cache-bust pipeline.
+Incoming structured-mode CloudEvent bytes are decoded and the envelope is re-validated; a malformed message is dropped at `warn` without tearing down the subscription.
+The handler dispatches on the CloudEvent `type` verb (currently only `org.tazama.network-map.activated`); an unrecognised type is dropped at `warn`.
+An audience gate then applies: a message acts only when its `audience` is absent, `all`, this service's class (`event-director`), or its own function name, otherwise it is ignored at `debug`.
+For a valid, in-audience `network-map.activated` event, every cached network map entry for the event's `tenantId` is evicted so the next transaction reloads the active map from the database; other tenants' cache entries are untouched, and re-delivery is a safe idempotent no-op.
+After the matched handler runs, exactly one acknowledgement is published on the reply subject (`SERVICE_CHANNEL_PRODUCER`, default `service-channel-ack`): a CloudEvent reusing the trigger's `type` verb, with `source` composed as `${SERVICE_CHANNEL_SOURCE_URI_PREFIX}${FUNCTION_NAME}`, a fresh `id`, and `data` carrying the triggering event's `id` as `correlationId`, an `outcome` of `success` or `error`, and (on failure) the error message.
+The handler returning normally yields an `outcome: success` ack and a throw yields an `outcome: error` ack, so each handled message produces exactly one ack publish attempt; a failed publish is logged and never tears down the subscription.
+
+## Notes
+
+### Cache eviction across multiple workers
+
+Each event-director worker keeps its own in-process network map cache. A `network-map.activated` event is intended to evict the tenant's entry in every worker, but delivery to every worker cannot be guaranteed: the service reports success when the first worker acknowledges, and there is no mechanism to enumerate the workers and confirm each one evicted. A worker the event did not reach keeps serving its cached entry (map or "no map" marker) until that entry expires after `LOCAL_CACHETTL` seconds, then reloads the active map from the database.
+
+With `LOCAL_CACHETTL=0` cached entries never expire, so nothing corrects a missed worker on its own. Re-firing the event through the reload endpoint has the same reach as the original event and may miss the same worker. A worker that stays stale this way picks up the active map only when it restarts. If timely network map changes matter in a multi-worker deployment, set a non-zero `LOCAL_CACHETTL`.
+

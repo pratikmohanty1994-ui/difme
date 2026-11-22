@@ -306,12 +306,8 @@ thresholds and the other open questions in `owner-decisions.md`.
 5. **Remaining:** profiles live, ADR-014 test suites, CI gates, ADR-017 resilience leftovers.
 
 ## Open questions for the owner
-The full list, with context and every decision already made, is in [knowledge-base/owner-decisions.md](knowledge-base/owner-decisions.md):
-- canary SLO thresholds (p99 ≤ 5 ms vs measured 250–330 ms);
-- payment routing, saga vs DIRECT;
-- evidence witness and operator-key custody;
-- collateral V = A and the default partner tier;
-- `min_minor` collateral floors per vertical (₹500 placeholders);
-- the v4.1 money letters (A charged at the merchant, B = A + Y + F paid by the buyer; the PRD has them swapped);
-- Istio → Cilium mesh, Argo CD → Flux;
-- Kafka native image vs Strimzi.
+None open. Everything previously listed here was answered on 2026-11-20 and is recorded in
+[knowledge-base/owner-decisions.md](knowledge-base/owner-decisions.md): canary SLO p99 ≤ 400 ms and success ≥ 99.5 %
+(applied in `canary-gates/rollouts.yaml`), keep saga routing, evidence custody (OpenBao transit + separate notary
+witness), collateral V = A with COLD_START tier, ₹500 `min_minor` for FR-01, v4.1 money letters, keep Istio ambient and
+Argo CD, Kafka native only with no lost functionality.

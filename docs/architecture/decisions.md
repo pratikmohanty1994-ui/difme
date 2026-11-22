@@ -270,3 +270,37 @@ is vendored as pinned source in `vendor/` (`ci/vendor-sync.sh`, `vendor/VENDORED
 Flow: exchange → payment hub → Hyperswitch → acquirer → ISO 8583 → scheme/issuer; money is booked in Fineract (card
 settlement to merchants, escrow hold/release/refund). Test cards only. Profile `rails`; the exchange uses these rails
 when the profile's `exchange-rails` ConfigMap is present, otherwise its in-process simulators.
+
+## ADR-023 — Fraud scoring and FRM on Tazama, on DIFME's stack (owner 2026-11-22)
+**Decision (owner):** "for fraud scoring and FRM, let's use tazama-lf … clone it to our repo and use our stack for
+redundant components in tazama code so that our overall code is optimized."
+
+**Vendored** (Apache-2.0, `ci/vendor-sync.sh tazama-<repo>`, pinned v4.0.x in `vendor/VENDORED.json`, `vendor/tazama/`):
+frms-coe-lib, frms-coe-startup-lib, tms-service, event-director, rule-executer, rule-901, rule-902, typology-processor,
+event-adjudicator, admin-service, auth-lib, auth-lib-provider-keycloak. tms-service, event-director, typology-processor
+and event-adjudicator ship no LICENSE file but declare Apache-2.0 in package.json and every SPDX header; the text is
+added from `vendor/licenses/Apache-2.0.txt`. The `@tazama-lf/*` libraries are published only on GitHub's npm registry
+(token required), so they are built from the vendored source.
+
+**Pipeline:** TMS (ISO 20022 pain.001/pain.013/pacs.008/pacs.002 in) → event director → rule processors (rule-executer +
+rule libraries) → typology processor → event adjudicator (alert / interdiction out). Configuration via admin-service.
+
+**Redundant Tazama infrastructure → DIFME component:**
+
+| Tazama | DIFME | Where the change lives |
+|---|---|---|
+| NATS (transaction plane) | Kafka 4 on Strimzi | a `KafkaService` implementing `IStartupService` in frms-coe-startup-lib (subject → topic, queue group → consumer group, same protobuf payloads) |
+| Own PostgreSQL 18 | shared platform Postgres (ADR-019), one database per Tazama store | configuration only |
+| Own Valkey | shared Valkey (cache-tier) | configuration only |
+| Own Keycloak 23 | DIFME Keycloak (realm client for admin-service / TMS) | auth-lib-provider-keycloak configuration |
+| Elastic APM (`elastic-apm-node` in frms-coe-lib) | OpenTelemetry → Alloy → Tempo / VictoriaMetrics | the APM wrapper in frms-coe-lib |
+| ELK / lumberjack / event-sidecar logging | JSON stdout → Alloy → Loki | logger configuration |
+| Hasura, pgAdmin, nats-utilities | not deployed | — |
+
+**DIFME integration:** the payment hub and the exchange send pacs.008 before moving money and pacs.002 after; Tazama's
+result (correlated by message id) gates the payment (timeout and fail-open/closed are flags). DIFME's ONNX fraud
+model (`ml/fraud`, `services/fraud-scorer`) becomes a Tazama rule processor rather than a parallel scoring path, so
+one engine combines it with the typologies. Hyperswitch is built without its `frm` feature (no separate FRM there).
+
+**Not public upstream:** only rules 901 and 902 are open source; DIFME's own rules (the §7.4 business rules, the ONNX
+score) are written as rule processors in the same shape.
