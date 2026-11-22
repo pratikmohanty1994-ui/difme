@@ -375,3 +375,32 @@ swaps it for the card number → issuer authorises against Fineract → Tazama (
 | BIAN service domains *Issued Device Administration*, *Card Authorization*, *Card Transaction Switch* | open specification | Vocabulary and boundaries for the card-issuer service's API. |
 
 Not used: `sebastianrm/cards-service` has no licence (all rights reserved), so it isn't read for code.
+
+## ADR-025 — Lending: Fineract as LMS, loan origination on DIFME's process stack (owner 2026-11-22)
+**Survey (2026-11-22; licence files, size, activity and code checked, not READMEs):**
+
+| System | Licence | Finding | Use |
+|---|---|---|---|
+| Apache Fineract 1.16.1 / Mifos X (already vendored) | Apache-2.0 | Full LMS: products, schedules, interest, accounting, delinquency buckets and actions, re-age/re-amortise, charge-off, chargebacks, application → approve → disburse lifecycle. No revolving line or card statements; `fineract-loan-origination` only records loan originators; the working-capital loan is a discount-fee, breach-based merchant product. | **The LMS** |
+| [frappe/lending](https://github.com/frappe/lending) | GPL-3.0 | The most complete open-source LOS + LMS found (active; 80 data types): loan applications, line of credit with revolving limits, collections and dunning, RBI IRAC classification and provisioning, co-lending, loans against securities. Requires ERPNext + Frappe (Python, MariaDB-first, own workers and general ledger). | **Functional reference only**: a second stack and a second ledger next to Fineract; GPL code is read for design, never copied |
+| [fireflysoftwaresolutions/core-lending-credit-cards](https://github.com/fireflysoftwaresolutions/core-lending-credit-cards) | Apache-2.0 | Revolving line → billing cycle → statement → transactions → payments; ~1.2k lines of CRUD services, no interest, statement or minimum-due computation, 1 test. | **Data-model reference** for the card-credit entities |
+| Small GitHub "loan management system" apps | none / proprietary | Demo-level | Not used |
+
+**Decision:**
+- **LMS = Fineract (Mifos X engine).** Debit and prepaid cards on savings accounts with native `holdAmount` / `releaseAmount`.
+  Credit cards on a multi-disbursement loan with a maximum outstanding balance (each clearing = a disbursement,
+  repayments free the limit), Fineract keeping balance, interest, accounting, delinquency, collections and chargebacks.
+- **Card-credit logic in `services/core/card-issuer` (ADR-024):** available credit = limit − outstanding − open
+  authorisations (authorisation holds tracked by the issuer: Fineract has no hold on loans), billing cycle and statement
+  job (statement balance, minimum due, due date), interest-free grace when paid in full (interest waived in Fineract),
+  renewal of the loan before maturity so the line is open-ended. Built and tested by DIFME; Firefly's schema as the
+  starting model.
+- **Gate before building credit:** a live test against Fineract of the full cycle — spend, repay, re-spend within the
+  limit, interest, a late payment moving into a delinquency bucket, a chargeback. If the loan model does not hold, the
+  revolving module lives in card-issuer and Fineract keeps only the accounting entries.
+- **LOS on the existing process stack (ADR-008):** Form.io application forms; Fluxnova BPMN for KYC → appraisal →
+  approval → disbursement; DMN for credit-decision rules; Tazama (ADR-023) for fraud screening; Fineract holds the
+  application, approval and disbursement records. Frappe Lending is the checklist for steps and Indian regulatory
+  features (IRAC classification and provisioning, co-lending, collections and dunning).
+- **Order:** debit/prepaid cards first; credit after the gate above. The Mifos web app is not deployed (DIFME's
+  back office covers it); it can be added later if wanted.
