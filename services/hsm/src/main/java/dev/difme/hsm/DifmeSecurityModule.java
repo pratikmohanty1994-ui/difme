@@ -124,4 +124,57 @@ public class DifmeSecurityModule extends JCESecurityModule {
         for (int i = 0; i <= window; i++) if (dcvv2(imkDcvv2, pan, step - i).equals(code)) return true;
         return false;
     }
+
+    /** A new RSA-2048 signing key as a TR-31 D block ("S0", PKCS#8 inside) plus its self-signed certificate (DER). */
+    public String[] generateRsaSigningKey(String commonName) throws SMException {
+        try {
+            java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("RSA");
+            g.initialize(2048);
+            java.security.KeyPair kp = g.generateKeyPair();
+            byte[] cert = SelfSigned.certificate(kp, commonName);
+            return new String[] {Tr31.wrap(kbpk(), "D0000S0RN00E0000", kp.getPrivate().getEncoded()), java.util.Base64.getEncoder().encodeToString(cert)};
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        }
+    }
+
+    /** RSASSA-PSS with SHA-256 (JWS PS256) with a signing key block; the key exists in clear only inside this call. */
+    public byte[] signPs256(String rsaKeyBlock, byte[] data) throws SMException {
+        Tr31.Unwrapped u;
+        try {
+            u = Tr31.unwrap(kbpk(), rsaKeyBlock);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        }
+        if (!u.header().substring(5, 7).equals("S0")) throw new SMException("not a signing key");
+        try {
+            java.security.PrivateKey k = java.security.KeyFactory.getInstance("RSA").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(u.key()));
+            java.security.Signature sig = java.security.Signature.getInstance("RSASSA-PSS");
+            sig.setParameter(new java.security.spec.PSSParameterSpec("SHA-256", "MGF1", java.security.spec.MGF1ParameterSpec.SHA256, 32, 1));
+            sig.initSign(k);
+            sig.update(data);
+            return sig.sign();
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        } finally {
+            java.util.Arrays.fill(u.key(), (byte) 0);
+        }
+    }
+
+    /** HMAC-SHA-256 with a MAC key block ("M7"): card references and passcode hashes for the ACS. */
+    public byte[] hmacSha256(String macKeyBlock, byte[] data) throws SMException {
+        byte[] k = aes(macKeyBlock, "M7");
+        try {
+            javax.crypto.Mac m = javax.crypto.Mac.getInstance("HmacSHA256");
+            m.init(new javax.crypto.spec.SecretKeySpec(k, "HmacSHA256"));
+            return m.doFinal(data);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        } finally {
+            java.util.Arrays.fill(k, (byte) 0);
+        }
+    }
+
+    /** The KBPK in a form for the key release store (bootstrap only, inside the TEE). */
+    byte[] kbpkForRelease() throws SMException { return kbpk().clone(); }
 }

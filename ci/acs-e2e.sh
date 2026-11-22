@@ -10,7 +10,7 @@ trap 'kill "${pids[@]}" 2>/dev/null || true; rm -rf "$W"' EXIT
 [[ -x /opt/jdk25/bin/java ]] && export JAVA_HOME=/opt/jdk25 PATH=/opt/jdk25/bin:$PATH  # services/hsm targets Java 25
 (cd services/hsm && mvn -q -B -DskipTests package dependency:build-classpath -Dmdep.outputFile="$W/cp" >/dev/null)
 (cd services/scheme-sim && go build -o "$W/" ./cmd/scheme-sim ./cmd/acs ./cmd/iso-adapter)
-HSM_DEV_REBUILD_LMK=true HSM_DEV_CVK_COMPONENTS=1111111111111111FFFFFFFFFFFFFFFF,1032547698BADCFE0123456789ABCDEF HSM_ADDR=127.0.0.1:18700 \
+HSM_DEV_INSECURE=true HSM_DEV_REBUILD_LMK=true HSM_DEV_CVK_COMPONENTS=1111111111111111FFFFFFFFFFFFFFFF,1032547698BADCFE0123456789ABCDEF HSM_ADDR=127.0.0.1:18700 \
   java -cp "services/hsm/target/classes:$(cat "$W/cp")" dev.difme.hsm.HsmServer >"$W/hsm.log" 2>&1 & pids+=($!)
 EXP=$(date -d '+2 years' +%y%m); PAN=4375510000000001
 HSM_URL=http://127.0.0.1:18700 ISO_LISTEN=127.0.0.1:18583 ADMIN_LISTEN=127.0.0.1:18080 HTTP_LISTEN=127.0.0.1:18080 \

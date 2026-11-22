@@ -23,10 +23,10 @@ import org.jpos.security.SecureDESKey;
  * objects of strings (binary values in hex). In the cluster it sits behind the mesh with mTLS and an
  * AuthorizationPolicy per path naming its callers; it binds to HSM_ADDR.
  *
- * <p>Keys ({@link KeyStore}): HSM_LMK (LMK file; its AES KBPK at HSM_LMK + ".aes"), HSM_KEYS (JSON file label →
- * "TYPE:hex under LMK" or "AES:TR-31 block"), both written by the attested key release. Dev only:
- * HSM_DEV_REBUILD_LMK=true with HSM_DEV_KEYS ("label=TYPE:component,component;…", TYPE AES/&lt;usage&gt; for AES) or
- * HSM_DEV_CVK_COMPONENTS (the CVK alone) run a key ceremony at start-up.
+ * <p>Keys ({@link KeyStore}): in a cluster only through attested key release ({@link KeyRelease}: HSM_KBS_URL,
+ * HSM_TEE_SVN; first start HSM_BOOTSTRAP_OPENBAO + HSM_BOOTSTRAP_KEYS). Local tests only, with HSM_DEV_INSECURE=true:
+ * HSM_LMK/HSM_KEYS files, or HSM_DEV_REBUILD_LMK=true with HSM_DEV_KEYS ("label=TYPE:component,…;…") or
+ * HSM_DEV_CVK_COMPONENTS.
  */
 public final class HsmServer {
     private final SecurityModule hsm;
@@ -38,8 +38,28 @@ public final class HsmServer {
     public static final class KeyStore {
         final Map<String, SecureDESKey> des = new LinkedHashMap<>();
         final Map<String, String> aes = new LinkedHashMap<>();
+        final Map<String, String> rsa = new LinkedHashMap<>();   // signing keys as TR-31 D "S0" blocks
+        final Map<String, String> certs = new LinkedHashMap<>(); // their certificates (base64 DER)
 
         public KeyStore put(String label, SecureDESKey k) { des.put(label, k); return this; }
+
+        public KeyStore putRsa(String label, String block, String certB64) { rsa.put(label, block); certs.put(label, certB64); return this; }
+
+        String rsa(String label) {
+            String k = rsa.get(label);
+            if (k == null) throw new IllegalArgumentException("no signing key '" + label + "'");
+            return k;
+        }
+
+        /** The key list as stored in the key release store: values are encrypted (under the LMK / KBPK) or public. */
+        String toJson() {
+            Map<String, String> m = new LinkedHashMap<>();
+            des.forEach((l, k) -> m.put(l, k.getKeyType() + ":" + ISOUtil.hexString(k.getKeyBytes())));
+            aes.forEach((l, b) -> m.put(l, "AES:" + b));
+            rsa.forEach((l, b) -> m.put(l, "RSA:" + b));
+            certs.forEach((l, c) -> m.put(l + ".cert", "CERT:" + c));
+            return HsmServer.toJson(m);
+        }
 
         public KeyStore putAes(String label, String block) { aes.put(label, block); return this; }
 
@@ -61,6 +81,8 @@ public final class HsmServer {
                 int c = v.indexOf(':');
                 String type = v.substring(0, c), val = v.substring(c + 1);
                 if (type.equals("AES")) ks.putAes(label, val);
+                else if (type.equals("RSA")) ks.rsa.put(label, val);
+                else if (type.equals("CERT")) ks.certs.put(label.replaceFirst("\\.cert$", ""), val);
                 else ks.put(label, new SecureDESKey(SMAdapter.LENGTH_DES3_2KEY, type, ISOUtil.hex2byte(val), null));
             });
             return ks;
@@ -81,6 +103,18 @@ public final class HsmServer {
 
     public static void main(String[] args) throws Exception {
         var env = System.getenv();
+        if (env.get("HSM_KBS_URL") != null) { // the only mode for clusters: keys through attested release (ADR-026)
+            KeyRelease.Loaded l = KeyRelease.start(env);
+            System.out.println("hsm: keys released by attestation" + (l.bootstrapped() ? " (first start: generated in the module, stored create-only)" : ""));
+            report(l.hsm(), l.keys());
+            serve(new HsmServer(l.hsm(), l.keys()), env.getOrDefault("HSM_ADDR", "127.0.0.1:8700"));
+            return;
+        }
+        // Local development and tests only: clear test keys / a throw-away LMK. Refused unless explicitly asked for.
+        if (!"true".equals(env.get("HSM_DEV_INSECURE"))) {
+            System.err.println("hsm: HSM_KBS_URL not set; refusing to start without attested key release (HSM_DEV_INSECURE=true for local tests)");
+            System.exit(2);
+        }
         boolean rebuild = Boolean.parseBoolean(env.getOrDefault("HSM_DEV_REBUILD_LMK", "false"));
         Path lmk = Path.of(env.getOrDefault("HSM_LMK", rebuild ? Files.createTempDirectory("lmk") + "/lmk" : "/run/hsm/lmk"));
         SecurityModule hsm = SecurityModule.software(lmk, rebuild);
@@ -94,9 +128,15 @@ public final class HsmServer {
         } else {
             keys = new KeyStore().put("cvk", SecurityModule.cvkUnderLmk(env.get("HSM_CVK_UNDER_LMK")));
         }
+        report(hsm, keys);
+        serve(new HsmServer(hsm, keys), env.getOrDefault("HSM_ADDR", "127.0.0.1:8700"));
+    }
+
+    static void report(SecurityModule hsm, KeyStore keys) throws SMException {
         for (var e : keys.des.entrySet()) System.out.println("hsm: key " + e.getKey() + " " + e.getValue().getKeyType() + " check value " + hsm.checkValue(e.getValue()));
         for (String l : keys.aes.keySet()) System.out.println("hsm: AES key " + l);
-        serve(new HsmServer(hsm, keys), env.getOrDefault("HSM_ADDR", "127.0.0.1:8700"));
+        for (String l : keys.rsa.keySet()) System.out.println("hsm: signing key " + l);
+        System.out.flush();
     }
 
     static HttpServer serve(HsmServer s, String addr) throws IOException {
@@ -141,6 +181,8 @@ public final class HsmServer {
             case "/v1/script/mac" -> out.put("mac", ISOUtil.hexString(hsm.scriptMac(SecurityModule.Cvn.valueOf(in.getOrDefault("cvn", "")),
                     key(in, "key", "imk-smi", SMAdapter.TYPE_MK_SMI), d(in, "pan"), d(in, "psn"), h(in, "atc"), h(in, "arqc"), h(in, "command"))));
             case "/v1/mac/retail" -> out.put("mac", ISOUtil.hexString(hsm.retailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"))));
+            case "/v1/sign/ps256" -> out.put("signature", ISOUtil.hexString(hsm.signPs256(keys.rsa(in.getOrDefault("key", "acs-sign")), h(in, "data"))));
+            case "/v1/hmac" -> out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes(in.getOrDefault("key", "acs-hmac")), h(in, "data"))));
             case "/v1/mac/cmac" -> out.put("mac", ISOUtil.hexString(hsm.aesCmac(keys.aes(in.getOrDefault("aesKey", "aes-mac")), h(in, "data"))));
             default -> { return null; }
         }
@@ -166,6 +208,9 @@ public final class HsmServer {
             String path = x.getRequestURI().getPath();
             if (path.equals("/healthz")) {
                 out.put("status", "ok");
+            } else if (path.startsWith("/v1/certs/") && "GET".equals(x.getRequestMethod())) {
+                String c = keys.certs.get(path.substring("/v1/certs/".length()));
+                if (c == null) status = 404; else out.put("x5c", c);
             } else if (!"POST".equals(x.getRequestMethod())) {
                 status = 405;
             } else {
@@ -186,7 +231,7 @@ public final class HsmServer {
         x.close();
     }
 
-    private static final Pattern DIGITS = Pattern.compile("[0-9]{1,19}"), HEX = Pattern.compile("([0-9A-Fa-f]{2}){1,512}");
+    private static final Pattern DIGITS = Pattern.compile("[0-9]{1,19}"), HEX = Pattern.compile("([0-9A-Fa-f]{2}){1,8192}");
 
     private static String d(Map<String, String> in, String k) {
         String v = in.get(k);
@@ -202,7 +247,7 @@ public final class HsmServer {
 
     private static byte[] h(Map<String, String> in, String k) { return ISOUtil.hex2byte(hx(in, k)); }
 
-    static final Pattern PAIR = Pattern.compile("\"([A-Za-z0-9_-]+)\"\\s*:\\s*\"([^\"\\\\]*)\"");
+    static final Pattern PAIR = Pattern.compile("\"([A-Za-z0-9_.-]+)\"\\s*:\\s*\"([^\"\\\\]*)\"");
 
     static Map<String, String> parse(String json) {
         Map<String, String> m = new LinkedHashMap<>();

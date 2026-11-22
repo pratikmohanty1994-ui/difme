@@ -177,6 +177,15 @@ public final class SecurityModule {
 
     public byte[] aesCmac(String macKey, byte[] data) throws SMException { return ext().aesCmac(macKey, data); }
 
+    /** Sets the AES key block protection key (from the attested key release). */
+    public void setKbpk(byte[] kbpk) throws SMException { ext().setKbpk(kbpk); }
+
+    public String[] generateRsaSigningKey(String cn) throws SMException { return ext().generateRsaSigningKey(cn); }
+
+    public byte[] signPs256(String rsaKeyBlock, byte[] data) throws SMException { return ext().signPs256(rsaKeyBlock, data); }
+
+    public byte[] hmacSha256(String macKeyBlock, byte[] data) throws SMException { return ext().hmacSha256(macKeyBlock, data); }
+
     public String dcvv2(SecureDESKey imkDcvv2, String pan, long step) throws SMException { return ext().dcvv2(imkDcvv2, pan, step); }
 
     public boolean verifyDcvv2(SecureDESKey imkDcvv2, String pan, long step, int window, String code) throws SMException {
