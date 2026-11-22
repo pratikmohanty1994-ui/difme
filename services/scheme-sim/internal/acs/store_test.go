@@ -222,3 +222,55 @@ func TestPostgresDocumentHasNoKeyMaterial(t *testing.T) {
 		t.Fatalf("passcode in clear in the document")
 	}
 }
+
+// xorSealer stands in for the security module: reversible, keyed by the transaction id (aad), never clear text.
+type xorSealer struct{ sealed int }
+
+func (x *xorSealer) Seal(_ context.Context, id string, plain []byte) (string, error) {
+	x.sealed++
+	out := make([]byte, len(plain))
+	for i, b := range plain {
+		out[i] = b ^ 0x5a ^ id[i%len(id)]
+	}
+	return base64.StdEncoding.EncodeToString(out), nil
+}
+
+func (x *xorSealer) Open(_ context.Context, id, sealed string) ([]byte, error) {
+	in, err := base64.StdEncoding.DecodeString(sealed)
+	if err != nil {
+		return nil, err
+	}
+	for i := range in {
+		in[i] ^= 0x5a ^ id[i%len(id)]
+	}
+	return in, nil
+}
+
+func TestPostgresSealedDocumentHasNoCardNumber(t *testing.T) {
+	sealer := &xorSealer{}
+	store, ctx := pgStore(t).Seal(sealer), context.Background()
+	w := newWorld(t, acs.Alert)
+	signer, _ := acs.DevSigner()
+	a := acs.New(acs.Config{FrictionlessLimitMinor: 500_000, ChallengeURL: "https://acs.example/3ds/creq", PayerKey: []byte("test-key-0123456789"),
+		Signer: signer, Store: store, Instance: "acs-0"}, w.cmsClient(), w.frm, w.hsm, w.otp, w.oob, w.rreqs)
+	res, err := a.Authenticate(ctx, areq(pan, 1000))
+	if err != nil || res.TransStatus != "C" {
+		t.Fatalf("%v %+v", err, res)
+	}
+	c, err := pgx.Connect(ctx, pgURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close(ctx)
+	var raw string
+	if err := c.QueryRow(ctx, "SELECT doc::text FROM acs_challenge WHERE acs_trans_id = $1", res.ACSTransID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if sealer.sealed == 0 || !strings.Contains(raw, `"sealed"`) || strings.Contains(raw, pan) || strings.Contains(raw, "acctNumber") {
+		t.Fatalf("challenge document not sealed: %s", raw)
+	}
+	// The sealed document opens again for the challenge steps.
+	if _, err := store.Get(ctx, res.ACSTransID); err != nil {
+		t.Fatalf("open sealed document: %v", err)
+	}
+}

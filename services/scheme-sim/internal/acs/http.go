@@ -281,3 +281,20 @@ func hsmCall(c *http.Client, url string, in map[string]string, field string) (st
 	}
 	return out[field], nil
 }
+
+// HSMSealer seals ACS challenge documents with the security module's card-vault key (AES-GCM, aad = acsTransID).
+type HSMSealer struct{ URL string }
+
+func (h HSMSealer) Seal(_ context.Context, id string, plain []byte) (string, error) {
+	return hsmCall(&http.Client{Timeout: 3 * time.Second}, h.URL+"/v1/data/encrypt",
+		map[string]string{"key": "card-vault", "data": hex.EncodeToString(plain), "aad": hex.EncodeToString([]byte(id))}, "ciphertext")
+}
+
+func (h HSMSealer) Open(_ context.Context, id, sealed string) ([]byte, error) {
+	v, err := hsmCall(&http.Client{Timeout: 3 * time.Second}, h.URL+"/v1/data/decrypt",
+		map[string]string{"key": "card-vault", "ciphertext": sealed, "aad": hex.EncodeToString([]byte(id))}, "data")
+	if err != nil {
+		return nil, err
+	}
+	return hex.DecodeString(v)
+}

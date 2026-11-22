@@ -78,7 +78,7 @@ func main() {
 			log.Fatalf("ACS_DATABASE_URL: %v", err)
 		}
 		defer store.Close()
-		cfg.Store = store
+		cfg.Store = store.Seal(acs.HSMSealer{URL: hsmURL}) // documents carry the card number: ciphertext only at rest
 	}
 	a := acs.New(cfg,
 		acs.NewCMSClient(env("ACS_CMS_URL", "http://127.0.0.1:8080")), frm, threeds.NewHSMClient(env("HSM_URL", "http://127.0.0.1:8700")),
