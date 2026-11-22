@@ -410,6 +410,13 @@ Not used: `sebastianrm/cards-service` has no licence (all rights reserved), so i
   of the same script passes too: interest charged (24% a year), an unpaid instalment classified in delinquency bucket
   D1 (1–30 days), and a chargeback of a repayment putting the amount back on the line. card-issuer
   (`services/card-issuer`) implements the credit card on this basis (`ci/card-issuer-live.sh`).
+- **Built (2026-11-22, night):** loan origination = `processes/bpmn/loan-origination.bpmn` + `processes/dmn/credit-decision.dmn`
+  + `forms/loan-application.json`/`loan-review.json`; Temporal `LoanScreeningWorkflow` (Tazama pain.001, typology
+  difme-3ds-risk) and `LoanBookingWorkflow` (Fineract loan, approval, disbursement, idempotent on the business key) in
+  saga-orchestrator; Keycloak client / Fineract user `loan-origination`, product "DIFME term loan". Tests: engine
+  (decision table, approve / refer→underwriting / decline paths), Temporal, live Fineract booking. Credit cards:
+  card-issuer statements (cycle, minimum due 5% ≥ INR 100, due +20 days, interest-free grace by waiving interest in
+  Fineract, daily billing run).
 - **LOS on the existing process stack (ADR-008):** Form.io application forms; Fluxnova BPMN for KYC → appraisal →
   approval → disbursement; DMN for credit-decision rules; Tazama (ADR-023) for fraud screening; Fineract holds the
   application, approval and disbursement records. Frappe Lending is the checklist for steps and Indian regulatory

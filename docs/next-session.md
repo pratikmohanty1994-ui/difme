@@ -3,6 +3,11 @@
 Read this, then `docs/status.md`.
 
 ## 0. Latest (2026-11-22, night) — read first
+- **Also built tonight:** credit gate complete (interest, delinquency bucket D1, chargeback); card-issuer statements and
+  grace; loan origination end to end (BPMN/DMN/forms, Temporal workflows, Fineract booking, Keycloak/Fineract users);
+  3DS risk without double counting (ACS → Tazama pain.001 → typology difme-3ds-risk, D01 scores pain.001);
+  Keycloak's Argo CD app label fixed (it never deployed before). `ci/tazama-e2e.sh` now also checks the pain.001
+  path (run locally with DOCKER_BUILD_ARGS proxy + TAZAMA_DOCKERFILE adding the proxy CA, see the scratchpad copy).
 - **Keys only in the (emulated) TEE, enforced:** services/hsm starts only through attested key release (own KBS
   client; Trustee app `tee-key-release` in `security`; OpenBao mount `kbs`, roles `trustee-kbs` read-only and
   `hsm-bootstrap` create-only); no keys in Secrets (`ci/no-key-material.sh` in verify); ACS holds no keys (signing
