@@ -28,15 +28,14 @@ type FRM interface {
 	Evaluate(ctx context.Context, id, payer, merchant string, amountMinor int64, currency string) (Verdict, string)
 }
 
-//go:embed tazama/pacs008.json
-var pacs008 []byte
+//go:embed tazama/pain001.json
+var pain001 []byte
 
-//go:embed tazama/pacs002.json
-var pacs002 []byte
-
-// Tazama reports the authentication attempt to Tazama's TMS as a credit transfer and its status, then polls the
-// admin service for the evaluation, exactly as the payment hub's Tazama client does (same templates, same verdict
-// mapping). Card numbers are never sent: payer is an opaque card reference.
+// Tazama reports the authentication attempt to Tazama's TMS as a payment initiation (pain.001) and polls the admin
+// service for its evaluation (same verdict mapping as the payment hub). Only pain.001: the velocity rules count
+// pacs.002 and D02 counts pacs.008, so an authentication is not counted again when the payment itself (pacs.008 +
+// pacs.002 from the payment hub) is evaluated. The network map routes pain.001 to typology difme-3ds-risk (rule D01,
+// the fraud model). Card numbers are never sent: payer is an opaque card reference.
 type Tazama struct {
 	TMS, Admin string
 	Budget     time.Duration
@@ -86,38 +85,30 @@ func (t *Tazama) Evaluate(ctx context.Context, id, payer, merchant string, amoun
 	ctx, cancel := context.WithTimeout(ctx, t.Budget)
 	defer cancel()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	var p8, p2 obj
-	_ = json.Unmarshal(pacs008, &p8)
-	_ = json.Unmarshal(pacs002, &p2)
-	cd := at(p8, "FIToFICstmrCdtTrf")
-	grp, tx := at(cd, "GrpHdr"), at(cd, "CdtTrfTxInf")
-	grp["MsgId"], grp["CreDtTm"] = msgID(), now
-	pid := at(tx, "PmtId")
-	pid["InstrId"], pid["EndToEndId"] = id, id
+	var p1 obj
+	_ = json.Unmarshal(pain001, &p1)
+	ci := at(p1, "CstmrCdtTrfInitn")
+	statusID := msgID()
+	grp := at(ci, "GrpHdr")
+	grp["MsgId"], grp["CreDtTm"] = statusID, now
+	at(grp, "InitgPty", "Id", "PrvtId", "Othr")["Id"] = payer
+	pmt := at(ci, "PmtInf")
+	pmt["PmtInfId"] = msgID()
+	at(pmt, "Dbtr", "Id", "PrvtId", "Othr")["Id"] = payer
+	at(pmt, "DbtrAcct", "Id", "Othr")["Id"] = payer
+	at(pmt, "Dbtr")["Nm"], at(pmt, "DbtrAcct")["Nm"] = payer, payer
+	tx := at(pmt, "CdtTrfTxInf")
+	at(tx, "PmtId")["EndToEndId"] = id
 	amt := float64(amountMinor) / 100
-	for _, f := range []string{"IntrBkSttlmAmt", "InstdAmt"} {
-		a := at(tx, f, "Amt")
+	for _, f := range []string{"InstdAmt", "EqvtAmt"} {
+		a := at(tx, "Amt", f, "Amt")
 		a["Amt"], a["Ccy"] = amt, currency
 	}
-	for _, pa := range [][2]string{{"Dbtr", "DbtrAcct"}, {"Cdtr", "CdtrAcct"}} {
-		who := payer
-		if pa[0] == "Cdtr" {
-			who = merchant
-		}
-		at(tx, pa[0], "Id", "PrvtId", "Othr")["Id"] = who
-		at(tx, pa[1], "Id", "Othr")["Id"] = who
-		at(tx, pa[0])["Nm"], at(tx, pa[1])["Nm"] = who, who
-	}
-	at(tx, "InitgPty", "Id", "PrvtId", "Othr")["Id"] = payer
-	statusID := msgID()
-	st := at(p2, "FIToFIPmtSts")
-	at(st, "GrpHdr")["MsgId"], at(st, "GrpHdr")["CreDtTm"] = statusID, now
-	ts := at(st, "TxInfAndSts")
-	ts["OrgnlInstrId"], ts["OrgnlEndToEndId"], ts["TxSts"], ts["AccptncDtTm"] = id, id, "ACCC", now
-	if err := t.post(ctx, "/v1/evaluate/iso20022/pacs.008.001.10", p8); err != nil {
-		return Unknown, "TMS: " + err.Error()
-	}
-	if err := t.post(ctx, "/v1/evaluate/iso20022/pacs.002.001.12", p2); err != nil {
+	at(tx, "Amt", "EqvtAmt")["CcyOfTrf"] = currency
+	at(tx, "Cdtr", "Id", "PrvtId", "Othr")["Id"] = merchant
+	at(tx, "CdtrAcct", "Id", "Othr")["Id"] = merchant
+	at(tx, "Cdtr")["Nm"], at(tx, "CdtrAcct")["Nm"] = merchant, merchant
+	if err := t.post(ctx, "/v1/evaluate/iso20022/pain.001.001.11", p1); err != nil {
 		return Unknown, "TMS: " + err.Error()
 	}
 	for {

@@ -76,4 +76,22 @@ echo "EndToEndId $e2e -> ${st:-no evaluation}"
 scores=$(docker exec tz-e2e-pg psql -U postgres -d tazama_evaluation -tAc "select string_agg(t->>'cfg' || '=' || (t->>'result'), ' ' order by t->>'cfg')
   from evaluation, jsonb_array_elements(evaluation->'report'->'tadpResult'->'typologyResult') t where evaluation::text like '%$e2e%'")
 echo "typology scores: $scores"
-[ "$scores" = "difme-901-902@1.0.0=200 difme-fraud-model@1.0.0=400" ] && echo PASS || { echo FAIL; diagnose; exit 1; }
+[ "$scores" = "difme-901-902@1.0.0=200 difme-fraud-model@1.0.0=400" ] || { echo FAIL; diagnose; exit 1; }
+# 3-D Secure risk (ADR-027): the ACS's pain.001 (same template as services/scheme-sim/internal/acs) is scored by the
+# fraud model alone (typology difme-3ds-risk), so velocity rules and D02 never see an authentication.
+e3=$(node -e "
+  const fs = require('fs'), id = () => require('crypto').randomUUID().replace(/-/g, ''), e2e = 'acs-' + id();
+  const p = JSON.parse(fs.readFileSync('services/scheme-sim/internal/acs/tazama/pain001.json')); delete p.TenantId;
+  p.CstmrCdtTrfInitn.GrpHdr.MsgId = id(); p.CstmrCdtTrfInitn.GrpHdr.CreDtTm = new Date().toISOString();
+  p.CstmrCdtTrfInitn.PmtInf.CdtTrfTxInf.PmtId.EndToEndId = e2e;
+  fs.writeFileSync('$work/001.json', JSON.stringify(p)); console.log(e2e);")
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "@$work/001.json" \
+  "http://127.0.0.1:3000/v1/evaluate/iso20022/pain.001.001.11")
+[ "$code" = 200 ] || { echo "FAIL: TMS answered $code to pain.001"; exit 1; }
+for _ in $(seq 1 30); do
+  s3=$(docker exec tz-e2e-pg psql -U postgres -d tazama_evaluation -tAc "select string_agg(t->>'cfg' || '=' || (t->>'result'), ' ')
+    from evaluation, jsonb_array_elements(evaluation->'report'->'tadpResult'->'typologyResult') t where evaluation::text like '%$e3%'")
+  [ -n "$s3" ] && break; sleep 2
+done
+echo "3DS pain.001 $e3 -> typology scores: ${s3:-no evaluation}"
+[ "$s3" = "difme-3ds-risk@1.0.0=400" ] && echo PASS || { echo FAIL; diagnose; exit 1; }

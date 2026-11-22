@@ -139,3 +139,22 @@ test('no scorer configured gives .err', async () => {
     process.env.FRAUD_SCORER_URL = url;
   }
 });
+
+test('a pain.001 (3-D Secure risk check before the payment) is scored from its instructed amount', async () => {
+  reply = scored(0.6);
+  const req = {
+    transaction: {
+      TxTp: 'pain.001.001.11',
+      TenantId: 'DEFAULT',
+      CstmrCdtTrfInitn: {
+        GrpHdr: { MsgId: 'acs-1', CreDtTm: new Date().toISOString() },
+        PmtInf: { CdtTrfTxInf: { Amt: { InstdAmt: { Amt: { Amt: 2500, Ccy: 'INR' } } } } },
+      },
+    },
+    networkMap: {},
+    DataCache: { dbtrAcctId: 'card-abc' },
+  } as unknown as RuleRequest;
+  const r = await run(req);
+  expect(r.subRuleRef).toBe('.03');
+  expect(received).toEqual([{ path: '/v1/score/order', accountId: 'card-abc', deviceId: 'unknown', amountMinor: 250000 }]);
+});

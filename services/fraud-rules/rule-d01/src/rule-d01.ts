@@ -8,7 +8,7 @@
 // ISO 20022 payment messages carry no device, so the configured unknown-device id is sent and the scorer reports the
 // device features it defaulted.
 import type { DatabaseManagerInstance, LoggerService, ManagerConfig } from '@tazama-lf/frms-coe-lib';
-import { isPacs002Transaction, isStructuredTransaction } from '@tazama-lf/frms-coe-lib';
+import { isPacs002Transaction, isPain001Transaction, isStructuredTransaction } from '@tazama-lf/frms-coe-lib';
 import type { OutcomeResult, RuleConfig, RuleRequest, RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 
 export const RULE_ID = 'D01';
@@ -51,14 +51,23 @@ export async function handleTransaction(
   _databaseManager?: DatabaseManagerInstance<RuleExecutorConfig>,
 ): Promise<RuleResult> {
   const context = `Rule-${ruleConfig.id} handleTransaction()`;
-  if (!isStructuredTransaction(req.transaction) || !isPacs002Transaction(req.transaction)) {
+  if (!isStructuredTransaction(req.transaction)) return failed(ruleRes, 'Unsupported transaction type');
+  // pacs.002: a settled payment (from the payment hub). pain.001: a payment initiation, which is how the 3-D Secure
+  // ACS asks for a risk verdict before the payment exists (ADR-027), scored the same way from its instructed amount.
+  let msgId: string;
+  let initiatedAmount: Amount | undefined;
+  if (isPacs002Transaction(req.transaction)) {
+    msgId = req.transaction.FIToFIPmtSts.GrpHdr.MsgId;
+    const unsuccessful = ruleConfig.config.exitConditions?.find((b: OutcomeResult) => b.subRuleRef === '.x00');
+    if (req.transaction.FIToFIPmtSts.TxInfAndSts.TxSts !== 'ACCC' && unsuccessful) {
+      return { ...ruleRes, reason: unsuccessful.reason, subRuleRef: unsuccessful.subRuleRef };
+    }
+  } else if (isPain001Transaction(req.transaction)) {
+    msgId = req.transaction.CstmrCdtTrfInitn.GrpHdr.MsgId;
+    const instd = req.transaction.CstmrCdtTrfInitn.PmtInf.CdtTrfTxInf.Amt.InstdAmt.Amt as unknown as { Amt: number; Ccy: string };
+    initiatedAmount = { amt: Number(instd.Amt), ccy: instd.Ccy } as Amount;
+  } else {
     return failed(ruleRes, 'Unsupported transaction type');
-  }
-  const msgId = req.transaction.FIToFIPmtSts.GrpHdr.MsgId;
-
-  const unsuccessful = ruleConfig.config.exitConditions?.find((b: OutcomeResult) => b.subRuleRef === '.x00');
-  if (req.transaction.FIToFIPmtSts.TxInfAndSts.TxSts !== 'ACCC' && unsuccessful) {
-    return { ...ruleRes, reason: unsuccessful.reason, subRuleRef: unsuccessful.subRuleRef };
   }
 
   const params = (ruleConfig.config.parameters ?? {}) as Record<string, unknown>;
@@ -67,7 +76,7 @@ export async function handleTransaction(
 
   const cache = req.DataCache as typeof req.DataCache & { amt?: Amount };
   const accountId = cache.dbtrAcctId;
-  const amount = cache.instdAmt ?? cache.intrBkSttlmAmt ?? cache.amt;
+  const amount = cache.instdAmt ?? cache.intrBkSttlmAmt ?? cache.amt ?? initiatedAmount;
   if (!accountId || !amount || !(amount.amt > 0)) return failed(ruleRes, 'Data cache lacks the debtor account or the amount');
 
   const timeoutMs = Number(params.timeoutMs ?? DEFAULT_TIMEOUT_MS);

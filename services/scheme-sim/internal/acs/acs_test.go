@@ -245,7 +245,7 @@ func TestHTTPAndTazamaClient(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/v1/evaluate/iso20022/"):
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.Contains(fmt.Sprint(body), pan) {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.Contains(fmt.Sprint(body), pan) || r.URL.Path != "/v1/evaluate/iso20022/pain.001.001.11" {
 				rw.WriteHeader(400)
 				return
 			}

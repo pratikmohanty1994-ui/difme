@@ -1,5 +1,5 @@
 -- DIFME configuration (ADR-023): a typology from public rules 901 + 902 and one from DIFME's fraud-model rule D01, and a
--- network map routing pacs.002.001.12 to both. Loaded after vendor/tazama/stack-postgres/config/00-public-base.sql.
+-- network map routing pacs.002.001.12 to both and pain.001.001.11 (3-D Secure risk) to the fraud model only. Loaded after vendor/tazama/stack-postgres/config/00-public-base.sql.
 \connect configuration;
 insert into typology (configuration) values ('{
   "typology_name": "DIFME-test-901-902", "id": "typology-processor", "cfg": "difme-901-902@1.0.0", "tenantId": "DEFAULT",
@@ -53,11 +53,25 @@ insert into typology (configuration) values ('{
   "expression": ["Add", "vD01at100at100", "vD02at100at100"]
 }');
 
+-- 3-D Secure risk (ADR-027): the ACS sends a payment initiation (pain.001) before the payment exists; only the fraud
+-- model scores it, so velocity rules (pacs.002) and D02 (pacs.008) never count an authentication as a payment.
+insert into typology (configuration) values ('{
+  "typology_name": "DIFME-3DS-risk", "id": "typology-processor", "cfg": "difme-3ds-risk@1.0.0", "tenantId": "DEFAULT",
+  "workflow": {"alertThreshold": 200, "interdictionThreshold": 400},
+  "rules": [
+    {"id": "D01@1.0.0", "cfg": "1.0.0", "termId": "vD01at100at100", "wghts": [{"ref": ".err", "wght": "0"}, {"ref": ".x00", "wght": "0"}, {"ref": ".01", "wght": "0"}, {"ref": ".02", "wght": "200"}, {"ref": ".03", "wght": "400"}]}
+  ],
+  "expression": ["Add", "vD01at100at100"]
+}');
+
 insert into network_map (configuration) values ('{
   "active": true, "name": "DIFME test network map", "cfg": "1.0.0", "tenantId": "DEFAULT",
   "messages": [{"id": "004@4.0.0", "cfg": "4.0.0", "txTp": "pacs.002.001.12",
     "typologies": [{"id": "typology-processor", "cfg": "difme-901-902@1.0.0",
       "rules": [{"id": "901@4.0.0", "cfg": "4.0.0"}, {"id": "902@4.0.0", "cfg": "4.0.0"}]},
      {"id": "typology-processor", "cfg": "difme-fraud-model@1.0.0",
-      "rules": [{"id": "D01@1.0.0", "cfg": "1.0.0"}, {"id": "D02@1.0.0", "cfg": "1.0.0"}]}]}]
+      "rules": [{"id": "D01@1.0.0", "cfg": "1.0.0"}, {"id": "D02@1.0.0", "cfg": "1.0.0"}]}]},
+   {"id": "004@4.0.0", "cfg": "4.0.0", "txTp": "pain.001.001.11",
+    "typologies": [{"id": "typology-processor", "cfg": "difme-3ds-risk@1.0.0",
+      "rules": [{"id": "D01@1.0.0", "cfg": "1.0.0"}]}]}]
 }');
