@@ -32,9 +32,12 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 |---|---|---|---|
 | CVV2 / CVC2 generate + verify | jPOS | **done**: Visa vector 561 + psec | card-issuer (issue, authorise) replacing the keyed-hash CVV |
 | Magstripe CVV, iCVV (chip track 2 equivalent, service code 999) | jPOS | **done** (CVV); psec for iCVV | card personalisation, scheme-sim |
-| Visa CAVV (3-D Secure, CVV method) | jPOS | **done**: psec | 3DS ACS (later), card-issuer |
+| Visa CAVV core value (CVV method over PAN, unpredictable number, authentication result and second-factor codes) | jPOS | **done**: psec | 3DS ACS, card-issuer |
+| **CAVV full lifecycle (3-D Secure 2.x, DIFME as issuer):** the ACS builds the 20-byte CAVV (usage code, authentication result, second-factor result, CAVV key indicator, CVV output, unpredictable number, ATN, ECI) after a frictionless or challenge authentication; card-issuer verifies it at authorisation (CAVV from the ISO 8583 authentication data field): cryptographic check, ATN not reused, ECI matches the result code, CAVV not older than the allowed window, key indicator selects the CVK (so CAVV keys rotate without breaking in-flight authentications); verification result code returned to the network | jPOS (core) + ext (layout, ATN, rules) | psec for the core value; own vectors for the layout; replay, wrong-ECI, expired, wrong-key negatives | 3DS ACS (to build), card-issuer, scheme-sim |
+| **Attempts CAVV** (stand-in when the issuer's ACS is unavailable: generated with the network's key, verified by the network) | jPOS + ext | as above, network key | scheme-sim |
 | Network token cryptogram (TAVV, CAVV format) replacing the HMAC cryptogram | jPOS | psec + existing scheme-sim token tests | scheme-sim TSP (ADR-024) |
 | Mastercard AAV/UCAF (SPA2, HMAC-SHA-256) | ext | spec examples | card-issuer |
+| Amex AEVV, Discover/Diners CAVV, RuPay equivalents (scheme-specific layouts on the same CVV/HMAC cores) | ext | scheme test vectors where available, else own vectors | card-issuer (when DIFME issues on those schemes) |
 | **dCVV2** (dynamic CVV2 for card-not-present: a 3-digit code that changes every N minutes, shown in the app or on a virtual/display card). Per-card key derived from an IMK-DCVV2 (EMV option A), CVV algorithm with the time-step counter (or an app counter) in place of expiry/service code; verify accepts the current and previous step, rejects reuse, and falls back to static CVV2 per card setting. Scheme dCVV2 profiles are not public, so the DIFME profile is documented here and swappable | ext (on jPOS key derivation) | independent Python implementation on psec/pyemv primitives; time-window, replay and wrong-key negatives | card-issuer (authorise), app (display) |
 
 ## Phase 2 — PIN
@@ -87,7 +90,7 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 
 1. **Service shell:** gRPC/HTTP with mTLS over the mesh, LMK from attestation, audit log, Phase 0 key management,
    then card-issuer and scheme-sim switched to the Phase 1 functions (stopgaps deleted). *Medium.*
-2. **Phase 1 remainder** (TAVV, AAV, dCVV2). *Small.* dCVV (MSD) comes with Phase 3 contactless.
+2. **Phase 1 remainder** (CAVV full lifecycle and attempts CAVV, TAVV, AAV, dCVV2). *Small.* dCVV (MSD) comes with Phase 3 contactless.
 3. **Phase 2 PIN** (3DES first, then format 4 / AES DUKPT ext). *Medium.*
 4. **Phase 3 chip**, with card-present flows in scheme-sim (field 55 parsing via moov-iso8583 or jPOS TLV). *Large.*
 5. **Phase 4 scripts and personalisation.** *Medium.*
