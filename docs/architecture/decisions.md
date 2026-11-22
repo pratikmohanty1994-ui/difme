@@ -325,3 +325,42 @@ the Tazama integration in the payment hub:
 | Actions `CancelTxn` / `AutoRefund` / `ManualReview` | per-typology action in the hub: cancel before capture, refund through the hub's existing refund saga, or hold for review in the back-office compliance app |
 | Lifecycle events (checkout, transaction, fulfillment, record-return, payout) | sent to TMS as their ISO 20022 equivalents so rules see the history (returns and refunds included) |
 | Card blocklist (`/blocklist`, not part of `frm`) | stays in Hyperswitch (built with `olap`) |
+
+## ADR-024 — Card vault, network tokens and issuer card management (owner 2026-11-22)
+**Why:** today only the PSP side tokenizes, and with Hyperswitch's built-in stand-in vault (`mock_locker = true`: card
+numbers in Hyperswitch's own database). There are no network tokens and no issuer-side card management; the scheme
+simulator's card ledger stands in for the issuer. jCard is excluded (source-available, not open source); no mature
+open-source card-issuing system exists, so the issuer side is built on DIFME's stack. Order: after Tazama (ADR-023).
+
+**1. Card vault — vendored `juspay/hyperswitch-card-vault` ("Tartarus", Apache-2.0, Rust, v0.9.0).**
+Hyperswitch's `[locker]` points at it (`mock_locker = false`). Storage on the shared Postgres (database `locker`);
+master and custodian keys and the Hyperswitch↔vault JWE/JWS key pairs in OpenBao (KV + agent injector, as for
+Hyperswitch). Rails namespace, mesh mTLS, only the Hyperswitch router may call it. A second instance (own database and
+keys) serves as the issuer's card-number vault for part 3.
+
+**2. Network tokens — a token service (TSP) in `services/scheme-sim`.**
+- Implements Hyperswitch's own `network_tokenization_service` contract (generate, fetch, delete, status, eligibility,
+  alt-ID; JWE-encrypted payloads, API key), so Hyperswitch needs no code change: config only.
+- Token vault at the scheme: token ↔ card number, token requestor (merchant/PSP), domain restrictions, status
+  (active/suspended/deleted), expiry. Token ranges by BIN; the token number passes the Luhn check.
+- Per-payment cryptogram: HMAC over token, amount, currency and a transaction counter with a per-token key; single use.
+- On a 0100/0200 whose DE 2 is a token: check status, domain and cryptogram (failures answer with the scheme's
+  decline codes), swap in the card number, route to the issuer, swap the token back in the response. Reversals and
+  refunds work on the token as well.
+- Lifecycle from the issuer (card replaced, blocked) updates or suspends its tokens.
+
+**3. Issuer card management — new service on DIFME's stack (`services/core/card-issuer`, Quarkus like the core).**
+- Card products (BIN range, credit/debit, limits, validity, fees placeholder), cards linked to a Fineract account.
+- Issuance: card number generated in the product's BIN range with a Luhn check digit, stored in the issuer vault
+  (the service keeps only the vault token and the masked number), expiry, CVV held as a keyed hash.
+- Lifecycle: activate, block/unblock, report lost/stolen (replacement card, tokens moved or suspended), expire, close.
+- Limits and controls: per-transaction, daily, per channel and merchant category.
+- Authorisation: the scheme simulator's issuer leg calls the service, which checks card status and limits and places
+  the hold in Fineract (available balance for debit, credit limit for credit), with Fineract releasing or settling it
+  on reversal and clearing. The scheme's in-memory card ledger is retired.
+- Back-office: card screens in the compliance/settlements apps; Keycloak roles.
+- Moves onto jPOS (AGPL-3.0) when the switch migrates there (owner 2026-11-22).
+
+**End-to-end flow:** cardholder account (Fineract) → card issued (number in the issuer vault) → network token for the
+merchant (TSP) → token stored in Hyperswitch's vault → each payment carries the token and a cryptogram → scheme
+swaps it for the card number → issuer authorises against Fineract → Tazama (ADR-023) sees each step.
