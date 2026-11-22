@@ -4,6 +4,7 @@ import type { IStartupService, onMessageFunction } from '..';
 import type { ILoggerService } from '../interfaces';
 import { startupConfig } from '../interfaces/iStartupConfig';
 import { NatsService } from './natsService';
+import { KafkaService } from './kafkaService';
 
 export class StartupFactory implements IStartupService {
   startupService: IStartupService;
@@ -19,6 +20,10 @@ export class StartupFactory implements IStartupService {
     switch (startupConfig.startupType as string) {
       case 'nats':
         this.startupService = new NatsService();
+        break;
+      // DIFME patch (ADR-023): Kafka transport, selected with STARTUP_TYPE=kafka.
+      case 'kafka':
+        this.startupService = new KafkaService();
         break;
       default:
         this.startupService = new NatsService();

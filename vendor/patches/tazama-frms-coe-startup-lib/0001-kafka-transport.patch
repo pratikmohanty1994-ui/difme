@@ -1,0 +1,458 @@
+DIFME patch (ADR-023): Kafka transport for Tazama's transaction plane and service channel, in place of NATS.
+STARTUP_TYPE=kafka selects it (nats stays the default); frms-coe-lib comes from the vendored copy; live test in
+__tests__/kafka-live.cjs (real broker: subject mapping, group load sharing, broadcast, runtime subscribe).
+
+diff --git a/__tests__/kafka-live.cjs b/__tests__/kafka-live.cjs
+new file mode 100644
+index 00000000..2a9c9031
+--- /dev/null
++++ b/__tests__/kafka-live.cjs
+@@ -0,0 +1,97 @@
++// SPDX-License-Identifier: Apache-2.0
++// DIFME live test of the Kafka transport (ADR-023) against a real broker: node __tests__/kafka-live.cjs
++// (KAFKA=host:port, default localhost:9092; build first with `npx tsc`). Each role runs in its own process, as each
++// Tazama processor does, because the startup config is read from the environment once per process.
++//  1. rule:  consumes sub-rule-901@1.0.0 (a subject Kafka can't use as-is), answers on pub-rule-901@1.0.0
++//  2. sink:  consumes pub-rule-901@1.0.0 and reports what arrived
++//  3. two rule instances in one group share the load (NATS queue-group behaviour)
++//  4. service channel: both instances receive every message (broadcast)
++//  5. addConsumers: a subject added at runtime is consumed
++'use strict';
++const { fork } = require('node:child_process');
++const assert = require('node:assert');
++const KAFKA = process.env.KAFKA ?? 'localhost:9092';
++const RUN = Date.now().toString(36);
++const N = 20;
++
++function role(name) {
++  const { StartupFactory } = require('../lib');
++  const send = (m) => process.send(m);
++  const logger = { log() {}, warn() {}, error: (m) => send({ err: String(m) }), debug() {}, trace() {}, fatal() {} };
++  (async () => {
++    const server = new StartupFactory();
++    if (name.startsWith('rule')) {
++      await server.init(async (msg) => {
++        send({ got: msg.transactionID, by: name });
++        await server.handleResponse({ ...msg, TxTp: 'pacs.002.001.12', alreadySent: name });
++      }, logger);
++      await server.initServiceChannel((bytes) => send({ svc: Buffer.from(bytes).toString(), by: name }), undefined, logger);
++      process.on('message', async (m) => {
++        if (m.add) send({ added: await server.addConsumers([m.add], async (msg) => send({ late: msg.transactionID, by: name })) });
++      });
++    } else if (name === 'sink') {
++      await server.init(async (msg) => send({ result: msg.transactionID, from: msg.alreadySent, TxTp: msg.TxTp }), logger);
++    } else if (name === 'source') {
++      await server.initProducer(logger);
++      await server.initServiceChannelProducer(logger);
++      process.on('message', async (m) => {
++        if (m.tx) await server.handleResponse({ transactionID: m.tx, TxTp: 'pacs.008.001.10', TenantId: 'DEFAULT' }, [m.subject]);
++        if (m.svc) await server.publishServiceChannel(Buffer.from(m.svc));
++        send({ sent: m.tx ?? m.svc });
++      });
++    }
++    send({ ready: name });
++  })().catch((e) => { send({ err: String(e && e.stack || e) }); process.exit(1); });
++}
++
++if (process.argv[2]) { role(process.argv[2]); return; }
++
++const env = (fn, extra) => ({ ...process.env, NODE_ENV: 'test', STARTUP_TYPE: 'kafka', SERVER_URL: KAFKA, FUNCTION_NAME: fn, ...extra });
++const SUB = `sub-rule-901@1.0.0-${RUN}`, PUB = `pub-rule-901@1.0.0-${RUN}`, SVC = `svc-${RUN}`, LATE = `late-${RUN}@x`;
++const events = [];
++const kids = {};
++function start(name, fn, extra) {
++  const c = fork(__filename, [name], { env: env(fn, extra), stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
++  c.on("message", (m) => { events.push(m); if (m.err) console.error(`[${name}]`, m.err); if (process.env.DEBUG_LIVE) console.log(name, JSON.stringify(m)); });
++  kids[name] = c;
++}
++const until = async (pred, ms, what) => {
++  const t0 = Date.now();
++  while (!pred()) { if (Date.now() - t0 > ms) throw new Error(`timeout waiting for ${what}`); await new Promise((r) => setTimeout(r, 200)); }
++};
++const count = (f) => events.filter(f).length;
++
++(async () => {
++  start('rule-a', `rule-901-${RUN}`, { CONSUMER_STREAM: SUB, PRODUCER_STREAM: PUB, SERVICE_CHANNEL_CONSUMER: SVC });
++  start('rule-b', `rule-901-${RUN}`, { CONSUMER_STREAM: SUB, PRODUCER_STREAM: PUB, SERVICE_CHANNEL_CONSUMER: SVC });
++  start('sink', `sink-${RUN}`, { CONSUMER_STREAM: PUB });
++  start('source', `source-${RUN}`, { SERVICE_CHANNEL_PRODUCER: SVC });
++  await until(() => count((e) => e.ready) === 4, 60000, 'all roles ready');
++  await new Promise((r) => setTimeout(r, 8000)); // consumer-group rebalance settles (two members)
++
++  for (let i = 0; i < N; i++) kids.source.send({ tx: `tx-${i}`, subject: SUB });
++  await until(() => count((e) => e.result) === N, 60000, `${N} results at the sink`);
++  const results = events.filter((e) => e.result);
++  assert.deepStrictEqual(new Set(results.map((e) => e.result)).size, N, 'every transaction arrives exactly once');
++  assert.ok(results.every((e) => e.TxTp === 'pacs.002.001.12'), 'responses decoded as FRMSMessage');
++  const a = count((e) => e.got && e.by === 'rule-a'), b = count((e) => e.got && e.by === 'rule-b');
++  assert.strictEqual(a + b, N, 'each transaction handled by exactly one instance');
++  console.log(`1-3 ok: ${N} transactions through '${SUB}' -> '${PUB}'; shared by the group: rule-a ${a}, rule-b ${b}`);
++
++  kids.source.send({ svc: 'reload-network-map' });
++  await until(() => count((e) => e.svc === 'reload-network-map') === 2, 30000, 'service channel on both instances');
++  console.log('4 ok: service-channel message reached both instances (broadcast)');
++
++  kids['rule-a'].send({ add: LATE });
++  await until(() => count((e) => e.added === true) === 1, 30000, 'addConsumers');
++  await new Promise((r) => setTimeout(r, 6000));
++  kids.source.send({ tx: 'late-1', subject: LATE });
++  await until(() => count((e) => e.late === 'late-1') === 1, 30000, 'message on the subject added at runtime');
++  console.log(`5 ok: subject '${LATE}' added at runtime is consumed`);
++
++  const errors = events.filter((e) => e.err);
++  assert.strictEqual(errors.length, 0, `no handler errors (${errors.map((e) => e.err).join('; ')})`);
++  console.log('PASS');
++  for (const c of Object.values(kids)) c.kill();
++  process.exit(0);
++})().catch((e) => { console.error('FAIL:', e.message); for (const c of Object.values(kids)) c.kill(); process.exit(1); });
+diff --git a/package.json b/package.json
+index ac532fe9..b94ad308 100644
+--- a/package.json
++++ b/package.json
+@@ -30,10 +30,11 @@
+     "prepare": "husky"
+   },
+   "dependencies": {
+-    "@tazama-lf/frms-coe-lib": "8.3.0",
++    "@tazama-lf/frms-coe-lib": "file:../frms-coe-lib",
+     "amqplib": "0.10.6",
+     "axios": "^1.18.1",
+-    "nats": "^2.29.3"
++    "nats": "^2.29.3",
++    "@confluentinc/kafka-javascript": "1.11.0"
+   },
+   "overrides": {
+     "uuid": "^11.1.1",
+diff --git a/src/interfaces/iStartupConfig.ts b/src/interfaces/iStartupConfig.ts
+index 5ee7d125..ada91019 100644
+--- a/src/interfaces/iStartupConfig.ts
++++ b/src/interfaces/iStartupConfig.ts
+@@ -16,7 +16,7 @@ export interface IStartupConfig {
+    * @type {'nats'}
+    * @memberof IStartupConfig
+    */
+-  startupType: 'nats';
++  startupType: 'nats' | 'kafka';
+   ackPolicy: 'None' | 'All' | 'Explicit' | 'NotSet';
+   /**
+    *Could be either "Memory" or "File"
+@@ -97,8 +97,8 @@ export interface IStartupConfig {
+ }
+ 
+ export const startupConfig: IStartupConfig = {
+-  // STARTUP_TYPE is no longer read: the library only supports the NATS transport.
+-  startupType: 'nats',
++  // DIFME patch (ADR-023): STARTUP_TYPE selects the transport again: 'nats' (upstream default) or 'kafka'.
++  startupType: process.env.STARTUP_TYPE === 'kafka' ? 'kafka' : 'nats',
+   env: validateEnvVar('NODE_ENV', 'string').toString(),
+   serverUrl: validateEnvVar('SERVER_URL', 'string').toString(),
+   functionName: validateFunctionName(),
+diff --git a/src/services/kafkaService.ts b/src/services/kafkaService.ts
+new file mode 100644
+index 00000000..56c62fae
+--- /dev/null
++++ b/src/services/kafkaService.ts
+@@ -0,0 +1,280 @@
++// SPDX-License-Identifier: Apache-2.0
++// DIFME patch (ADR-023): Kafka transport for the Tazama transaction plane, in place of NATS. DIFME already runs Kafka
++// (Strimzi, KRaft); a second broker would be redundant. Same contract and payloads as NatsService:
++//  - a NATS subject maps to a Kafka topic of the same name, with characters Kafka forbids (e.g. '@' in
++//    `sub-rule-901@1.0.0`) replaced by '_' (topicFor);
++//  - the NATS queue group (FUNCTION_NAME) becomes the consumer group, so instances of one processor share the work;
++//  - messages stay protobuf-encoded FRMSMessage buffers;
++//  - handlers stay fire-and-forget, as on NATS core (at-most-once), so throughput matches the NATS path;
++//  - a processor's group starts at the earliest offset, so nothing published before it joined is lost (NATS core
++//    would drop it; this is stricter);
++//  - the service channel is broadcast: every instance consumes it with its own group, from the latest offset.
++// Selected with STARTUP_TYPE=kafka; SERVER_URL holds the bootstrap servers (comma-separated host:port).
++
++import { KafkaJS } from '@confluentinc/kafka-javascript';
++import { hostname } from 'node:os';
++import { randomUUID } from 'node:crypto';
++import type { ILoggerService } from '../interfaces';
++import { startupConfig } from '../interfaces/iStartupConfig';
++import type { onMessageFunction } from '../types/onMessageFunction';
++import type { IStartupService } from '..';
++import { createMessageBuffer, decodeMessageBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
++import { getLogger } from '../utils';
++
++/** Kafka topic for a NATS-style subject: legal topic characters are [A-Za-z0-9._-]. */
++export const topicFor = (subject: string): string => subject.replace(/[^A-Za-z0-9._-]/g, '_');
++
++// New topics: partitions bound the parallelism of one processor's instances; replication 1 matches DIFME's dev Kafka.
++const DEFAULT_PARTITIONS = 3;
++const DEFAULT_REPLICATION = 1;
++
++const errorText = (err: unknown): string => (err instanceof Error ? err.message : JSON.stringify(err));
++
++export class KafkaService implements IStartupService {
++  kafka?: KafkaJS.Kafka;
++  producer?: KafkaJS.Producer;
++  consumer?: KafkaJS.Consumer;
++  serviceConsumer?: KafkaJS.Consumer;
++  producerStreamName = '';
++  consumerStreamName: string[] | undefined;
++  functionName = '';
++  logger?: ILoggerService | Console;
++  private onMessage?: onMessageFunction;
++  private readonly topicChecks = new Map<string, Promise<void>>();
++  private adminReady?: Promise<KafkaJS.Admin>;
++  private producerReady?: Promise<KafkaJS.Producer>;
++
++  private client(): KafkaJS.Kafka {
++    this.kafka ??= new KafkaJS.Kafka({
++      kafkaJS: {
++        clientId: `${startupConfig.functionName}-${hostname()}`,
++        brokers: startupConfig.serverUrl
++          .split(',')
++          .map((b) => b.trim())
++          .filter(Boolean),
++        logLevel: KafkaJS.logLevel.WARN,
++      },
++    });
++    return this.kafka;
++  }
++
++  /**
++   * Create the topics if they don't exist yet, so a consumer can subscribe before any producer ran. Concurrent callers
++   * share one in-flight check per topic, and a topic another client created meanwhile counts as created.
++   */
++  private async ensureTopics(topics: string[]): Promise<void> {
++    await Promise.all(
++      topics.map(async (topic) => {
++        let pending = this.topicChecks.get(topic);
++        if (!pending) {
++          pending = this.createTopic(topic);
++          this.topicChecks.set(topic, pending);
++          // A failed check is retried by the next caller rather than cached.
++          pending.catch(() => this.topicChecks.delete(topic));
++        }
++        await pending;
++      }),
++    );
++  }
++
++  private async createTopic(topic: string): Promise<void> {
++    const admin = await this.connectAdmin();
++    if ((await admin.listTopics()).includes(topic)) return;
++    try {
++      await admin.createTopics({
++        topics: [
++          {
++            topic,
++            numPartitions: Number(process.env.KAFKA_TOPIC_PARTITIONS ?? DEFAULT_PARTITIONS),
++            replicationFactor: Number(process.env.KAFKA_TOPIC_REPLICATION ?? DEFAULT_REPLICATION),
++          },
++        ],
++      });
++      this.logger?.log(`Created Kafka topic: ${topic}`);
++    } catch (err) {
++      if (!/already exists/i.test(errorText(err))) throw err;
++    }
++  }
++
++  // This client allows connect() once per object; concurrent first callers share one connect.
++  private async connectAdmin(): Promise<KafkaJS.Admin> {
++    this.adminReady ??= (async () => {
++      const admin = this.client().admin();
++      await admin.connect();
++      return admin;
++    })();
++    return await this.adminReady;
++  }
++
++  private async connectProducer(): Promise<KafkaJS.Producer> {
++    this.producerReady ??= (async () => {
++      const producer = this.client().producer({ kafkaJS: { allowAutoTopicCreation: false, acks: 1 } });
++      await producer.connect();
++      this.producer = producer;
++      return producer;
++    })();
++    return await this.producerReady;
++  }
++
++  async init(
++    onMessage: onMessageFunction,
++    loggerService?: ILoggerService,
++    parConsumerStreamNames?: string[],
++    parProducerStreamName?: string,
++  ): Promise<boolean> {
++    if (!startupConfig.consumerStreamName && !parConsumerStreamNames?.length) {
++      throw new Error('No Consumer Stream Name Provided in environmental Variable or on startup as an arguement');
++    }
++    if (parProducerStreamName) startupConfig.producerStreamName = parProducerStreamName;
++    if (parConsumerStreamNames) startupConfig.consumerStreamName = String(parConsumerStreamNames);
++
++    await this.initProducer(loggerService, parProducerStreamName);
++    this.onMessage = onMessage;
++    this.consumerStreamName = startupConfig.consumerStreamName.split(',').filter(Boolean);
++    await this.startConsumer();
++    return true;
++  }
++
++  private async startConsumer(): Promise<void> {
++    const topics = (this.consumerStreamName ?? []).map(topicFor);
++    await this.ensureTopics(topics);
++    this.consumer = this.client().consumer({
++      // A new group starts at the earliest offset: messages published before its first partition assignment are
++      // processed, not skipped. Afterwards the group resumes from its committed offset.
++      kafkaJS: { groupId: this.functionName, fromBeginning: true, allowAutoTopicCreation: false },
++    });
++    await this.consumer.connect();
++    await this.consumer.subscribe({ topics });
++    await this.consumer.run({
++      // eslint-disable-next-line @typescript-eslint/require-await -- the handler is fire-and-forget, as on NATS core
++      eachMessage: async ({ topic, message }) => {
++        if (!message.value || !this.onMessage) return;
++        this.logger?.log(`${Date.now().toLocaleString()} topic:[${topic}]: ${message.value.length}`);
++        try {
++          const handled = this.onMessage(decodeMessageBuffer(message.value), (msg) => {
++            this.handleResponse(msg).catch((err: unknown) => {
++              this.logger?.error(`Error handling response on default path: ${errorText(err)}`);
++            });
++          });
++          void Promise.resolve(handled).catch((err: unknown) => {
++            this.logger?.error(`Error in message handler on default path: ${errorText(err)}`);
++          });
++        } catch (err: unknown) {
++          this.logger?.error(`Error in message handler on default path: ${errorText(err)}`);
++        }
++      },
++    });
++    this.logger?.log(`Consuming ${topics.join(', ')} as group ${this.functionName}`);
++  }
++
++  /** Add consumer subjects at runtime: Kafka can't extend a running subscription, so the consumer restarts with the union. */
++  async addConsumers(subjects: string[], onMessage: onMessageFunction): Promise<boolean> {
++    if (!this.producer) {
++      this.logger?.warn('addConsumers called with no live Kafka connection; nothing subscribed');
++      return false;
++    }
++    const existing = this.consumerStreamName ?? [];
++    const toAdd = [...new Set(subjects.filter((s) => s && !existing.includes(s)))];
++    if (!toAdd.length) return true;
++    this.consumerStreamName = [...existing, ...toAdd];
++    this.onMessage = onMessage;
++    if (this.consumer) await this.consumer.disconnect();
++    await this.startConsumer();
++    return true;
++  }
++
++  async initProducer(loggerService?: ILoggerService, parProducerStreamName?: string): Promise<boolean> {
++    this.validateEnvironment();
++    this.logger = getLogger(startupConfig, loggerService);
++    try {
++      this.logger.log(`Attempting connection to Kafka, with config:\n${JSON.stringify(startupConfig)}`);
++      await this.connectProducer();
++      this.functionName = startupConfig.functionName.replace(/\./g, '_');
++      this.producerStreamName = parProducerStreamName ?? startupConfig.producerStreamName;
++      this.logger.log(`Connected to Kafka ${startupConfig.serverUrl}`);
++    } catch (err) {
++      this.logger.log(`Error communicating with Kafka on: ${startupConfig.serverUrl}, with error: ${errorText(err)}`);
++      throw err instanceof Error ? err : new Error(errorText(err));
++    }
++    return true;
++  }
++
++  validateEnvironment(): void {
++    if (!startupConfig.serverUrl) throw new Error('No Server URL was Provided in environmental Variable');
++    if (!startupConfig.functionName) throw new Error('No Function Name was Provided in environmental Variable');
++  }
++
++  async handleResponse(response: object, subject?: string[]): Promise<void> {
++    if (!this.producer) return;
++    const value = createMessageBuffer(response as Record<string, unknown>);
++    if (!value) throw new Error('Response could not be encoded as an FRMSMessage; nothing published.');
++    const subjects = subject?.length ? subject : this.producerStreamName ? [this.producerStreamName] : [];
++    if (!subjects.length) {
++      throw new Error('No subject supplied and no PRODUCER_STREAM configured; cannot determine a publish destination.');
++    }
++    const topics = subjects.map(topicFor);
++    await this.ensureTopics(topics);
++    // Keyed by transaction id: spreads load over partitions (and so over a processor's instances) and keeps one
++    // transaction's messages in order.
++    const txId = (response as { transactionID?: unknown }).transactionID;
++    const key = typeof txId === 'string' && txId ? txId : null;
++    await this.producer.sendBatch({ topicMessages: topics.map((topic) => ({ topic, messages: [{ key, value }] })) });
++  }
++
++  // ---- Service channel: opaque bytes, broadcast to every instance (NATS: plain subscription, no queue group) ----
++
++  async initServiceChannelProducer(loggerService?: ILoggerService): Promise<boolean> {
++    this.logger = getLogger(startupConfig, loggerService);
++    try {
++      await this.connectProducer();
++      this.functionName = startupConfig.functionName.replace(/\./g, '_');
++      return true;
++    } catch (err) {
++      this.logger.log(`Service-channel connect failed (non-fatal): ${errorText(err)}`);
++      return false;
++    }
++  }
++
++  async publishServiceChannel(body: Uint8Array, subject?: string): Promise<void> {
++    const target = subject ?? startupConfig.serviceChannelProducer;
++    if (!target) throw new Error('No subject provided and SERVICE_CHANNEL_PRODUCER is not set in the environment.');
++    if (!this.producer) {
++      this.logger?.warn(`Service-channel publish skipped (no live connection): ${body.length} bytes dropped for subject:[${target}]`);
++      return;
++    }
++    const topic = topicFor(target);
++    await this.ensureTopics([topic]);
++    await this.producer.send({ topic, messages: [{ value: Buffer.from(body) }] });
++    this.logger?.log(`Service-channel published ${body.length} bytes to subject:[${target}]`);
++  }
++
++  async initServiceChannel(
++    onMessage: (data: Uint8Array) => void | Promise<void>,
++    subject?: string,
++    loggerService?: ILoggerService,
++  ): Promise<boolean> {
++    const target = subject ?? startupConfig.serviceChannelConsumer;
++    if (!target) throw new Error('No subject provided and SERVICE_CHANNEL_CONSUMER is not set in the environment.');
++    if (loggerService) this.logger = getLogger(startupConfig, loggerService);
++    if (!this.producer) return false;
++    const topic = topicFor(target);
++    await this.ensureTopics([topic]);
++    // A group of its own per instance = broadcast fan-out, like a NATS subscription without a queue group.
++    this.serviceConsumer = this.client().consumer({
++      kafkaJS: { groupId: `${this.functionName}-svc-${randomUUID()}`, fromBeginning: false, allowAutoTopicCreation: false },
++    });
++    await this.serviceConsumer.connect();
++    await this.serviceConsumer.subscribe({ topics: [topic] });
++    await this.serviceConsumer.run({
++      eachMessage: async ({ message }) => {
++        if (!message.value) return;
++        try {
++          await onMessage(new Uint8Array(message.value));
++        } catch (err: unknown) {
++          this.logger?.error(`Service-channel handler threw on subject:[${target}]: ${errorText(err)}`);
++        }
++      },
++    });
++    return true;
++  }
++}
+diff --git a/src/services/startupFactory.ts b/src/services/startupFactory.ts
+index ae4ba479..580b351b 100644
+--- a/src/services/startupFactory.ts
++++ b/src/services/startupFactory.ts
+@@ -4,6 +4,7 @@ import type { IStartupService, onMessageFunction } from '..';
+ import type { ILoggerService } from '../interfaces';
+ import { startupConfig } from '../interfaces/iStartupConfig';
+ import { NatsService } from './natsService';
++import { KafkaService } from './kafkaService';
+ 
+ export class StartupFactory implements IStartupService {
+   startupService: IStartupService;
+@@ -20,6 +21,10 @@ export class StartupFactory implements IStartupService {
+       case 'nats':
+         this.startupService = new NatsService();
+         break;
++      // DIFME patch (ADR-023): Kafka transport, selected with STARTUP_TYPE=kafka.
++      case 'kafka':
++        this.startupService = new KafkaService();
++        break;
+       default:
+         this.startupService = new NatsService();
+         break;

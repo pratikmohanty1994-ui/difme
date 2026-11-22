@@ -30,10 +30,11 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "8.3.0",
+    "@tazama-lf/frms-coe-lib": "file:../frms-coe-lib",
     "amqplib": "0.10.6",
     "axios": "^1.18.1",
-    "nats": "^2.29.3"
+    "nats": "^2.29.3",
+    "@confluentinc/kafka-javascript": "1.11.0"
   },
   "overrides": {
     "uuid": "^11.1.1",

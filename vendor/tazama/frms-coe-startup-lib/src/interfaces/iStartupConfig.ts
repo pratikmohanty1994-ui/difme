@@ -16,7 +16,7 @@ export interface IStartupConfig {
    * @type {'nats'}
    * @memberof IStartupConfig
    */
-  startupType: 'nats';
+  startupType: 'nats' | 'kafka';
   ackPolicy: 'None' | 'All' | 'Explicit' | 'NotSet';
   /**
    *Could be either "Memory" or "File"
@@ -97,8 +97,8 @@ export interface IStartupConfig {
 }
 
 export const startupConfig: IStartupConfig = {
-  // STARTUP_TYPE is no longer read: the library only supports the NATS transport.
-  startupType: 'nats',
+  // DIFME patch (ADR-023): STARTUP_TYPE selects the transport again: 'nats' (upstream default) or 'kafka'.
+  startupType: process.env.STARTUP_TYPE === 'kafka' ? 'kafka' : 'nats',
   env: validateEnvVar('NODE_ENV', 'string').toString(),
   serverUrl: validateEnvVar('SERVER_URL', 'string').toString(),
   functionName: validateFunctionName(),
