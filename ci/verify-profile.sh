@@ -6,7 +6,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 P=${1:?profile}; DEADLINE=${2:-1800}
 echo "== $P: before"; bash ci/mem-report.sh 3 | head -4
-t=$(date +%s); make up PROFILE="$P" > "/tmp/up-$P.log" 2>&1; echo "UP_EXIT $? $(( $(date +%s)-t ))s"
+t=$(date +%s); make up PROFILE="$P" > "/tmp/up-$P.log" 2>&1; up_rc=$?; echo "UP_EXIT $up_rc $(( $(date +%s)-t ))s"
+# A rejected Application is absent, not unhealthy, so the app check below would not see it (run 3: no Keycloak, yet
+# "security: converged"). Fail fast instead.
+if grep -q "FAILFAST: Application" "/tmp/up-$P.log"; then grep "FAILFAST: Application" "/tmp/up-$P.log"; echo "FAILFAST $P: Application rejected"; exit 1; fi
 grep -E "⚠|error" "/tmp/up-$P.log" | head -5
 apps() { kubectl -n argocd get applications -o jsonpath='{range .items[*]}{.metadata.name} {.status.operationState.phase} {.status.sync.status} {.status.health.status}{"\n"}{end}'; }
 end=$(( $(date +%s) + DEADLINE )); firstfail=0; rc=1

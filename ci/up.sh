@@ -51,7 +51,8 @@ start=$(date +%s)
 while read -r wave apps; do
   [ -z "$wave" ] && continue
   echo "▶ wave $wave: $apps"
-  for a in $apps; do kubectl apply -f "deploy/argocd/apps/$a.yaml" >/dev/null; done
+  # fail fast: a rejected Application (e.g. an invalid label, as Keycloak in run 3) never becomes healthy
+  for a in $apps; do kubectl apply -f "deploy/argocd/apps/$a.yaml" >/dev/null || { echo "FAILFAST: Application $a rejected by the API server"; exit 3; }; done
   wait_for "$WAVE_TIMEOUT" $apps && echo "  ✓ wave $wave healthy"
 done <<< "$waves"
 echo "profile $PROFILE done in $(( $(date +%s) - start ))s"
