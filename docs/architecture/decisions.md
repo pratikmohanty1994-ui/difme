@@ -311,3 +311,17 @@ lockfiles. MIT 933, Apache-2.0 62, ISC 53, BSD-3 47, BlueOak-1.0.0 13 (OSI), BSD
 `streamsearch`) are MIT per their registry metadata. `caniuse-lite` (CC-BY-4.0, browser-support data) is a test/build-
 time dependency only and never ships in an image. Kafka client for the NATS replacement: `@confluentinc/kafka-javascript`
 (MIT; librdkafka BSD-2), maintained; `kafkajs` (MIT) has been unmaintained since 2023.
+
+**Hyperswitch FRM → Tazama (owner 2026-11-22: "make sure any rules from hyperswitch frm needs migrating"):** checked in
+v1.129.0. Hyperswitch holds **no fraud rules of its own**: its `frm` feature only forwards payments to external paid FRM
+services (Signifyd, Riskified, Cybersource Decision Manager, Sanlam Payshield, nSure; all excluded by ADR-001), and DIFME
+never configured `frm_configs`. Nothing to port as rules. The behaviours it offers are carried over as requirements of
+the Tazama integration in the payment hub:
+
+| Hyperswitch FRM behaviour | In DIFME on Tazama |
+|---|---|
+| Pre-auth check (`FrmPreferredFlowTypes::Pre`): verdict before the charge | pacs.008 to TMS before the PSP charge; wait for the adjudicator's result (timeout, fail-open/closed flag) |
+| Post-auth check (`Post`): verdict after authorisation, before capture | pacs.002 after the PSP's authorisation; an alert before capture triggers the action below |
+| Actions `CancelTxn` / `AutoRefund` / `ManualReview` | per-typology action in the hub: cancel before capture, refund through the hub's existing refund saga, or hold for review in the back-office compliance app |
+| Lifecycle events (checkout, transaction, fulfillment, record-return, payout) | sent to TMS as their ISO 20022 equivalents so rules see the history (returns and refunds included) |
+| Card blocklist (`/blocklist`, not part of `frm`) | stays in Hyperswitch (built with `olap`) |
