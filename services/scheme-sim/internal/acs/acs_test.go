@@ -65,6 +65,8 @@ func (r *rreqBox) Send(_ context.Context, rr acs.RReq) error { r.got = append(r.
 // world: the scheme simulator (CMS + authorisation switch) on real HTTP, the ACS reading cards from it, one security
 // module stand-in shared by ACS and switch (as both call services/hsm).
 type world struct {
+	cms   string
+	hsm   *threedstest.HSM
 	net   *scheme.Network
 	acs   *acs.ACS
 	frm   *fakeFRM
@@ -89,7 +91,7 @@ func newWorld(t *testing.T, verdict acs.Verdict) *world {
 	}
 	cms := httptest.NewServer(server.Admin(n))
 	t.Cleanup(cms.Close)
-	w := &world{net: n, frm: &fakeFRM{verdict: verdict}, otp: &otpBox{}, oob: &oobBox{}, rreqs: &rreqBox{}, now: time.Now()}
+	w := &world{cms: cms.URL, hsm: hsm, net: n, frm: &fakeFRM{verdict: verdict}, otp: &otpBox{}, oob: &oobBox{}, rreqs: &rreqBox{}, now: time.Now()}
 	w.acs = acs.New(acs.Config{FrictionlessLimitMinor: 500_000, ChallengeURL: "http://acs/3ds/creq", PayerKey: []byte("test-key-0123456789"),
 		Now: func() time.Time { return w.now }}, acs.NewCMSClient(cms.URL), w.frm, hsm, w.otp, w.oob, w.rreqs)
 	return w
@@ -425,3 +427,5 @@ func TestBrowserChallengePage(t *testing.T) {
 		t.Fatalf("cres: %v %s", err, b)
 	}
 }
+
+func (w *world) cmsClient() *acs.CMSClient { return acs.NewCMSClient(w.cms) }

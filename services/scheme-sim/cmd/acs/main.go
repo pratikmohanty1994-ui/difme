@@ -46,7 +46,11 @@ func main() {
 		ms, _ := strconv.Atoi(env("TAZAMA_BUDGET_MS", "3000"))
 		frm = acs.NewTazama(tms, admin, time.Duration(ms)*time.Millisecond)
 	}
-	a := acs.New(acs.Config{FrictionlessLimitMinor: limit, ChallengeURL: env("ACS_CHALLENGE_URL", "http://acs/3ds/creq"), PayerKey: []byte(key)},
+	signer, err := acs.DevSigner() // TODO(ADR-027): scheme-issued ACS certificate chain from OpenBao
+	if err != nil {
+		log.Fatal(err)
+	}
+	a := acs.New(acs.Config{FrictionlessLimitMinor: limit, ChallengeURL: env("ACS_CHALLENGE_URL", "http://acs/3ds/creq"), PayerKey: []byte(key), Signer: signer},
 		acs.NewCMSClient(env("ACS_CMS_URL", "http://127.0.0.1:8080")), frm, threeds.NewHSMClient(env("HSM_URL", "http://127.0.0.1:8700")),
 		acs.LogOTP{}, acs.LogOOB{}, acs.NewDSClient(os.Getenv("ACS_DS_URL")))
 	go func() { // decoupled authentications past their maximum time get their RReq

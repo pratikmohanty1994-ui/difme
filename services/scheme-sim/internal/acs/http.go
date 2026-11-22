@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -114,6 +115,17 @@ func (a *ACS) Handler() http.Handler {
 		reply(w, res, err)
 	})
 	mux.HandleFunc("POST /3ds/creq", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.Header.Get("content-type"), "application/jose") { // app channel: JWE in, JWE out
+			b, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+			out, err := a.AppChallenge(r.Context(), strings.TrimSpace(string(b)))
+			if err != nil {
+				reply(w, nil, err)
+				return
+			}
+			w.Header().Set("content-type", "application/jose; charset=UTF-8")
+			_, _ = w.Write([]byte(out))
+			return
+		}
 		var q CReq
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&q); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "CReq JSON required"})

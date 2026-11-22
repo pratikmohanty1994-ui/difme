@@ -16,12 +16,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,7 +82,8 @@ type AReq struct {
 	DecMaxTime           string `json:"threeDSRequestorDecMaxTime,omitempty"`   // minutes
 	NotificationURL      string `json:"notificationURL,omitempty"`              // browser: where the CRes is posted
 	ThreeRIInd           string `json:"threeRIInd,omitempty"`                   // 3RI reason
-	SDKEphemPubKey       any    `json:"sdkEphemPubKey,omitempty"`               // app channel JWE (jwe.go)
+	SDKEphemPubKey       *JWK   `json:"sdkEphemPubKey,omitempty"`               // app channel: SDK ephemeral key (jwe.go)
+	SDKReferenceNumber   string `json:"sdkReferenceNumber,omitempty"`           // app channel: ConcatKDF PartyVInfo
 }
 
 type ARes struct {
@@ -187,6 +190,7 @@ type Config struct {
 	MaxAttempts            int           // wrong passcodes before N
 	ChallengeURL           string        // acsURL (browser challenge page / app CReq endpoint)
 	PayerKey               []byte        // HMAC key for the opaque card reference sent to FRM and for passcode hashing
+	Signer                 *Signer       // app channel: signs acsSignedContent (nil: app-channel challenges refused)
 	Now                    func() time.Time
 }
 
@@ -212,7 +216,8 @@ type challenge struct {
 	otpMAC   []byte
 	expires  time.Time
 	attempts int
-	oob      string // "", "approved", "declined"
+	oob      string      // "", "approved", "declined"
+	app      *AppSession // app channel keys
 	done     bool
 	result   *RReq
 }
@@ -357,6 +362,16 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 	}
 	if res.TransStatus == "C" {
 		res.ACSChallengeMandated, res.ACSURL = "Y", a.cfg.ChallengeURL
+		if q.DeviceChannel == "01" { // app: key agreement with the SDK, CReq/CRes encrypted
+			if q.SDKEphemPubKey == nil || a.cfg.Signer == nil {
+				return no("U", ReasonSecurity)
+			}
+			sess, signed, err := NewAppSession(*q.SDKEphemPubKey, q.SDKReferenceNumber, a.cfg.ChallengeURL, a.cfg.Signer)
+			if err != nil {
+				return ARes{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+			}
+			ch.app, res.ACSSignedContent, res.ACSURL = sess, signed, ""
+		}
 	}
 	a.mu.Lock()
 	a.pending[ch.acsID] = ch
@@ -558,4 +573,33 @@ func currencyAlpha(numeric string) string {
 		return "EUR"
 	}
 	return numeric
+}
+
+// AppChallenge handles an encrypted CReq (app channel): the JWE header's kid is the acsTransID.
+func (a *ACS) AppChallenge(ctx context.Context, jwe string) (string, error) {
+	hb, err := b64.DecodeString(strings.SplitN(jwe, ".", 2)[0])
+	var hdr struct{ Kid string }
+	if err != nil || json.Unmarshal(hb, &hdr) != nil {
+		return "", fmt.Errorf("%w: JWE header", ErrBadRequest)
+	}
+	a.mu.Lock()
+	ch, ok := a.pending[hdr.Kid]
+	a.mu.Unlock()
+	if !ok || ch.app == nil {
+		return "", fmt.Errorf("%w: unknown app challenge", ErrBadRequest)
+	}
+	pt, enc, err := ch.app.DecryptCReq(jwe)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrBadRequest, err)
+	}
+	var q CReq
+	if err := json.Unmarshal(pt, &q); err != nil || q.ACSTransID != hdr.Kid {
+		return "", fmt.Errorf("%w: CReq does not match the JWE", ErrBadRequest)
+	}
+	res, err := a.Challenge(ctx, q)
+	if err != nil {
+		return "", err
+	}
+	out, _ := json.Marshal(res)
+	return ch.app.EncryptCRes(out, enc, hdr.Kid)
 }
