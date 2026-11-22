@@ -7,7 +7,9 @@ Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIB
 **Done 2026-11-22 (later):** Hyperswitch image built and signed for both platforms (memory: `-j 1`, router opt-level 0;
 arm64: LLD linker); payment hub fraud check on Tazama before capture (verified against the real pipeline: INTERDICT);
 Tazama rule D01 (ONNX model) end to end.
-**In flight:** Tazama images rebuild (rule-d01 after a test-timing fix).
+**All images green under the new owner (2026-11-22 10:00):** every DIFME image group incl. Tazama (8) and the payment
+hub with the fraud check. **In flight:** cluster-verify `core,streaming,security,rails,fraud` (run 45011051139), the
+first cluster run of the rails and fraud profiles.
 **Done 2026-11-22:** Tazama builds from source with Kafka/OpenTelemetry swaps, images (7) in CI, manifests (profile
 `fraud`), end to end locally (`ci/tazama-e2e.sh`: ALRT); attested key release verified (`ci/tee-key-release-test.sh`,
 ADR-026); all non-Hyperswitch images built and signed under the new owner.
