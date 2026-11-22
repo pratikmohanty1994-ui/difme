@@ -34,6 +34,8 @@ case "$what" in
   ml-sdk-adapter)  repo=mojaloop/sdk-scheme-adapter;  dest=vendor/mojaloop/sdk-scheme-adapter ;;
   # Tazama real-time fraud and AML monitoring (Apache-2.0; owner 2026-11-22: fraud scoring and FRM run on Tazama, with
   # DIFME's stack in place of its redundant infrastructure, ADR-023). Target tazama-<repo> -> vendor/tazama/<repo>.
+  # Database schema and configuration only: tazama-stack is otherwise compose files for Tazama's own infrastructure.
+  tazama-stack)    repo=tazama-lf/tazama-stack;       dest=vendor/tazama/stack-postgres; keep=core/postgres/migration ;;
   tazama-*)        repo=tazama-lf/${what#tazama-};    dest=vendor/tazama/${what#tazama-}; prune=(.husky .vscode) ;;
   *) echo "unknown target $what"; exit 1 ;;
 esac
@@ -46,9 +48,10 @@ fi
 sha=$(git -C "$tmp/src" rev-parse HEAD)
 rm -rf "$dest" && mkdir -p "$dest"
 (cd "$tmp/src/$keep" && tar --exclude=.git -cf - .) | tar -xf - -C "$dest"
-[ -z "$keep" ] || cp "$tmp/src/LICENSE" "$dest/LICENSE"
+[ -z "$keep" ] || [ ! -f "$tmp/src/LICENSE" ] || cp "$tmp/src/LICENSE" "$dest/LICENSE"
 # Some Tazama repos declare Apache-2.0 in every SPDX header and package.json but ship no LICENSE file: add the text.
-if [ ! -e "$dest/LICENSE" ] && [ -f "$dest/package.json" ] && grep -q '"license": *"Apache-2.0"' "$dest/package.json"; then
+if [ ! -e "$dest/LICENSE" ] && { { [ -f "$dest/package.json" ] && grep -q '"license": *"Apache-2.0"' "$dest/package.json"; } ||
+    grep -qs "SPDX-License-Identifier: Apache-2.0" "$tmp/src/README.md"; }; then
   cp vendor/licenses/Apache-2.0.txt "$dest/LICENSE"; echo "added Apache-2.0 LICENSE (declared in package.json and SPDX headers)"
 fi
 rm -rf "$dest/.github" "$dest/.circleci" "$dest/CLAUDE.md" "$dest/AGENTS.md" "$dest/.claude" "$dest/.cursor" "$dest/.devcontainer"

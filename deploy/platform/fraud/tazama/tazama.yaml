@@ -1,0 +1,175 @@
+# Tazama real-time fraud and AML monitoring (owner 2026-11-22, ADR-023) on DIFME's stack: Kafka (Strimzi) in place of
+# NATS, the shared Postgres (databases tazama_*), the shared Valkey, OpenTelemetry to Alloy. Pipeline: TMS (ISO 20022 in)
+# → event director → rule processors (901, 902) → typology processor → event adjudicator. Topics are created by the
+# services from the network map. Images from deploy/images/tazama. Verified end to end: ci/tazama-e2e.sh.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: tazama }
+automountServiceAccountToken: false
+---
+# Schema and configuration, idempotent (schema.sh): tables once, rules/typologies/network map into an empty store.
+apiVersion: batch/v1
+kind: Job
+metadata: { name: tazama-schema, annotations: { argocd.argoproj.io/hook: Sync, argocd.argoproj.io/hook-delete-policy: BeforeHookCreation } }
+spec:
+  backoffLimit: 20
+  template:
+    metadata: { labels: { app: tazama-schema, difme/team: fraud } }
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, runAsUser: 70, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: schema
+          image: postgres:17-alpine
+          command: [sh, /sql/schema.sh, /sql]
+          env:
+            - { name: PGHOST, value: postgres-docdb.database-tier.svc }
+            - { name: PGUSER, value: tazama }
+            - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          volumeMounts: [{ name: sql, mountPath: /sql }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
+      volumes: [{ name: sql, configMap: { name: tazama-sql } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-tms, labels: { app: tazama-tms } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-tms } }
+  template:
+    metadata: { labels: { app: tazama-tms, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: tms
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-tms-service:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-tms-service } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-tms }
+            - { name: RAW_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: EVENT_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          ports: [{ name: http, containerPort: 3000 }]
+          readinessProbe: { httpGet: { path: /health, port: 3000 }, periodSeconds: 10 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 320Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-event-director, labels: { app: tazama-event-director } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-event-director } }
+  template:
+    metadata: { labels: { app: tazama-event-director, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: event-director
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-event-director:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-event-director } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-event-director }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-rule-901, labels: { app: tazama-rule-901 } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-rule-901 } }
+  template:
+    metadata: { labels: { app: tazama-rule-901, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: rule-901
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-901:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-rule-901 } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-rule-901 }
+            - { name: RAW_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: EVENT_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-rule-902, labels: { app: tazama-rule-902 } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-rule-902 } }
+  template:
+    metadata: { labels: { app: tazama-rule-902, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: rule-902
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-902:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-rule-902 } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-rule-902 }
+            - { name: RAW_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: EVENT_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-typology-processor, labels: { app: tazama-typology-processor } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-typology-processor } }
+  template:
+    metadata: { labels: { app: tazama-typology-processor, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: typology-processor
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-typology-processor:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-typology-processor } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-typology-processor }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tazama-event-adjudicator, labels: { app: tazama-event-adjudicator } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tazama-event-adjudicator } }
+  template:
+    metadata: { labels: { app: tazama-event-adjudicator, difme/team: fraud, business.metric: fraud-monitoring } }
+    spec:
+      serviceAccountName: tazama
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: event-adjudicator
+          image: ghcr.io/pratikmohanty1994-ui/difme-tazama-event-adjudicator:0.1.0
+          envFrom: [{ configMapRef: { name: tazama-event-adjudicator } }]
+          env:
+            - { name: APM_SERVICE_NAME, value: tazama-event-adjudicator }
+            - { name: RAW_HISTORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: CONFIGURATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+            - { name: EVALUATION_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: tazama-tms }
+spec:
+  selector: { app: tazama-tms }
+  ports: [{ name: http, port: 3000, targetPort: http }]

@@ -1,0 +1,25 @@
+# Tazama (ADR-023). Env files: upstream defaults (tazama-stack v4.0.0) pointed at DIFME's components.
+namespace: fraud
+resources: [tazama.yaml]
+generatorOptions: { disableNameSuffixHash: true }
+configMapGenerator:
+  - name: tazama-event-adjudicator
+    envs: [env/event-adjudicator.env]
+  - name: tazama-event-director
+    envs: [env/event-director.env]
+  - name: tazama-rule-901
+    envs: [env/rule-901.env]
+  - name: tazama-rule-902
+    envs: [env/rule-902.env]
+  - name: tazama-tms-service
+    envs: [env/tms-service.env]
+  - name: tazama-typology-processor
+    envs: [env/typology-processor.env]
+  - name: tazama-sql
+    files:
+      - ../../../../vendor/tazama/stack-postgres/base/00-CREATE.sql
+      - ../../../../vendor/tazama/stack-postgres/base/01-tcs-init.sql
+      - ../../../../vendor/tazama/stack-postgres/base/02-trs-init.sql
+      - ../../../../vendor/tazama/stack-postgres/config/00-public-base.sql
+      - difme-network-map.sql
+      - schema.sh

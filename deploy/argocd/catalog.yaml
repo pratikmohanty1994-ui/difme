@@ -86,6 +86,9 @@ components:
   - { name: payment-hub,       ns: rails,           kind: path, profile: rails, wave: 2, pdf: "rails" }   # payment hub on Temporal (PSP + CBS)
   - { name: exchange-rails,    ns: core-platform,   kind: path, profile: rails, wave: 3, pdf: "rails" }   # exchange → payment hub link (ConfigMap)
 
+  # ── Fraud and AML monitoring (profile: fraud; owner 2026-11-22, ADR-023) ─────
+  - { name: tazama,            ns: fraud,           kind: path, profile: fraud, wave: 2, pdf: "5.7" }   # Tazama on Kafka, shared Postgres/Valkey
+
   # ── Layers 9–10 · Observability + FinOps (profile: observability) ──────────
   - { name: victoria-metrics,  ns: observability,   kind: helm, profile: observability, wave: -1, pdf: "10", repo: https://victoriametrics.github.io/helm-charts, chart: victoria-metrics-k8s-stack, version: 0.39.0 }
   - { name: loki,              ns: observability,   kind: helm, profile: observability, wave: 0,  pdf: "10", repo: https://grafana.github.io/helm-charts, chart: loki, version: 6.29.0 }

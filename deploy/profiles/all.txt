@@ -48,6 +48,7 @@ fineract
 hyperswitch
 payment-hub
 exchange-rails
+tazama
 victoria-metrics
 loki
 tempo

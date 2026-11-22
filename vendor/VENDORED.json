@@ -195,5 +195,11 @@
       ".husky",
       ".vscode"
     ]
+  },
+  "tazama-stack": {
+    "upstream": "https://github.com/tazama-lf/tazama-stack",
+    "tag": "v4.0.0",
+    "commit": "1a4523bf312a95e879719c21e0a6a9af9b218891",
+    "kept_only": "core/postgres/migration"
   }
 }

@@ -27,6 +27,7 @@ spec:
             - { name: POLARIS_DB_PASSWORD, valueFrom: { secretKeyRef: { name: polaris-db, key: password } } }
             - { name: FINERACT_DB_PASSWORD, valueFrom: { secretKeyRef: { name: fineract-db, key: password, optional: true } } }
             - { name: HYPERSWITCH_DB_PASSWORD, valueFrom: { secretKeyRef: { name: hyperswitch-db, key: password, optional: true } } }
+            - { name: TAZAMA_DB_PASSWORD, valueFrom: { secretKeyRef: { name: tazama-db, key: password, optional: true } } }
             - { name: APICURIO_DB_PASSWORD, valueFrom: { secretKeyRef: { name: apicurio-db, key: password } } }
           ports: [{ containerPort: 5432 }]
           volumeMounts:
@@ -44,6 +45,7 @@ spec:
             - { name: init, mountPath: /docker-entrypoint-initdb.d/70-polaris.sh, subPath: 70-polaris.sh }
             - { name: init, mountPath: /docker-entrypoint-initdb.d/90-fineract.sh, subPath: 90-fineract.sh }
             - { name: init, mountPath: /docker-entrypoint-initdb.d/95-hyperswitch.sh, subPath: 95-hyperswitch.sh }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d/96-tazama.sh, subPath: 96-tazama.sh }
             - { name: init, mountPath: /docker-entrypoint-initdb.d/80-apicurio.sh, subPath: 80-apicurio.sh }
           resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
           readinessProbe: { exec: { command: [pg_isready, -U, difme] }, periodSeconds: 5 }
@@ -142,6 +144,20 @@ data:
     psql -v ON_ERROR_STOP=1 -v pw="$HYPERSWITCH_DB_PASSWORD" --username "$POSTGRES_USER" --dbname postgres <<'SQL'
     CREATE ROLE hyperswitch LOGIN PASSWORD :'pw';
     CREATE DATABASE hyperswitch OWNER hyperswitch;
+    SQL
+  # Tazama (fraud profile, ADR-023): one role, its five stores prefixed tazama_ (the upstream names, e.g. "configuration",
+  # are too generic for a shared server); the schema job in the fraud namespace applies the tables.
+  96-tazama.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    [ -n "${TAZAMA_DB_PASSWORD:-}" ] || { echo "no tazama-db secret: skipping"; exit 0; }
+    psql -v ON_ERROR_STOP=1 -v pw="$TAZAMA_DB_PASSWORD" --username "$POSTGRES_USER" --dbname postgres <<'SQL'
+    CREATE ROLE tazama LOGIN PASSWORD :'pw';
+    CREATE DATABASE tazama_configuration OWNER tazama;
+    CREATE DATABASE tazama_event_history OWNER tazama;
+    CREATE DATABASE tazama_raw_history OWNER tazama;
+    CREATE DATABASE tazama_evaluation OWNER tazama;
+    CREATE DATABASE tazama_enrichment OWNER tazama;
     SQL
   # Apicurio Registry storage, moved off YugabyteDB (duplicate version rows under load).
   80-apicurio.sh: |

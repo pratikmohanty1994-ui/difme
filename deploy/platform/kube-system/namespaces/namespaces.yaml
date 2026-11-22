@@ -186,3 +186,13 @@ metadata:
     pod-security.kubernetes.io/enforce: baseline
     istio.io/dataplane-mode: ambient
 
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  # Fraud and AML monitoring (owner 2026-11-22, ADR-023): Tazama on DIFME's Kafka, Postgres, Valkey and telemetry.
+  name: fraud
+  labels:
+    difme/workload-type: Deployment
+    pod-security.kubernetes.io/enforce: baseline
+    istio.io/dataplane-mode: ambient

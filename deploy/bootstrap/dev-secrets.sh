@@ -54,6 +54,9 @@ hex32() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }   # Hyperswitch
 secret rails         hyperswitch db-password="$HYPERSWITCH_PG" admin-api-key="$(rand 32)" jwt-secret="$(rand 48)" \
                      master-enc-key="$(hex32)" api-key-hash-key="$(hex32)" acquirer-api-key="$(rand 32)"
 secret database-tier hyperswitch-db password="$HYPERSWITCH_PG"
+TAZAMA_PG=$(rand)
+secret fraud         tazama-db password="$TAZAMA_PG"
+secret database-tier tazama-db password="$TAZAMA_PG"
 APICURIO_PG=$(rand)
 secret streaming     apicurio-db password="$APICURIO_PG"
 secret database-tier apicurio-db password="$APICURIO_PG"
