@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -45,8 +46,11 @@ type Adapter struct {
 	Unwrap      func(encryptedKey []byte) ([]byte, error)
 	Hyperswitch *rsa.PublicKey // encrypts generate responses (Hyperswitch's private_key setting is its private half)
 	KeyID       string
-	mu          sync.Mutex
-	refs        map[string]ref // card reference -> token
+	// PublicKey returns this service's encryption public key as PEM (Hyperswitch's public_key setting), from the
+	// security module; served unauthenticated on GET <prefix>/public-key (it is public).
+	PublicKey func() (string, error)
+	mu        sync.Mutex
+	refs      map[string]ref // card reference -> token
 }
 
 type ref struct {
@@ -156,7 +160,22 @@ func (a *Adapter) Handler(prefix string) http.Handler {
 	mux.HandleFunc("POST "+prefix+"/token", a.fetch)
 	mux.HandleFunc("POST "+prefix+"/delete", a.del)
 	mux.HandleFunc("POST "+prefix+"/status", a.status)
+	mux.HandleFunc("GET "+prefix+"/public-key", a.publicKey)
 	return mux
+}
+
+func (a *Adapter) publicKey(w http.ResponseWriter, _ *http.Request) {
+	if a.PublicKey == nil {
+		fail(w, 404, "NOT_FOUND", "public key not configured")
+		return
+	}
+	pem, err := a.PublicKey()
+	if err != nil {
+		fail(w, 503, "UNAVAILABLE", "security module unavailable")
+		return
+	}
+	w.Header().Set("content-type", "application/x-pem-file")
+	_, _ = io.WriteString(w, pem)
 }
 
 type refReq struct {
@@ -298,5 +317,27 @@ func HSMUnwrap(hsmURL, label string) func([]byte) ([]byte, error) {
 			return nil, fmt.Errorf("security module unwrap: HTTP %d", r.StatusCode)
 		}
 		return hex.DecodeString(out["data"])
+	}
+}
+
+// HSMPublicKey returns the security module's public half of an RSA encryption key (GET /v1/certs/<label>: base64
+// DER SubjectPublicKeyInfo) as PEM.
+func HSMPublicKey(hsmURL, label string) func() (string, error) {
+	c := &http.Client{Timeout: 3 * time.Second}
+	return func() (string, error) {
+		r, err := c.Get(hsmURL + "/v1/certs/" + label)
+		if err != nil {
+			return "", err
+		}
+		defer r.Body.Close()
+		var out struct{ X5c string }
+		if err := json.NewDecoder(r.Body).Decode(&out); err != nil || r.StatusCode != 200 || out.X5c == "" {
+			return "", fmt.Errorf("security module public key %s: HTTP %d", label, r.StatusCode)
+		}
+		der, err := base64.StdEncoding.DecodeString(out.X5c)
+		if err != nil {
+			return "", err
+		}
+		return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})), nil
 	}
 }

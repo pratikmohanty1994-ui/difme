@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -145,5 +147,37 @@ func TestJWEInteropWithJwcrypto(t *testing.T) {
 	var p map[string]any
 	if err := json.Unmarshal([]byte(py("decrypt", priv, out["payload"].(string))), &p); err != nil || !tokens.IsToken(p["token"].(string)) {
 		t.Fatalf("jwcrypto could not read the response: %v %v", err, p)
+	}
+}
+
+func TestPublicKeyFromSecurityModule(t *testing.T) {
+	a, srv, _ := setup(t)
+	der, _ := x509.MarshalPKIXPublicKey(&adapterKey.PublicKey)
+	hsm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/certs/nts-jwe" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"x5c": base64.StdEncoding.EncodeToString(der)})
+	}))
+	defer hsm.Close()
+	a.PublicKey = HSMPublicKey(hsm.URL, "nts-jwe")
+	r, err := http.Get(srv.URL + "/nts/public-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	body, _ := io.ReadAll(r.Body)
+	blk, _ := pem.Decode(body)
+	if r.StatusCode != 200 || blk == nil || blk.Type != "PUBLIC KEY" {
+		t.Fatalf("HTTP %d %q", r.StatusCode, body)
+	}
+	pk, err := x509.ParsePKIXPublicKey(blk.Bytes)
+	if err != nil || !pk.(*rsa.PublicKey).Equal(&adapterKey.PublicKey) {
+		t.Fatalf("public key mismatch: %v", err)
+	}
+	a.PublicKey = HSMPublicKey(hsm.URL, "missing")
+	if r, _ := http.Get(srv.URL + "/nts/public-key"); r.StatusCode != 503 {
+		t.Fatalf("missing key: HTTP %d", r.StatusCode)
 	}
 }

@@ -66,6 +66,7 @@ func main() {
 			log.Fatal("NTS_HYPERSWITCH_PUBLIC_KEY: RSA public key required")
 		}
 		nts := ntadapter.New(n.Tokens, env("NTS_REQUESTOR", "HYPERSWITCH"), key, env("NTS_KEY_ID", "nts-jwe"), ntadapter.HSMUnwrap(hsm, "nts-jwe"), rsaPub)
+		nts.PublicKey = ntadapter.HSMPublicKey(hsm, "nts-jwe")
 		mux := http.NewServeMux()
 		mux.Handle("/nts/", nts.Handler("/nts"))
 		mux.Handle("/", handler)

@@ -41,6 +41,15 @@ spec:
           ROUTER__SECRETS__MASTER_ENC_KEY='{{ .Data.data.master_enc_key }}'
           ROUTER__API_KEYS__HASH_KEY='{{ .Data.data.api_key_hash_key }}'
           {{- end }}
+        # Network tokenization (ADR-024): Hyperswitch's own JWE private key and the API key shared with the token service
+        # (scheme-sim /nts). Empty when the values aren't in OpenBao; the router then runs without network tokens.
+        vault.hashicorp.com/agent-inject-secret-nts.env: secret/data/rails/hyperswitch
+        vault.hashicorp.com/agent-inject-template-nts.env: |
+          {{- with secret "secret/data/rails/hyperswitch" }}{{- if .Data.data.nts_private_key_b64 }}
+          ROUTER__NETWORK_TOKENIZATION_SERVICE__TOKEN_SERVICE_API_KEY='{{ .Data.data.nts_api_key }}'
+          ROUTER__NETWORK_TOKENIZATION_SERVICE__WEBHOOK_SOURCE_VERIFICATION_KEY='{{ .Data.data.nts_webhook_key }}'
+          ROUTER__NETWORK_TOKENIZATION_SERVICE__PRIVATE_KEY='{{ base64Decode .Data.data.nts_private_key_b64 }}'
+          {{- end }}{{- end }}
     spec:
       serviceAccountName: hyperswitch
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
@@ -53,10 +62,38 @@ spec:
             - { name: DATABASE_URL, value: "postgresql://hyperswitch@postgres-docdb.database-tier.svc:5432/hyperswitch" }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
+        # The token service's encryption public key (its private half stays in the security module, key nts-jwe), from
+        # scheme-sim, which publishes it. Writes the non-secret network tokenization settings only when the key is
+        # there; otherwise (token service not configured or not up within 5 minutes) payments start without them.
+        - name: nts-public-key
+          image: curlimages/curl:8.11.1
+          command: [sh, -c]
+          args:
+            - |
+              NTS=http://scheme-sim.rails.svc:8080/nts
+              : > /nts/public.env
+              for i in $(seq 60); do
+                if PEM=$(curl -sf "$NTS/public-key") && [ -n "$PEM" ]; then
+                  { echo "ROUTER__NETWORK_TOKENIZATION_SERVICE__PUBLIC_KEY='$PEM'"
+                    echo "ROUTER__NETWORK_TOKENIZATION_SERVICE__KEY_ID=nts-jwe"
+                    for u in generate_token_url=generate fetch_token_url=token delete_token_url=delete check_token_status_url=status \
+                             check_tokenize_eligibility_url=eligibility fetch_altid_url=altid; do
+                      echo "ROUTER__NETWORK_TOKENIZATION_SERVICE__$(echo "${u%%=*}" | tr a-z A-Z)=$NTS/${u#*=}"
+                    done; } > /nts/public.env
+                  echo "network tokenization service key fetched"; exit 0
+                fi
+                sleep 5
+              done
+              echo "token service public key not available: starting without network tokenization"
+          volumeMounts: [{ name: nts, mountPath: /nts }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
       containers:
         - name: router
           image: ghcr.io/pratikmohanty1994-ui/difme-hyperswitch:0.1.0
-          command: [bash, -c, 'set -a; . /vault/secrets/router.env; set +a; exec /local/bin/router -f /local/config/docker_compose.toml']
+          # Network tokenization only with both halves (secret settings from OpenBao, public key and URLs from the init
+          # container): a partial [network_tokenization_service] section would stop the router from starting.
+          command: [bash, -c, 'set -a; . /vault/secrets/router.env; if [ -s /nts/public.env ] && grep -q PRIVATE_KEY /vault/secrets/nts.env; then . /vault/secrets/nts.env; . /nts/public.env; echo "network tokenization on"; fi; set +a; exec /local/bin/router -f /local/config/docker_compose.toml']
           env:
             - { name: ROUTER__MASTER_DATABASE__HOST, value: postgres-docdb.database-tier.svc }
             - { name: ROUTER__MASTER_DATABASE__USERNAME, value: hyperswitch }
@@ -82,6 +119,8 @@ spec:
             - { name: ROUTER__REDIS__POOL_SIZE, value: "3" }
             # Card payments: the test processor's calls go to DIFME's acquirer, which sends them over ISO 8583 to the scheme.
             - { name: ROUTER__CONNECTORS__DUMMYCONNECTOR__BASE_URL, value: "http://iso-adapter.rails.svc:8080/dummy-connector" }
+            # Network tokens for DIFME's test processor too (upstream lists only real connectors).
+            - { name: ROUTER__NETWORK_TOKENIZATION_SUPPORTED_CONNECTORS__CONNECTOR_LIST, value: "adyen,cybersource,peachpayments,trustpay,phonypay,fauxpay,pretendpay,stripe_test,adyen_test,checkout_test,paypal_test" }
             - { name: ROUTER__LOG__CONSOLE__LEVEL, value: INFO }
             # Traces and metrics to DIFME's collector (Alloy, OTLP gRPC) → Tempo / VictoriaMetrics; not Hyperswitch's own stack.
             - { name: ROUTER__LOG__TELEMETRY__TRACES_ENABLED, value: "true" }
@@ -98,8 +137,10 @@ spec:
           readinessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 15, timeoutSeconds: 5 }
           livenessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 30 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: nts, mountPath: /nts, readOnly: true }]
           resources: { requests: { cpu: 50m, memory: 160Mi }, limits: { memory: 512Mi } }
       volumes:
+        - { name: nts, emptyDir: { medium: Memory, sizeLimit: 1Mi } }
         - name: openbao-token
           projected: { sources: [{ serviceAccountToken: { audience: vault, expirationSeconds: 600, path: token } }] }
 ---
@@ -136,6 +177,9 @@ spec:
             - { name: JWT_SECRET, valueFrom: { secretKeyRef: { name: hyperswitch, key: jwt-secret } } }
             - { name: MASTER_ENC_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: master-enc-key } } }
             - { name: API_KEY_HASH_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: api-key-hash-key } } }
+            - { name: NTS_API_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-api-key } } }
+            - { name: NTS_WEBHOOK_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-webhook-key } } }
+            - { name: NTS_PRIVATE_KEY_B64, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-private-key-b64 } } }
           command: [sh, -c]
           args:
             - |
@@ -150,7 +194,8 @@ spec:
               # cas=0: written only if nobody wrote it in between. Values are random letters/digits/hex (no JSON escaping needed).
               code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Vault-Token: $TOKEN" "$BAO_ADDR/v1/secret/data/rails/hyperswitch" \
                 -d "{\"options\":{\"cas\":0},\"data\":{\"db_password\":\"$DB_PASSWORD\",\"admin_api_key\":\"$ADMIN_API_KEY\",\
-              \"jwt_secret\":\"$JWT_SECRET\",\"master_enc_key\":\"$MASTER_ENC_KEY\",\"api_key_hash_key\":\"$API_KEY_HASH_KEY\"}}")
+              \"jwt_secret\":\"$JWT_SECRET\",\"master_enc_key\":\"$MASTER_ENC_KEY\",\"api_key_hash_key\":\"$API_KEY_HASH_KEY\",\
+              \"nts_api_key\":\"$NTS_API_KEY\",\"nts_webhook_key\":\"$NTS_WEBHOOK_KEY\",\"nts_private_key_b64\":\"$NTS_PRIVATE_KEY_B64\"}}")
               [ "$code" = 200 ] || { echo "write refused: HTTP $code"; exit 1; }
               echo "secret/rails/hyperswitch written to OpenBao"
           volumeMounts: [{ name: openbao-token, mountPath: /var/run/secrets/openbao, readOnly: true }]

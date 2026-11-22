@@ -23,6 +23,9 @@ spec:
           env:
             - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }   # CAVV and TAVV checks (ADR-026/027)
             - { name: ISSUER_URL, value: "http://card-issuer.rails.svc:8080" }   # issuer host for card-issuer's cards (ADR-024)
+            # Network tokenization service for Hyperswitch (/nts): shared API key and Hyperswitch's public key (not secret).
+            - { name: NTS_API_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-api-key } } }
+            - { name: NTS_HYPERSWITCH_PUBLIC_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-public-key } } }
             # Bank X (BIN 437551, the FR-01 offer BIN) cards for buying partners, plus another issuer.
             - name: SEED_CARDS
               value: >-

@@ -53,8 +53,16 @@ secret rails         fineract-admin-oauth client-id=fineract-admin client-secret
 secret core-platform difme-exchange-oauth client-id=difme-exchange client-secret="$EXCHANGE_CS"
 HYPERSWITCH_PG=$(rand)
 hex32() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }   # Hyperswitch wants 32-byte hex keys
+# Network tokenization (ADR-024): Hyperswitch's own JWE key pair (its private half decrypts the token service's
+# responses; scheme-sim encrypts to the public half) and the API key both sides share. Hyperswitch's key, like its
+# master key, goes to OpenBao through the seeder; the token service's key stays in the security module (nts-jwe).
+NTS_PRIV=$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)
+NTS_PUB=$(printf '%s\n' "$NTS_PRIV" | openssl pkey -pubout)
 secret rails         hyperswitch db-password="$HYPERSWITCH_PG" admin-api-key="$(rand 32)" jwt-secret="$(rand 48)" \
-                     master-enc-key="$(hex32)" api-key-hash-key="$(hex32)" acquirer-api-key="$(rand 32)"
+                     master-enc-key="$(hex32)" api-key-hash-key="$(hex32)" acquirer-api-key="$(rand 32)" \
+                     nts-api-key="$(rand 32)" nts-webhook-key="$(rand 32)" nts-public-key="$NTS_PUB" \
+                     nts-private-key-b64="$(printf '%s\n' "$NTS_PRIV" | base64 | tr -d '\n')"
+unset NTS_PRIV
 secret database-tier hyperswitch-db password="$HYPERSWITCH_PG"
 # Card security (ADR-026/027): no keys here. The security module gets them only through attested key release.
 CARD_ISSUER_PG=$(rand)
