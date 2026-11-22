@@ -304,3 +304,10 @@ one engine combines it with the typologies. Hyperswitch is built without its `fr
 
 **Not public upstream:** only rules 901 and 902 are open source; DIFME's own rules (the §7.4 business rules, the ONNX
 score) are written as rule processors in the same shape.
+
+**Licence scan (2026-11-22, ADR-001/ADR-009, owner: "only free and open source"):** all 1,134 npm packages in the 12
+lockfiles. MIT 933, Apache-2.0 62, ISC 53, BSD-3 47, BlueOak-1.0.0 13 (OSI), BSD-2 12, CC0/Unlicense/0BSD, Python-2.0
+(`argparse`), WTFPL-or-ISC. The three runtime packages with no lockfile licence (`json-bignum`, `busboy`,
+`streamsearch`) are MIT per their registry metadata. `caniuse-lite` (CC-BY-4.0, browser-support data) is a test/build-
+time dependency only and never ships in an image. Kafka client for the NATS replacement: `@confluentinc/kafka-javascript`
+(MIT; librdkafka BSD-2), maintained; `kafkajs` (MIT) has been unmaintained since 2023.
