@@ -404,3 +404,42 @@ Not used: `sebastianrm/cards-service` has no licence (all rights reserved), so i
   features (IRAC classification and provisioning, co-lending, collections and dunning).
 - **Order:** debit/prepaid cards first; credit after the gate above. The Mifos web app is not deployed (DIFME's
   back office covers it); it can be added later if wanted.
+
+## ADR-026 — Payment security module and attested key release (owner 2026-11-22)
+**Security module:** a DIFME `hsm` service wrapping jPOS's `JCESecurityModule` (AGPL-3.0; matches the planned jPOS
+migration), reached only through jPOS's `SMAdapter` interface so a certified payment HSM (Thales payShield, Futurex,
+Utimaco, a cloud payment HSM) replaces it later without caller changes. Checked in source (jPOS, 2026-11-18): it
+implements ARQC verification / ARPC generation with EMV key derivation, secure-messaging session keys and MACs for
+issuer scripts (incl. PIN change), CVV / CVV2 (CVD) / iCVV / dCVV / CVC3, CAVV, PIN translation and PVV, MACs, key
+generation/import/export with check values, SDA/DDA/CDA. It exposes only those functions (no clear-key export), over
+the mesh with mTLS. Every function is cross-checked in tests against **pyemv** and **psec** (MIT) and published test
+vectors. Order: CVV2 and CAVV (network-token cryptogram) first, for today's card-not-present payments; PIN, chip
+ARQC/ARPC and issuer scripts with card-present flows. This replaces two ADR-024 shortcuts: CVV as a keyed hash in
+OpenBao and an HMAC token cryptogram become the standard algorithms in the security module.
+
+**Keys never in clear outside the module — attested key release (verified hands-on 2026-11-22):**
+- The master key (LMK) lives in **OpenBao**; working keys exist only encrypted under it.
+- **Trustee** (Confidential Containers; Apache-2.0) releases the LMK: its key broker reads OpenBao through its
+  `vault_kv` backend with a read-only token (`kbs/difme/*`) and returns it as **JWE encrypted to the public key the
+  TEE put in its attestation evidence**, so a stolen token alone gets nothing. Release only when the attestation
+  result (an EAR token) is **affirming** (`resource-policy.rego`).
+- The module runs in a TEE. Production: Confidential Containers on AMD SEV-SNP or Intel TDX nodes, appraised by
+  Trustee's own verifiers with upstream's policy (a software TEE is never affirming there). Development: Trustee's
+  emulated "sample" TEE with `attestation-policy.dev.rego`, where the sample `svn` stands in for the module's code
+  measurement (`difme_hsm_measurement` reference value).
+- **Verified** (`ci/tee-key-release-test.sh`, Trustee images kbs-grpc-as@sha256:c24e5fda…, coco-as-grpc@sha256:b0b86ba6…,
+  rvps@sha256:16410d79…; OpenBao 2.7 dev server): no registered measurement → contraindicated, **refused** (403
+  PolicyDeny); measurement registered → affirming → **released**, equal to the value in OpenBao; measurement changed
+  (a modified build) → **refused**.
+- Findings for production: Trustee's `vault_kv` backend defaults to `verify_ssl = false` (set it true, with DIFME's
+  CA); sample reference values are stored as strings (`["1"]`), so policies compare strings; upstream's default policy
+  can never affirm the sample TEE (no launch digest), which is right for production.
+- **Emulation gives no protection**: in an emulated TEE the host's root can still read memory. It proves the design
+  (attestation-gated, JWE-bound release, no key on disk or in operators' hands) so real hardware is a deployment
+  change. The free hosts in use (GitHub runners, the free arm64 VM) have no TEE hardware; until confidential nodes or a
+  certified HSM are used, keys are protected by design, not by hardware. Also in place regardless: LMK split into
+  custodian components (dual control), memory locked and core dumps off in the module.
+- **Considered:** OpenBao JWT login on Veraison's signed results (works, but hands the secret to any holder of the
+  token; Veraison stays for device/edge attestation, §11.1); Arm CCA realms under QEMU (FEAT_RME is experimental in
+  QEMU and needs the full firmware stack: not viable on a 4-core VM); SoftHSM2 (BSD; derives keys inside the token,
+  but has no payment functions).
