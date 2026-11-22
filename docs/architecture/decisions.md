@@ -459,3 +459,11 @@ OpenBao and an HMAC token cryptogram become the standard algorithms in the secur
   deployed (configuration is loaded by the schema job for now).
 - Next: DIFME rules (the ONNX fraud score as a rule processor, the §7.4 business rules), the payment-hub hooks (checks
   before the charge and before capture; cancel / refund / review actions), cluster run.
+- **2026-11-22, rule D01 and the full pipeline verified:** DIFME's ONNX fraud model runs as Tazama rule D01
+  (`services/fraud-rules/rule-d01`, 13 tests, run in every image build): probability ×1000 banded like the scorer's
+  own decision (ALLOW / REVIEW / BLOCK); a scorer that doesn't answer within 300 ms gives `.err` (no weight).
+  `ci/tazama-e2e.sh` (seven images, a stand-in scorer at 0.7): **ALRT**, typology scores 901+902 = 200 and the
+  fraud-model typology = 400 (interdiction threshold). Found on the way and fixed: consumers subscribing before their
+  topic existed missed messages (transport now waits for topic metadata, refresh 10 s); the e2e script left containers
+  behind. Images: 7 of 8 pushed and signed after moving the run stage to Debian slim with security updates (Trivy
+  blocked a CRITICAL libssl3 in the distroless base); rule-d01 rebuilds after a test-timing fix.
