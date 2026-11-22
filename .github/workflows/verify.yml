@@ -57,6 +57,8 @@ jobs:
         run: python deploy/argocd/render.py --check
       - name: Vertical packs are valid (ADR-020)
         run: python verticals/check.py
+      - name: Generated Tazama manifests are current
+        run: python deploy/platform/fraud/tazama/render.py --check
       - name: Generated core-service manifests are current
         run: python deploy/components/quarkus-service/render.py && git diff --exit-code deploy/platform/core-platform/core-services/generated.yaml deploy/platform/core-platform/stream-services/generated.yaml
       - name: Every catalog entry has its config directory

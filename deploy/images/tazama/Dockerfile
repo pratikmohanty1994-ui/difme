@@ -6,9 +6,12 @@
 FROM node:22-bookworm AS build
 ARG SERVICE=tms-service
 ARG RULE=rule-901
-WORKDIR /tazama
-COPY vendor/tazama/ ./
+# Repository layout: upstream under vendor/tazama, DIFME's own rules under services/fraud-rules.
+WORKDIR /src
+COPY vendor/tazama/ vendor/tazama/
+COPY services/fraud-rules/ services/fraud-rules/
 COPY deploy/images/tazama/build.sh /usr/local/bin/tazama-build
+WORKDIR /src/vendor/tazama
 RUN tazama-build "$SERVICE" "$RULE" && mkdir /out && cp -r "$SERVICE/build" "$SERVICE/node_modules" "$SERVICE/package.json" /out/
 
 FROM gcr.io/distroless/nodejs22-debian12:nonroot

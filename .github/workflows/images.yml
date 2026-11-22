@@ -156,6 +156,7 @@ jobs:
           - { image: admin-service,      service: admin-service }
           - { image: rule-901,           service: rule-executer, rule: rule-901 }
           - { image: rule-902,           service: rule-executer, rule: rule-902 }
+          - { image: rule-d01,           service: rule-executer, rule: rule-d01 }   # DIFME: ONNX fraud model
     uses: ./.github/workflows/_image.yml
     with:
       name: difme-tazama-${{ matrix.image }}

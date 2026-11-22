@@ -1,0 +1,24 @@
+{
+  "name": "@difme/rule-d01",
+  "version": "1.0.0",
+  "description": "DIFME rule D01: the ONNX fraud model as a Tazama rule processor (ADR-023)",
+  "license": "Apache-2.0",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib"],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@tazama-lf/frms-coe-lib": "file:../../../vendor/tazama/frms-coe-lib",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.4",
+    "typescript": "^5.8.3"
+  }
+}
