@@ -33,7 +33,8 @@ class HsmServerTest {
                 .put("zpk", hsm.keyFromComponents(SMAdapter.TYPE_ZPK, PinAndChipTest.ZPK))
                 .put("pvk", hsm.keyFromComponents(SMAdapter.TYPE_PVK, PinAndChipTest.KEY))
                 .put("imk-ac", hsm.keyFromComponents(SMAdapter.TYPE_MK_AC, PinAndChipTest.KEY))
-                .putAes("aes-pin", hsm.aesKeyFromComponents("P0", "00112233445566778899AABBCCDDEEFF"));
+                .putAes("aes-pin", hsm.aesKeyFromComponents("P0", "00112233445566778899AABBCCDDEEFF"))
+                .putAes("bdk-aes", hsm.aesKeyFromComponents("B0", AesDukptTest.BDK128));
         http = HsmServer.serve(new HsmServer(hsm, keys), "127.0.0.1:0");
         base = "http://127.0.0.1:" + http.getAddress().getPort();
     }
@@ -76,6 +77,24 @@ class HsmServerTest {
         // a key of the wrong type by label is refused
         assertEquals(400, post("/v1/pin/verify-pvv", Map.of("pan", "4375510000000001", "pinBlock", "EAEF33E33F471DA9", "pvk", "zpk",
                 "pvki", "1", "pvv", "0582")).statusCode());
+    }
+
+    @Test
+    void aesDukptPinOverHttp() throws Exception {
+        // terminal PIN block from moov-io/dukpt (AesDukptTest), to ISO 0 under the ZPK (psec value)
+        assertEquals("{\"pinBlock\":\"" + AesDukptTest.ISO0_1234 + "\"}", post("/v1/pin/dukpt-aes-to-zpk", Map.of("pan", "4375510000000001",
+                "ksn", AesDukptTest.KSN_A5F31, "pinBlock", AesDukptTest.ISO4_128_A5F31)).body());
+        // the wrong counter: the block does not decipher (no detail returned)
+        var r = post("/v1/pin/dukpt-aes-to-zpk", Map.of("pan", "4375510000000001", "ksn", AesDukptTest.KSN2, "pinBlock", AesDukptTest.ISO4_128_1));
+        assertEquals(500, r.statusCode());
+        assertEquals("{\"error\":\"security module error\"}", r.body());
+        // a KSN a device never sends (counter 0), a short KSN, a non-BDK key by label
+        assertEquals(400, post("/v1/pin/dukpt-aes-to-zpk", Map.of("pan", "4375510000000001", "ksn", "123456789012345600000000",
+                "pinBlock", AesDukptTest.ISO4_128_1)).statusCode());
+        assertEquals(400, post("/v1/pin/dukpt-aes-to-zpk", Map.of("pan", "4375510000000001", "ksn", "FFFF9876543210E00001",
+                "pinBlock", AesDukptTest.ISO4_128_1)).statusCode());
+        assertEquals(500, post("/v1/pin/dukpt-aes-to-zpk", Map.of("pan", "4375510000000001", "ksn", AesDukptTest.KSN1, "bdk", "aes-pin",
+                "pinBlock", AesDukptTest.ISO4_128_1)).statusCode());
     }
 
     @Test

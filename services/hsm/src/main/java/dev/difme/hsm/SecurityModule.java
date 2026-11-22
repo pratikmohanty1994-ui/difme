@@ -171,6 +171,11 @@ public final class SecurityModule {
         return org.jpos.iso.ISOUtil.hexString(ext().translateIso4ToZpk(iso4, pan, aesPinKey, zpk).getPINBlock());
     }
 
+    /** AES DUKPT (ANSI X9.24-3-2017): a format 4 PIN block from a terminal, by its 12-byte KSN, to format 0 under a ZPK. */
+    public String translateDukptAesToZpk(byte[] iso4, String pan, byte[] ksn, String bdkKeyBlock, SecureDESKey zpk) throws SMException {
+        return org.jpos.iso.ISOUtil.hexString(ext().translateDukptAesToZpk(iso4, pan, ksn, bdkKeyBlock, zpk).getPINBlock());
+    }
+
     public byte[] translateZpkToIso4(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, String aesPinKey) throws SMException {
         return ext().translateZpkToIso4(pinUnderZpk, pan, zpk, aesPinKey);
     }

@@ -66,6 +66,27 @@ public class DifmeSecurityModule extends JCESecurityModule {
         return exportPIN(underLmk, zpk, FORMAT01);
     }
 
+    /**
+     * AES DUKPT (ANSI X9.24-3-2017): an ISO 9564 format 4 PIN block from a terminal, enciphered under the PIN
+     * encryption key derived from the BDK key block ("B0") and the 12-byte KSN, translated to format 0 under a TDES
+     * ZPK. The BDK, Initial Key, transaction key and PIN key exist in clear only inside this call and are zeroed.
+     */
+    public EncryptedPIN translateDukptAesToZpk(byte[] iso4, String pan, byte[] ksn, String bdkKeyBlock, SecureDESKey zpk) throws SMException {
+        byte[] bdk = aes(bdkKeyBlock, "B0"), pinKey = null;
+        String pin;
+        try {
+            pinKey = AesDukpt.pinKey(bdk, ksn);
+            pin = Iso4.decipher(pinKey, iso4, pan);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        } finally {
+            java.util.Arrays.fill(bdk, (byte) 0);
+            if (pinKey != null) java.util.Arrays.fill(pinKey, (byte) 0);
+        }
+        EncryptedPIN underLmk = encryptPIN(pin, pan, true);
+        return exportPIN(underLmk, zpk, FORMAT01);
+    }
+
     /** A PIN under a TDES ZPK, re-enciphered as an ISO 9564 format 4 block under an AES PIN key (app PIN set / reveal). */
     public byte[] translateZpkToIso4(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, String aesPinKeyBlock) throws SMException {
         String pin = decryptPIN(importPIN(pinUnderZpk, zpk));

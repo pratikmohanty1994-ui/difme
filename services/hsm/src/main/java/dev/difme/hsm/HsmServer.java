@@ -177,6 +177,12 @@ public final class HsmServer {
                     key(in, "from", null, SMAdapter.TYPE_ZPK), key(in, "to", null, SMAdapter.TYPE_ZPK)));
             case "/v1/pin/iso4-to-zpk" -> out.put("pinBlock", hsm.translateIso4ToZpk(h(in, "pinBlock"), d(in, "pan"),
                     keys.aes(in.getOrDefault("aesKey", "aes-pin")), key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK)));
+            case "/v1/pin/dukpt-aes-to-zpk" -> { // AES DUKPT terminal PIN block (ISO 4) by its 24-hex KSN, to ISO 0 under a ZPK
+                byte[] ksn = h(in, "ksn");
+                AesDukpt.checkKsn(ksn);
+                out.put("pinBlock", hsm.translateDukptAesToZpk(h(in, "pinBlock"), d(in, "pan"), ksn,
+                        keys.aes(in.getOrDefault("bdk", "bdk-aes")), key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK)));
+            }
             case "/v1/arqc/verify" -> {
                 byte[] arpc = hsm.verifyArqcGenerateArpc(SecurityModule.Cvn.valueOf(in.getOrDefault("cvn", "")),
                         key(in, "key", "imk-ac", SMAdapter.TYPE_MK_AC), d(in, "pan"), d(in, "psn"), h(in, "arqc"), h(in, "atc"), h(in, "upn"),
