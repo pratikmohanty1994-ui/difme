@@ -426,6 +426,12 @@ the mesh with mTLS. Every function is cross-checked in tests against **pyemv** a
 vectors. Order: CVV2 and CAVV (network-token cryptogram) first, for today's card-not-present payments; PIN, chip
 ARQC/ARPC and issuer scripts with card-present flows. This replaces two ADR-024 shortcuts: CVV as a keyed hash in
 OpenBao and an HMAC token cryptogram become the standard algorithms in the security module.
+**Progress (2026-11-22):** `services/hsm` — `SecurityModule` over jPOS 3.0.2's `SMAdapter` / `JCESecurityModule`:
+CVK from clear components (key ceremony, returned only under the LMK), CVV2, magstripe CVV, Visa CAVV, with verify.
+10 tests pass, matching the published Visa CVV vector (561) and psec 1.x for every value; reloads from the same LMK file.
+pyemv 1.5 has no CVV function, so psec is the CVV/CAVV reference (pyemv stays the reference for ARQC/ARPC).
+Next: the mTLS service around it, LMK from the attested key release, then card-issuer and scheme-sim calling it
+(replacing the keyed-hash CVV and the HMAC token cryptogram), then PIN/PVV and ARQC/ARPC.
 
 **Keys never in clear outside the module — attested key release (verified hands-on 2026-11-22):**
 - The master key (LMK) lives in **OpenBao**; working keys exist only encrypted under it.
