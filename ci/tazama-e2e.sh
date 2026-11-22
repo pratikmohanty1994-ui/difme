@@ -10,7 +10,11 @@ root=$(cd "$(dirname "$0")/.." && pwd); cd "$root"
 work=$(mktemp -d); pw=tazama-e2e
 svc=(tms:tms-service event-director:event-director rule-901:rule-901 rule-902:rule-902 rule-d01:rule-d01 typology-processor:typology-processor
      event-adjudicator:event-adjudicator)
-cleanup() { docker rm -f tz-e2e-pg tz-e2e-valkey tz-e2e-kafka tz-e2e-scorer "${svc[@]/#/tz-e2e-}" >/dev/null 2>&1 || true; }
+names=("${svc[@]%%:*}")  # entries are image:envfile; containers are named after the image
+cleanup() { docker rm -f tz-e2e-pg tz-e2e-valkey tz-e2e-kafka tz-e2e-scorer "${names[@]/#/tz-e2e-}" >/dev/null 2>&1 || true; }
+diagnose() {  # on failure: what each service last reported
+  for s in "${svc[@]}"; do echo "== ${s%%:*}"; docker logs "tz-e2e-${s%%:*}" 2>&1 | grep -iE 'error|fail|not defined|alerting|completed' | tail -3 || true; done
+}
 cleanup; trap cleanup EXIT
 for s in "${svc[@]}"; do
   img=${s%%:*}; case $img in tms) b=tms-service r=rule-901;; rule-*) b=rule-executer r=$img;; *) b=$img r=rule-901;; esac
@@ -67,9 +71,9 @@ for _ in $(seq 1 30); do
   [ -n "$st" ] && break; sleep 2
 done
 echo "EndToEndId $e2e -> ${st:-no evaluation}"
-[ "$st" = ALRT ] || { echo FAIL; exit 1; }
+[ "$st" = ALRT ] || { echo FAIL; diagnose; exit 1; }
 # Typology scores: public rules 901 + 902 = 200 (alert); DIFME's D01 at the model's BLOCK band = 400 (interdiction).
 scores=$(docker exec tz-e2e-pg psql -U postgres -d tazama_evaluation -tAc "select string_agg(t->>'cfg' || '=' || (t->>'result'), ' ' order by t->>'cfg')
   from evaluation, jsonb_array_elements(evaluation->'report'->'tadpResult'->'typologyResult') t where evaluation::text like '%$e2e%'")
 echo "typology scores: $scores"
-[ "$scores" = "difme-901-902@1.0.0=200 difme-fraud-model@1.0.0=400" ] && echo PASS || { echo FAIL; exit 1; }
+[ "$scores" = "difme-901-902@1.0.0=200 difme-fraud-model@1.0.0=400" ] && echo PASS || { echo FAIL; diagnose; exit 1; }

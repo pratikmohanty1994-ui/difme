@@ -35,6 +35,13 @@ interface Amount {
 
 const failed = (ruleRes: RuleResult, reason: string): RuleResult => ({ ...ruleRes, subRuleRef: '.err', reason });
 
+// Warm Node's HTTP client and the connection once at load: the first fetch in a process loads undici, which on a busy
+// node took longer than the 300 ms budget and turned the first transaction's score into .err (end-to-end test,
+// 2026-11-22). Best effort; errors are ignored here and surface on real calls.
+if (process.env.FRAUD_SCORER_URL) {
+  void fetch(new URL('/healthz', process.env.FRAUD_SCORER_URL), { signal: AbortSignal.timeout(5000) }).catch(() => undefined);
+}
+
 export async function handleTransaction(
   req: RuleRequest,
   determineOutcome: (value: number, ruleConfig: RuleConfig, ruleResult: RuleResult) => RuleResult,

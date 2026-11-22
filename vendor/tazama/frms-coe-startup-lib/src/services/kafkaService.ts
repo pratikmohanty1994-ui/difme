@@ -14,6 +14,7 @@
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { ILoggerService } from '../interfaces';
 import { startupConfig } from '../interfaces/iStartupConfig';
 import type { onMessageFunction } from '../types/onMessageFunction';
@@ -26,6 +27,11 @@ export const topicFor = (subject: string): string => subject.replace(/[^A-Za-z0-
 
 // New topics: partitions bound the parallelism of one processor's instances; replication 1 matches DIFME's dev Kafka.
 const DEFAULT_PARTITIONS = 3;
+// librdkafka refreshes topic metadata every 5 minutes by default; a topic created after a consumer subscribed would be
+// invisible to it for that long. 10 s keeps new topics (e.g. a rule added to the network map) in reach quickly.
+const METADATA_REFRESH = { 'topic.metadata.refresh.interval.ms': 10_000 };
+const METADATA_WAIT_MS = 30_000;
+const METADATA_POLL_MS = 250;
 const DEFAULT_REPLICATION = 1;
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : JSON.stringify(err));
@@ -75,6 +81,26 @@ export class KafkaService implements IStartupService {
         await pending;
       }),
     );
+  }
+
+  /**
+   * Wait until the broker's metadata lists every topic with partitions. A consumer that subscribes to a topic another
+   * client is still creating sees "Unknown topic or partition" and, with librdkafka's default 5-minute metadata
+   * refresh, misses messages for minutes (found in the end-to-end test, 2026-11-22).
+   */
+  private async awaitTopicMetadata(topics: string[]): Promise<void> {
+    const admin = await this.connectAdmin();
+    const deadline = Date.now() + METADATA_WAIT_MS;
+    for (;;) {
+      try {
+        const meta = await admin.fetchTopicMetadata({ topics });
+        if (meta.length === topics.length && meta.every((t) => t.partitions.length > 0)) return;
+      } catch {
+        // not visible yet
+      }
+      if (Date.now() > deadline) throw new Error(`Kafka topics not visible after ${METADATA_WAIT_MS} ms: ${topics.join(', ')}`);
+      await sleep(METADATA_POLL_MS);
+    }
   }
 
   private async createTopic(topic: string): Promise<void> {
@@ -138,10 +164,12 @@ export class KafkaService implements IStartupService {
   private async startConsumer(): Promise<void> {
     const topics = (this.consumerStreamName ?? []).map(topicFor);
     await this.ensureTopics(topics);
+    await this.awaitTopicMetadata(topics);
     this.consumer = this.client().consumer({
       // A new group starts at the earliest offset: messages published before its first partition assignment are
       // processed, not skipped. Afterwards the group resumes from its committed offset.
       kafkaJS: { groupId: this.functionName, fromBeginning: true, allowAutoTopicCreation: false },
+      ...METADATA_REFRESH,
     });
     await this.consumer.connect();
     await this.consumer.subscribe({ topics });
@@ -262,6 +290,7 @@ export class KafkaService implements IStartupService {
     // A group of its own per instance = broadcast fan-out, like a NATS subscription without a queue group.
     this.serviceConsumer = this.client().consumer({
       kafkaJS: { groupId: `${this.functionName}-svc-${randomUUID()}`, fromBeginning: false, allowAutoTopicCreation: false },
+      ...METADATA_REFRESH,
     });
     await this.serviceConsumer.connect();
     await this.serviceConsumer.subscribe({ topics: [topic] });
