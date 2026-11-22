@@ -36,6 +36,7 @@ GROUPS = [
     ("debezium", "debezium-connect", r"^deploy/images/debezium-connect/"),
     ("veraison", "veraison", r"^deploy/images/veraison/"),
     ("tazama", "tazama", r"^(vendor/tazama/|services/fraud-rules/|deploy/images/tazama/)"),
+    ("phee", "ph-ee", r"^(vendor/mifos-ph-ee/|vendor/interledger/|services/zeebe-on-fluxnova/|services/fspiop-ilp-models/|deploy/images/mifos-ph-ee/)"),
 ]
 
 

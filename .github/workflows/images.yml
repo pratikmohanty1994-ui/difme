@@ -41,6 +41,7 @@ jobs:
       debezium: ${{ steps.d.outputs.debezium }}
       veraison: ${{ steps.d.outputs.veraison }}
       tazama: ${{ steps.d.outputs.tazama }}
+      phee: ${{ steps.d.outputs.phee }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -140,6 +141,23 @@ jobs:
       dockerfile: pwa/discountai/Dockerfile
       build-args: |
         APP=${{ matrix.app }}
+
+  ph-ee:
+    needs: changes
+    if: needs.changes.outputs.phee == 'true'
+    # Mifos Payment Hub EE connectors (vendor/mifos-ph-ee, MPL-2.0) on Fluxnova: one image per connector, built by
+    # deploy/images/mifos-ph-ee/build.sh on DIFME's replacements (Zeebe client, ILP models, vendored connector-common).
+    # Jars: both platforms from one job. Smoke: the connector starts without its peers and serves Prometheus metrics.
+    strategy:
+      fail-fast: false
+      matrix:
+        connector: [ams, channel, mojaloop]
+    uses: ./.github/workflows/_image.yml
+    with:
+      name: difme-ph-ee-${{ matrix.connector }}
+      dockerfile: deploy/images/mifos-ph-ee/Dockerfile
+      build-args: CONNECTOR=${{ matrix.connector }}
+      smoke: bash deploy/images/mifos-ph-ee/smoke.sh "$IMAGE:scan" ${{ matrix.connector }}
 
   tazama:
     needs: changes

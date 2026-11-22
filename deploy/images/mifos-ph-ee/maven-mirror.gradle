@@ -1,0 +1,13 @@
+// Maven Central rate-limits shared IPs (429); resolve through Google's public mirror of it (same artifacts), tried
+// first everywhere (plugins too: the plugin portal redirects artifact downloads to Maven Central).
+def mirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+def first = { repos ->
+  if (repos.findByName('centralMirror') == null) {
+    def m = repos.maven { name = 'centralMirror'; url = mirror }
+    repos.remove(m)
+    repos.addFirst(m)
+  }
+}
+beforeSettings { s -> first(s.pluginManagement.repositories); if (s.pluginManagement.repositories.findByName('Gradle Central Plugin Repository') == null) s.pluginManagement.repositories.gradlePluginPortal() }
+settingsEvaluated { s -> first(s.pluginManagement.repositories); first(s.dependencyResolutionManagement.repositories) }
+allprojects { first(repositories); first(buildscript.repositories) }
