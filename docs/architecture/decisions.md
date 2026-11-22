@@ -546,7 +546,24 @@ ISO adapter: challenge → OTP → RReq Y with CAVV → authorisation 00 verifie
 forged CAVV 05. Tazama is exercised against a fake TMS/admin in the Go tests (the client mirrors the payment hub's,
 verified live against Tazama); the live ACS-to-Tazama run comes with the cluster.
 
-**Not yet (lightweight scope):** HTML browser challenge page and app-channel JWE (CReq/CRes are JSON today);
+**EMV 3DS 2.3.1 alignment (2026-11-22):** message versions 2.3.1 (preferred) and 2.2.0; device channels 01 app,
+02 browser, 03 3RI (non-payment only, frictionless on a clear FRM verdict, else N; payment 3RI → N/21); message
+categories 01 PA and 02 NPA; acsRenderingType (native/HTML; templates text, single-select, OOB, HTML OOB).
+Authentication methods: OTP text with resend; single-select (cardholder chooses SMS or email for the passcode);
+out-of-band approval in the DIFME app (`POST /3ds/oob/{acsTransID}` from the app backend; CAVV second-factor 02);
+decoupled authentication (transStatus D, acsDecConInd, RReq when approved/declined or at
+threeDSRequestorDecMaxTime, reason 24). Browser: `POST /3ds/challenge` takes the base64url CReq + threeDSSessionData,
+renders the challenge (html/template, CSP), and posts the final base64url CRes to the AReq's notificationURL. App:
+ECDH-ES with the SDK's ephemeral P-256 key, ConcatKDF (PartyVInfo = SDK reference number), acsSignedContent JWS PS256
+with x5c, CReq/CRes as `dir` JWE (A128CBC-HS256, A128GCM with per-direction halves); verified against an independent
+SDK stand-in (jwcrypto + pyca/cryptography, `internal/acs/testdata/sdk.py`). Card management gained enrolled
+`channels` (sms, email, app).
+
+**Still open:** scheme-issued ACS signing certificate from OpenBao (dev self-signed today); multi-select and
+information-only templates are modelled, not used by policy; FIDO/SPC (WebAuthn) authentication data; 3DS Method
+(device fingerprint iframe) and browser data in risk; DS simulator and a 3DS Server; durable challenge store; real
+SMS/email/app-push delivery; attempts CAVV; image and manifests.
+**Earlier "not yet" list (superseded where done above):** HTML browser challenge page and app-channel JWE (CReq/CRes are JSON today);
 other challenge methods (app push / biometric via the DIFME app, out-of-band); 3RI and non-payment categories;
 attempts CAVV by a scheme stand-in; directory-server simulator and a 3DS Server (Hyperswitch has 3DS connectors) for
 merchant-initiated flows; persistence of pending challenges (in memory today: a restart loses open challenges);

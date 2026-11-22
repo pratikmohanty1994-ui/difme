@@ -42,7 +42,10 @@ the session branch; nothing runs on the owner's PC.
   (`docs/architecture/card-cryptography-plan.md`, incl. dCVV/dCVV2 and full CAVV lifecycle).
 - Lightweight 3DS ACS (ADR-027) connected to CMS, Tazama, hsm and the authorisation switch; `ci/acs-e2e.sh` passes.
 
-## 3. Cluster run 2 result and fixes pushed
+## 3. Cluster runs
+Run 3 (45026327939, core,streaming,security,rails,fraud) dispatched 13:13 UTC with the Tazama uid fix and failing-pod log capture; a check-in is scheduled.
+
+### Run 2 result and fixes pushed
 core, streaming, security, **rails converged**; **fraud failed**:
 - Tazama pods `CreateContainerConfigError`: `runAsNonRoot` with the image's non-numeric user `node`. **Fixed**:
   `runAsUser/runAsGroup: 1000` (render.py). Needs the next cluster run.
@@ -69,7 +72,7 @@ Correction to the plan: pyemv's Visa CVN 22 is TDES (option B, common session ke
    CNP incl. dCVV2/AAV/TAVV, PIN incl. ISO-4/AES DUKPT/IBM 3624, chip ARQC/ARPC incl. AES CVN 22, dCVV/CVC3, issuer
    scripts, personalisation RSA, MACs/terminals), each cross-checked with psec/pyemv/published vectors, then wire the
    callers (card-issuer, scheme-sim TSP) and delete the stopgaps.
-2. **Align the ACS to EMV 3DS 2.3.1, all authentication methods**: 2.3.1 message fields (e.g. `messageVersion`
+2. **ACS on EMV 3DS 2.3.1: DONE 2026-11-22** (ADR-027 "EMV 3DS 2.3.1 alignment": versions, channels incl. 3RI, PA/NPA, OTP, single-select, OOB app, decoupled, browser HTML + notificationURL, app JWE verified with jwcrypto). Remaining 3DS items are ADR-027's "Still open". Original ask for reference: 2.3.1 message fields (e.g. `messageVersion`
    2.3.1, `acsInfoInd`, `threeDSRequestorAuthenticationInfo`, `transStatusReason` codes incl. 2.3.1 additions,
    device channels 01 app / 02 browser / 03 3RI, message categories 01 PA / 02 NPA), challenge UIs: native text
    (OTP), single/multi select, out-of-band (DIFME app push with biometric), HTML; browser challenge page with
