@@ -79,6 +79,13 @@ api POST "loans/$loan/transactions?command=repayment" "{\"transactionDate\":\"$D
 [ "$(ci GET "/v1/cards/$crid/open-to-buy" | j openToBuyMinor)" = 400000 ] || fail "open to buy after repayment"
 [ "$(ci POST /v1/authorisations "{\"pan\":\"$crp\",\"amountMinor\":400000}" | j responseCode)" = 00 ] || fail "re-spend"
 echo "ok: repayment of INR 2000 in Fineract restored the line: INR 4000 approved"
+st=$(ci POST "/v1/cards/$crid/statements" '{"cycleDays":30}')
+python3 -c "
+import json,sys; s=json.loads(sys.argv[1])
+assert s['purchasesMinor']==300000 and s['paymentsMinor']==200000 and s['principalMinor']==100000, s
+assert s['minimumDueMinor']==min(s['closingMinor'], max(s['closingMinor']*5//100, 10000)), s
+print('ok: statement from Fineract: purchases INR', s['purchasesMinor']//100, 'payments INR', s['paymentsMinor']//100, 'closing INR', s['closingMinor']/100, 'minimum due INR', s['minimumDueMinor']/100, 'due', s['dueDate'][:10])
+" "$st" || fail "statement: $st"
 # --- the whole chain: ISO adapter (acquirer) -> switch (scheme-sim) -> issuer host (card-issuer) -> Fineract / hsm
 ISSUER_URL=http://127.0.0.1:18085 HSM_URL=http://127.0.0.1:18702 ISO_LISTEN=127.0.0.1:18583 HTTP_LISTEN=127.0.0.1:18080 "$W/scheme-sim" >"$W/sim.log" 2>&1 & pids+=($!)
 NETWORK_ADDR=127.0.0.1:18583 HTTP_LISTEN=127.0.0.1:18081 "$W/iso-adapter" >"$W/adapter.log" 2>&1 & pids+=($!)

@@ -44,6 +44,15 @@ func main() {
 		}
 	}
 	i := issuer.New(env("BIN", "437551"), f, h, store)
+	go func() { // daily billing: statements and interest-free grace (ADR-025)
+		for ; ; time.Sleep(24 * time.Hour) {
+			if m, g, err := i.RunBilling(context.Background()); err != nil {
+				log.Printf("billing: %v", err)
+			} else if m+g > 0 {
+				log.Printf("billing: %d statements, %d grace settlements", m, g)
+			}
+		}
+	}()
 	addr := env("ADDR", ":8080")
 	log.Printf("card-issuer on %s", addr)
 	log.Fatal((&http.Server{Addr: addr, Handler: issuer.Handler(i), ReadHeaderTimeout: 5 * time.Second}).ListenAndServe())

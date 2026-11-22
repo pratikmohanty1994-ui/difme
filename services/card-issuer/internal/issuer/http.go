@@ -16,6 +16,8 @@ import (
 //	GET  /v1/cards/{id}/dcvv2            the current dynamic CVV2 (app display)
 //	GET  /v1/cards/{id}/open-to-buy
 //	GET  /v1/cards/{pan}  (card management lookup for the ACS: expiry, status, channels; the path segment is a PAN)
+//	POST /v1/cards/{id}/statements       close the billing cycle (credit): {"cycleDays":30}
+//	POST /v1/cards/{id}/statements/latest/grace  at the due date: waive the interest when paid in full
 //	POST /v1/authorisations              the switch's issuer authorisation
 //	POST /v1/authorisations/{id}/clear   {"amountMinor":…}
 //	POST /v1/authorisations/{id}/reverse
@@ -65,6 +67,18 @@ func Handler(i *Issuer) http.Handler {
 	mux.HandleFunc("GET /v1/cards/{id}/open-to-buy", func(w http.ResponseWriter, r *http.Request) {
 		v, err := i.OpenToBuy(r.Context(), r.PathValue("id"))
 		reply(w, 200, map[string]int64{"openToBuyMinor": v}, err)
+	})
+	mux.HandleFunc("POST /v1/cards/{id}/statements", func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			CycleDays int `json:"cycleDays"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&q)
+		st, err := i.MakeStatement(r.Context(), r.PathValue("id"), q.CycleDays)
+		reply(w, 201, st, err)
+	})
+	mux.HandleFunc("POST /v1/cards/{id}/statements/latest/grace", func(w http.ResponseWriter, r *http.Request) {
+		st, err := i.SettleGrace(r.Context(), r.PathValue("id"))
+		reply(w, 200, st, err)
 	})
 	mux.HandleFunc("POST /v1/authorisations", func(w http.ResponseWriter, r *http.Request) {
 		var q AuthRequest

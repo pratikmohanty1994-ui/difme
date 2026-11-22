@@ -14,6 +14,9 @@ type Store interface {
 	PutAuth(ctx context.Context, a Auth) error
 	Auth(ctx context.Context, id string) (Auth, error)
 	HeldTotal(ctx context.Context, cardID string) (int64, error)
+	PutStatement(ctx context.Context, s Statement) error
+	LastStatement(ctx context.Context, cardID string) (Statement, error)
+	CreditCards(ctx context.Context) ([]string, error)
 }
 
 type MemStore struct {
@@ -21,10 +24,11 @@ type MemStore struct {
 	cards map[string]Card
 	byPAN map[string]string
 	auths map[string]Auth
+	stmts map[string]Statement // latest per card
 }
 
 func NewMemStore() *MemStore {
-	return &MemStore{cards: map[string]Card{}, byPAN: map[string]string{}, auths: map[string]Auth{}}
+	return &MemStore{cards: map[string]Card{}, byPAN: map[string]string{}, auths: map[string]Auth{}, stmts: map[string]Statement{}}
 }
 
 func (m *MemStore) PutCard(_ context.Context, c Card) error {
@@ -81,4 +85,33 @@ func (m *MemStore) HeldTotal(_ context.Context, cardID string) (int64, error) {
 		}
 	}
 	return t, nil
+}
+
+func (m *MemStore) PutStatement(_ context.Context, s Statement) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stmts[s.CardID] = s
+	return nil
+}
+
+func (m *MemStore) LastStatement(_ context.Context, cardID string) (Statement, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.stmts[cardID]
+	if !ok {
+		return Statement{}, ErrNotFound
+	}
+	return s, nil
+}
+
+func (m *MemStore) CreditCards(_ context.Context) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for id, c := range m.cards {
+		if c.Product == Credit {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }

@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS authorisations (
   amount_minor bigint NOT NULL,
   doc jsonb NOT NULL
 );
+CREATE TABLE IF NOT EXISTS statements (
+  card_id text NOT NULL,
+  period_end timestamptz NOT NULL,
+  doc jsonb NOT NULL,
+  PRIMARY KEY (card_id, period_end)
+);
 CREATE INDEX IF NOT EXISTS authorisations_held ON authorisations (card_id) WHERE state = 'HELD';`
 
 func NewPGStore(ctx context.Context, dsn string, v Vault) (*PGStore, error) {
@@ -125,4 +131,40 @@ func (s *PGStore) HeldTotal(ctx context.Context, cardID string) (int64, error) {
 	var t int64
 	err := s.db.QueryRow(ctx, `SELECT COALESCE(SUM(amount_minor),0) FROM authorisations WHERE card_id = $1 AND state = 'HELD'`, cardID).Scan(&t)
 	return t, err
+}
+
+func (s *PGStore) PutStatement(ctx context.Context, st Statement) error {
+	doc, _ := json.Marshal(st)
+	_, err := s.db.Exec(ctx, `INSERT INTO statements (card_id, period_end, doc) VALUES ($1,$2,$3)
+ON CONFLICT (card_id, period_end) DO UPDATE SET doc = EXCLUDED.doc`, st.CardID, st.PeriodEnd, doc)
+	return err
+}
+
+func (s *PGStore) LastStatement(ctx context.Context, cardID string) (Statement, error) {
+	var doc []byte
+	err := s.db.QueryRow(ctx, `SELECT doc FROM statements WHERE card_id = $1 ORDER BY period_end DESC LIMIT 1`, cardID).Scan(&doc)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Statement{}, ErrNotFound
+	} else if err != nil {
+		return Statement{}, err
+	}
+	var st Statement
+	return st, json.Unmarshal(doc, &st)
+}
+
+func (s *PGStore) CreditCards(ctx context.Context) ([]string, error) {
+	rows, err := s.db.Query(ctx, `SELECT id FROM cards WHERE doc->>'product' = 'CREDIT'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

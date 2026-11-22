@@ -165,3 +165,60 @@ func (f *Fineract) Disburse(ctx context.Context, loan, amountMinor int64) error 
 	return f.call(ctx, http.MethodPost, fmt.Sprintf("loans/%d?command=disburse", loan), map[string]any{"locale": "en", "dateFormat": "dd MMMM yyyy",
 		"actualDisbursementDate": time.Now().Format(dateFmt), "transactionAmount": money(amountMinor)}, nil)
 }
+
+// Transactions lists a loan's transactions (credit line): disbursements are purchases, repayments payments.
+func (f *Fineract) Transactions(ctx context.Context, loan int64) ([]LedgerTxn, error) {
+	var l struct {
+		Transactions []struct {
+			Date   []int   `json:"date"`
+			Amount float64 `json:"amount"`
+			Type   struct {
+				Disbursement bool `json:"disbursement"`
+				Repayment    bool `json:"repayment"`
+				Chargeback   bool `json:"chargeback"`
+			} `json:"type"`
+			Reversed bool `json:"manuallyReversed"`
+		} `json:"transactions"`
+	}
+	if err := f.call(ctx, http.MethodGet, fmt.Sprintf("loans/%d?associations=transactions", loan), nil, &l); err != nil {
+		return nil, err
+	}
+	var out []LedgerTxn
+	for _, t := range l.Transactions {
+		if t.Reversed || len(t.Date) != 3 {
+			continue
+		}
+		typ := "OTHER"
+		switch {
+		case t.Type.Disbursement:
+			typ = "DISBURSEMENT"
+		case t.Type.Repayment:
+			typ = "REPAYMENT"
+		case t.Type.Chargeback:
+			typ = "CHARGEBACK"
+		}
+		out = append(out, LedgerTxn{Date: time.Date(t.Date[0], time.Month(t.Date[1]), t.Date[2], 12, 0, 0, 0, time.Local), Type: typ, AmountMinor: minor(t.Amount)})
+	}
+	return out, nil
+}
+
+// Balance is the loan's principal and interest outstanding.
+func (f *Fineract) Balance(ctx context.Context, loan int64) (int64, int64, error) {
+	var l struct {
+		Summary *struct {
+			PrincipalOutstanding float64 `json:"principalOutstanding"`
+			InterestOutstanding  float64 `json:"interestOutstanding"`
+		} `json:"summary"`
+	}
+	if err := f.call(ctx, http.MethodGet, fmt.Sprintf("loans/%d", loan), nil, &l); err != nil || l.Summary == nil {
+		return 0, 0, err
+	}
+	return minor(l.Summary.PrincipalOutstanding), minor(l.Summary.InterestOutstanding), nil
+}
+
+// WaiveInterest waives interest on the line (interest-free grace).
+func (f *Fineract) WaiveInterest(ctx context.Context, loan, amountMinor int64) error {
+	b := f.today()
+	b["transactionAmount"] = money(amountMinor)
+	return f.call(ctx, http.MethodPost, fmt.Sprintf("loans/%d/transactions?command=waiveinterest", loan), b, nil)
+}
