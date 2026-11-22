@@ -12,6 +12,7 @@ import (
 
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/scheme"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/server"
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/threeds"
 )
 
 func env(k, d string) string {
@@ -23,6 +24,9 @@ func env(k, d string) string {
 
 func main() {
 	n := scheme.New()
+	if u := os.Getenv("HSM_URL"); u != "" {
+		n.HSM = threeds.NewHSMClient(u) // 3-D Secure CAVV verification (ADR-027)
+	}
 	if seed := os.Getenv("SEED_CARDS"); seed != "" {
 		var cards []scheme.Card
 		if err := json.Unmarshal([]byte(seed), &cards); err != nil {

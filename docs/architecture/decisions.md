@@ -511,3 +511,45 @@ with the reference test and caller for each function and jPOS's gaps (no AES, IB
   weak edge attestation are not in ISO 20022 payment messages and reach Tazama through the ONNX model (rule D01).
   Not yet re-run end to end (`ci/tazama-e2e.sh` now includes D02; a first-time debtor gives `.x01`, so its expected
   scores are unchanged).
+
+## ADR-027 — Lightweight 3-D Secure ACS (owner 2026-11-22)
+**Survey (2026-11-22, GitHub search + web):** there is no maintained open-source EMV 3DS 2.x ACS. What exists:
+EMVCo-approved ACSs named "Open ACS" (Seglan) and "open-acs" (PAYSYS Labs) are products without public code;
+`rbkmoney/three-ds-server` (Apache-2.0, last push 2023) is the merchant-side 3DS Server, not an ACS, but its domain
+library is a usable reference for message models; `copyleftdev/emv-3ds` (MIT, small) models AReq/ARes/CReq/CRes;
+`iicuriosity/3DS_Server` (MIT) is again a 3DS Server; `cnpshield/3dslab` has no clear licence (not used). Commercial
+ACSs (Netcetera, Entersekt, …) are out (owner rule: free and open source only). **Decision:** build a small DIFME
+ACS, using those projects and the EMV 3DS 2.2 specification as references only (no code copied).
+
+**Design (`services/scheme-sim/internal/acs`, binary `cmd/acs`; the shared CAVV code is `internal/threeds`):**
+- **AReq → ARes:** card from card management (scheme-sim's card API today, card-issuer when it exists): unknown →
+  N/08, blocked or restricted → N/12, expired or wrong expiry → N/05, CMS unreachable → U/09. Then FRM: Tazama
+  through the same pacs.008 + pacs.002 + admin-report flow and verdict mapping as the payment hub (ADR-023), with an
+  HMAC card reference, never the PAN. INTERDICT → R/11; NO_ALERT within the frictionless limit (default INR 5,000)
+  and no mandated challenge → **Y frictionless** with a CAVV, ECI 05; otherwise → **C challenge**. Without FRM
+  configured every authentication is challenged.
+- **Challenge (CReq/CRes):** 6-digit one-time passcode (stored only as an HMAC), 5-minute lifetime, 3 attempts,
+  cancel supported; outcome Y (CAVV, ECI 05) or N (01, 14, 19) sent to the directory server as an **RReq**.
+- **CAVV:** 20 bytes, DIFME layout modelled on Visa's CVV-with-ATN method (documented in `internal/threeds/cavv.go`):
+  result code, second-factor code, key indicator, CVV output **from services/hsm** (jPOS `calculateCAVV`), the ATN's
+  last 4 digits as unpredictable number, ATN, ECI. It binds card, result codes and ATN; like Visa's it does not bind
+  amount or merchant.
+- **Authorisation switch:** CAVV travels in ISO 8583 field 48 (`CAVV:`; the ISO adapter's `cavv` field fills it).
+  scheme-sim verifies it with services/hsm (format, ECI vs result code, key indicator, cryptogram), refuses a reused
+  ATN (05), records ECI on the transaction; security module unreachable → 91.
+- **Security module:** `services/hsm` gained its HTTP interface (`HsmServer`: `/v1/cavv`, `/v1/cavv/verify`,
+  `/v1/cvv2/verify`; never returns keys; CVK provided encrypted under the LMK).
+
+**Verified (2026-11-22):** Go tests under `-race` (ACS, CAVV layout, switch; the test stand-in reproduces the Visa
+vector and psec values); `services/hsm` 13 tests; `ci/acs-e2e.sh` with all real processes — Java hsm, ACS, scheme-sim,
+ISO adapter: challenge → OTP → RReq Y with CAVV → authorisation 00 verified by the hsm → same CAVV 05 (replay) →
+forged CAVV 05. Tazama is exercised against a fake TMS/admin in the Go tests (the client mirrors the payment hub's,
+verified live against Tazama); the live ACS-to-Tazama run comes with the cluster.
+
+**Not yet (lightweight scope):** HTML browser challenge page and app-channel JWE (CReq/CRes are JSON today);
+other challenge methods (app push / biometric via the DIFME app, out-of-band); 3RI and non-payment categories;
+attempts CAVV by a scheme stand-in; directory-server simulator and a 3DS Server (Hyperswitch has 3DS connectors) for
+merchant-initiated flows; persistence of pending challenges (in memory today: a restart loses open challenges);
+OTP delivery through the notification service; container image and rails manifests. Known FRM caveat: the
+authentication and the later payment are both reported to Tazama, so velocity rules count the purchase twice; fix
+with a separate network map / transaction type for authentications.

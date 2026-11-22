@@ -108,7 +108,8 @@ type AuthRequest struct {
 	MCC         string `json:"mcc"`
 	MerchantID  string `json:"merchantId"`
 	TerminalID  string `json:"terminalId"`
-	Capture     bool   `json:"capture"` // true: 0200 purchase, false: 0100 authorisation only
+	Capture     bool   `json:"capture"`        // true: 0200 purchase, false: 0100 authorisation only
+	CAVV        string `json:"cavv,omitempty"` // 3-D Secure authenticationValue from the ACS (field 48 "CAVV:", ADR-027)
 }
 
 // AuthResult is the network's answer.
@@ -139,7 +140,7 @@ func (c *Client) Authorise(a AuthRequest) (AuthResult, error) {
 	for f, v := range map[int]string{
 		2: a.PAN, 3: "000000", 4: fmt.Sprintf("%012d", a.AmountMinor), 7: now.Format("0102150405"), 11: stan,
 		12: now.Format("150405"), 13: now.Format("0102"), 14: a.Expiry, 18: a.MCC, 22: "810", // 81x: e-commerce / agent-initiated
-		41: fmt.Sprintf("%-8.8s", a.TerminalID), 42: fmt.Sprintf("%-15.15s", a.MerchantID), 49: a.Currency,
+		41: fmt.Sprintf("%-8.8s", a.TerminalID), 42: fmt.Sprintf("%-15.15s", a.MerchantID), 49: a.Currency, 48: cavvField(a.CAVV),
 	} {
 		if v != "" {
 			if err := m.Field(f, v); err != nil {
@@ -261,3 +262,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func cavvField(v string) string {
+	if v == "" {
+		return ""
+	}
+	return "CAVV:" + v
+}

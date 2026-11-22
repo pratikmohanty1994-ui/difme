@@ -4,6 +4,7 @@
 package scheme
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/moov-io/iso8583"
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/threeds"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/tokens"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/wire"
 )
@@ -58,6 +60,7 @@ type Txn struct {
 	ResponseCode string    `json:"responseCode"`
 	State        string    `json:"state"`                 // AUTHORISED, DECLINED, REVERSED, REFUNDED (a refund credit)
 	OriginalRRN  string    `json:"originalRrn,omitempty"` // refunds: the purchase they credit back
+	ECI          string    `json:"eci,omitempty"`         // 3-D Secure: 05 authenticated (CAVV verified), 06 attempt
 
 	pan           string // full PAN, never serialised: reversals and refunds find the card by it, not by the mask
 	refundedMinor int64  // purchases: total credited back so far
@@ -66,18 +69,21 @@ type Txn struct {
 // Network is the simulated scheme plus issuers. Safe for concurrent use.
 type Network struct {
 	Tokens *tokens.Vault // network tokens (ADR-024): swapped for the card number before the issuer sees them
-	mu     sync.Mutex
-	cards  map[string]*Card
-	down   map[string]bool // BIN (first 6) -> issuer unavailable
-	byRRN  map[string]*Txn // approved authorisations by RRN (for reversals)
-	seen   map[string]*Txn // terminal|STAN -> answer, for retransmissions
-	log    []*Txn
-	now    func() time.Time
-	keep   int
+	// HSM verifies 3-D Secure CAVVs (ADR-027); nil means CAVV payments cannot be verified and are declined (91).
+	HSM   threeds.HSM
+	atns  map[string]bool // PAN|ATN of accepted CAVVs: each authentication pays once
+	mu    sync.Mutex
+	cards map[string]*Card
+	down  map[string]bool // BIN (first 6) -> issuer unavailable
+	byRRN map[string]*Txn // approved authorisations by RRN (for reversals)
+	seen  map[string]*Txn // terminal|STAN -> answer, for retransmissions
+	log   []*Txn
+	now   func() time.Time
+	keep  int
 }
 
 func New() *Network {
-	return &Network{Tokens: tokens.New(), cards: map[string]*Card{}, down: map[string]bool{}, byRRN: map[string]*Txn{}, seen: map[string]*Txn{},
+	return &Network{Tokens: tokens.New(), atns: map[string]bool{}, cards: map[string]*Card{}, down: map[string]bool{}, byRRN: map[string]*Txn{}, seen: map[string]*Txn{},
 		now: time.Now, keep: 10_000}
 }
 
@@ -193,6 +199,20 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 	pan, stan, term := wire.Get(req, 2), wire.Get(req, 11), wire.Get(req, 41)
 	amount, aerr := strconv.ParseInt(strings.TrimLeft(wire.Get(req, 4), "0")+"0", 10, 64)
 	amount /= 10 // the appended 0 keeps "" and "000…" parseable
+	// 3-D Secure: field 48 "CAVV:<authenticationValue>" on a card number. The security module is called before the
+	// lock (a network call); replay is checked under it.
+	var cavv *threeds.CAVV
+	var cavvErr error
+	if f48 := wire.Get(req, 48); strings.HasPrefix(f48, "CAVV:") && !tokens.IsToken(pan) {
+		if n.HSM == nil {
+			cavvErr = errNoHSM
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			c, err := threeds.Verify(ctx, n.HSM, pan, strings.TrimPrefix(f48, "CAVV:"))
+			cancel()
+			cavv, cavvErr = &c, err
+		}
+	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	key := term + "|" + stan
@@ -222,6 +242,14 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 		t.ResponseCode = Restricted
 	case tokenErr != nil: // cryptogram missing, invalid or replayed
 		t.ResponseCode = DoNotHonour
+	case errors.Is(cavvErr, errNoHSM):
+		t.ResponseCode = IssuerDown
+	case cavvErr != nil && !errors.Is(cavvErr, threeds.ErrFormat) && !errors.Is(cavvErr, threeds.ErrCryptogram):
+		t.ResponseCode = IssuerDown // security module unreachable
+	case cavvErr != nil: // malformed or forged CAVV
+		t.ResponseCode = DoNotHonour
+	case cavv != nil && n.atns[pan+"|"+strconv.FormatUint(uint64(cavv.ATN), 10)]:
+		t.ResponseCode = DoNotHonour // CAVV replayed: the authentication was already used
 	case amount <= 0:
 		t.ResponseCode = InvalidAmount
 	case !ok:
@@ -241,6 +269,10 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 	default:
 		c.OutstandingMinor += amount
 		t.ResponseCode, t.State, t.AuthCode = Approved, "AUTHORISED", digits(6)
+		if cavv != nil {
+			n.atns[pan+"|"+strconv.FormatUint(uint64(cavv.ATN), 10)] = true
+			t.ECI = fmt.Sprintf("%02d", cavv.ECI)
+		}
 	}
 	t.RRN = digits(12)
 	if t.State == "AUTHORISED" {
@@ -250,6 +282,8 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 	n.record(t)
 	return t
 }
+
+var errNoHSM = errors.New("no security module for CAVV")
 
 // refund credits part or all of an earlier approved purchase back to its card: field 37 carries the purchase's RRN,
 // field 2 must be that purchase's card, and the credits on one purchase never add up to more than it.

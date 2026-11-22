@@ -38,6 +38,17 @@ public final class SecurityModule {
         return sm.formKEYfromClearComponents(SMAdapter.LENGTH_DES3_2KEY, SMAdapter.TYPE_CVK, clearHexComponents);
     }
 
+    /** The key check value (first 6 hex digits of the key encrypting zeros), to identify a key without revealing it. */
+    public String checkValue(SecureDESKey k) throws SMException {
+        return org.jpos.iso.ISOUtil.hexString(sm.generateKeyCheckValue(k)).substring(0, 6);
+    }
+
+    /** A CVK as stored after the key ceremony: its encryption under the LMK, in hex. */
+    public static SecureDESKey cvkUnderLmk(String hex) {
+        if (hex == null || !hex.matches("[0-9A-Fa-f]{32}")) throw new IllegalArgumentException("HSM_CVK_UNDER_LMK: 32 hex digits");
+        return new SecureDESKey(SMAdapter.LENGTH_DES3_2KEY, SMAdapter.TYPE_CVK, org.jpos.iso.ISOUtil.hex2byte(hex), null);
+    }
+
     /** CVV2 / CVC2: the CVV algorithm on PAN, expiry (YYMM) and service code 000. */
     public String cvv2(String pan, String expiryYymm, SecureDESKey cvk) throws SMException {
         return sm.calculateCVD(pan, cvk, null, expiryYymm, "000");
