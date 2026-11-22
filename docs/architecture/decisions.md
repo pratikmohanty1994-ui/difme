@@ -432,6 +432,16 @@ CVK from clear components (key ceremony, returned only under the LMK), CVV2, mag
 pyemv 1.5 has no CVV function, so psec is the CVV/CAVV reference (pyemv stays the reference for ARQC/ARPC).
 Next: the mTLS service around it, LMK from the attested key release, then card-issuer and scheme-sim calling it
 (replacing the keyed-hash CVV and the HMAC token cryptogram), then PIN/PVV and ARQC/ARPC.
+**Progress (2026-11-22, later):** 37 tests in `services/hsm`, every value checked against an independent
+reference. Built: key ceremony/generation/KCV, ZMK exchange, TR-31 versions B and D (psec interop), AES KBPK;
+CVV2/CVV/CAVV, DIFME dCVV2 profile; Visa PVV, IBM 3624 offset, ZPK translation, DUKPT TDES (X9.24 vector), ISO 9564
+format 4 ↔ 0 (psec); ARQC/ARPC for Visa CVN 10/18/22 and Mastercard CVN 16/17/20/21 (pyemv); dCVV, CVC3; issuer
+script MACs and the offline PIN change script byte-exact (pyemv); retail MAC (psec), AES-CMAC (NIST); EMV
+personalisation certificates (verified by jPOS's Book 2 recovery). Service: labelled key store and HTTP endpoints;
+image `difme-hsm`; rails app `card-security` (hsm + ACS, AuthorizationPolicy: ACS and scheme-sim only). scheme-sim's
+network tokens now carry a TAVV from the hsm. Open: AES DUKPT and AES chip cryptograms (no open reference vectors
+found), Mastercard AAV/SPA2 and Amex AEVV (scheme specifications not public), PIN generation/weak-PIN list, LMK
+rotation drill, callers in card-issuer (not built yet).
 Full scope (all card cryptography: key management, CNP, PIN, chip, issuer scripts, personalisation, terminals),
 with the reference test and caller for each function and jPOS's gaps (no AES, IBM 3624 offset, TR-31, RSA signing):
 [card-cryptography-plan.md](card-cryptography-plan.md).

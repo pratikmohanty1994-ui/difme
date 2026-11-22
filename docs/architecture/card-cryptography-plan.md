@@ -1,3 +1,5 @@
+> **Status 2026-11-22:** most rows are built and verified; see ADR-026 "Progress (2026-11-22, later)" and docs/next-session.md §3b for done/open per area.
+
 # Card cryptography plan (ADR-026)
 
 Every card-related cryptographic function DIFME needs as issuer, network (scheme-sim / TSP) and acquirer, all inside

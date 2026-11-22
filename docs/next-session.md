@@ -54,17 +54,17 @@ core, streaming, security, **rails converged**; **fraud failed**:
   events + logs of every failing pod (`failing-pods.txt` in the artifact) to confirm. Fix options: map the service
   account's username claim to Fineract's seed user, or seed that user in Fineract's DB.
 
-## 3b. Crypto modules built this session (services/hsm, 31 tests, every value cross-checked)
+## 3b. Crypto modules built this session (services/hsm, 37 tests, every value cross-checked; summary in ADR-026 "Progress … later")
 | Area | Done (reference) | Still open |
 |---|---|---|
-| Keys | ceremony from components, generate, KCV, export/import under ZMK (psec KCV); TR-31 version D wrap/unwrap (psec interop, key-length masking); AES KBPK next to the LMK | TR-31 version B (TDES); key store by label (keys under LMK in OpenBao) so the HTTP service holds more than the CVK; LMK rotation test |
-| CNP | CVV2, CVV, Visa CAVV (Visa vector, psec); **DIFME dCVV2** profile with time window (psec/pyemv); CAVV layout + ATN replay (ACS) | Mastercard AAV/SPA2, Amex AEVV; TAVV replacing scheme-sim's HMAC token cryptogram; attempts CAVV |
+| Keys | ceremony, generate, KCV, ZMK exchange; TR-31 **B and D** (psec interop); AES KBPK; **labelled key store** (HSM_KEYS / HSM_DEV_KEYS) | LMK rotation drill; key store rendered from OpenBao by the attested release |
+| CNP | CVV2, CVV, CAVV, dCVV2; **TAVV** in scheme-sim (CAVV layout, result 3, ECI 07) | Mastercard AAV/SPA2, Amex AEVV (specs not public); attempts CAVV |
 | PIN | Visa PVV generate/verify, **IBM 3624 offset** (ext), ZPK→ZPK translation (psec); **DUKPT TDES** (X9.24-1 vector); **ISO 9564 format 4** AES PIN blocks ↔ format 0 (psec) | AES DUKPT (X9.24-3; needs published vectors); PIN generation/weak-PIN list; app PIN reveal |
-| Chip | ARQC verify + ARPC: Visa CVN 10, 18, **22**, Mastercard CVN 16 (pyemv); dCVV MSD (independent Python); CVC3 (pyemv) | Mastercard CVN 17/20/21, Interac; AES chip cryptograms (no open reference found); TC/AAC at clearing (same function); offline data authentication |
+| Chip | ARQC/ARPC Visa CVN 10/18/22, Mastercard CVN 16/**17/20/21** (pyemv); dCVV, CVC3 | Interac; AES chip cryptograms (no open reference); TC/AAC at clearing (same function) |
 | Scripts | script MAC Visa CVN 10/18/22 (pyemv); **offline PIN change** script, PIN + MAC byte-exact (pyemv) | Mastercard script formats; confidentiality-only commands |
 | Messages | ISO 9797-1 alg 3 retail MAC (psec); AES-CMAC (NIST SP 800-38B vectors) | MAC verify endpoints; P2PE data encryption |
-| Perso | — | issuer/ICC RSA keys and certificates (EMV Book 2), perso file |
-| Service | HTTP: CAVV, CVV2 | endpoints for PIN/ARQC/dCVV2/scripts, mTLS, image, manifests; callers (card-issuer, scheme-sim) |
+| Perso | **issuer (02) and ICC (04) certificates**, verified by jPOS's Book 2 recovery | issuer RSA key under the LMK; perso file for a card bureau |
+| Service | HTTP endpoints for CAVV, CVV/CVV2, dCVV/dCVV2, CVC3, PIN (PVV, translate, ISO-4), ARQC/ARPC, script MAC, retail MAC, CMAC; **image difme-hsm, rails app card-security** (hsm + ACS) | first cluster run of card-security; callers in card-issuer (not built) |
 Correction to the plan: pyemv's Visa CVN 22 is TDES (option B, common session keys), not AES.
 
 ## 4. Owner's latest asks, still open
