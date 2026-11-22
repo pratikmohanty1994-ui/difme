@@ -8,8 +8,9 @@ Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIB
 arm64: LLD linker); payment hub fraud check on Tazama before capture (verified against the real pipeline: INTERDICT);
 Tazama rule D01 (ONNX model) end to end.
 **All images green under the new owner (2026-11-22 10:00):** every DIFME image group incl. Tazama (8) and the payment
-hub with the fraud check. **In flight:** cluster-verify `core,streaming,security,rails,fraud` (run 45011051139), the
-first cluster run of the rails and fraud profiles.
+hub with the fraud check. **Cluster run 1 (45011051139):** base, core, streaming, security CONVERGED; rails FAILFAST (payment-hub JVM: two GCs;
+Hyperswitch: deep readiness check timed out; Fineract service-users: Keycloak refused a token). Fixes pushed.
+**In flight:** cluster run 2 (45020164756), same profiles.
 **Done 2026-11-22:** Tazama builds from source with Kafka/OpenTelemetry swaps, images (7) in CI, manifests (profile
 `fraud`), end to end locally (`ci/tazama-e2e.sh`: ALRT); attested key release verified (`ci/tee-key-release-test.sh`,
 ADR-026); all non-Hyperswitch images built and signed under the new owner.
