@@ -3,6 +3,21 @@
 Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIBUTING.md.
 
 ## Where things stand
+## Pending for completion (2026-11-22)
+**In flight:** Hyperswitch image memory (trims beyond the Stripe compatibility layer don't compile upstream; next:
+one-crate-at-a-time build, router at opt-level 0 measured at 13.6 GB peak, swap as backstop, then the image on
+Actions); TEE key-release test (Trustee + OpenBao, emulated TEE) → ADR-026.
+**Designed, to build:** Tazama images, manifests, DIFME rules and payment-hub hooks (ADR-023); card vault, network
+tokens, card-issuer with debit/prepaid first (ADR-024); Fineract credit gate test and loan origination (ADR-025);
+security module: CVV2/CAVV first, then PIN, ARQC/ARPC, issuer scripts (ADR-026); PH-EE modernisation and rails
+manifests (PH-EE, Mojaloop); retire the interim Temporal hub.
+**Needs Actions runs:** rails profile on a cluster; all profiles at once (run 5); ml + fraud scorer and the FAIL path
+on a cluster; dbt lineage; dev memory halving; scale-to-zero decision after run 5.
+**PDF gaps:** §5.1 edge app, §13 deployment scenarios, the rest of the §5.2 QUIC hub; README coverage matrix paths and
+a status column.
+**Owner:** revoke the token pasted in the previous session; archive `pratikmohanty1294/difme`; Codespaces idle timeout
+30 min and delete when idle; retry the free arm64 VM.
+
 - **Repository moved (2026-11-21)** from `pratikmohanty1294/difme` to `pratikmohanty1994-ui/difme` (identical at 4ebfc707). Images are now `ghcr.io/pratikmohanty1994-ui/difme-*`; Argo CD, Fleet, Tekton, the bootstrap scripts and the Kyverno signing identity point at the new repository. Run ids below belong to the old repository.
 - **Actions on the new account (2026-11-21):** runs start again. The first full images run (44963269957) was cancelled after a few minutes on purpose: images now build per group and in waves (`images` dispatch input `only`), see rule 19 in `docs/knowledge-base/process.md`.
 - **Running in the Codespace:** profiles `base`, `core` and `streaming`. Rebuilt on 2026-11-18 with the containerd image store on `/tmp`.
