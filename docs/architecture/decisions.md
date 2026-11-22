@@ -467,3 +467,12 @@ OpenBao and an HMAC token cryptogram become the standard algorithms in the secur
   topic existed missed messages (transport now waits for topic metadata, refresh 10 s); the e2e script left containers
   behind. Images: 7 of 8 pushed and signed after moving the run stage to Debian slim with security updates (Trivy
   blocked a CRITICAL libssl3 in the distroless base); rule-d01 rebuilds after a test-timing fix.
+- **2026-11-22, payment hub on Tazama (the FRM replacement):** with `TAZAMA_TMS_URL` / `TAZAMA_ADMIN_URL` set, the hub
+  authorises card payments only, reports them to Tazama (pacs.008 + pacs.002, the payer as DIFME's account id, never
+  the card) and reads the evaluation from Tazama's admin service (`/v1/admin/reports/getreportbymsgid`, now deployed):
+  no alert → capture and settle; alert → status REVIEW (`POST /v1/card-payments/{id}/review` approves or rejects);
+  a typology at its interdiction threshold → the authorisation is cancelled, DECLINED FRAUD; no verdict within
+  `TAZAMA_BUDGET_MS` (3 s) → REVIEW, or capture with `TAZAMA_FAIL_OPEN=true`. These are Hyperswitch FRM's
+  CancelTxn / ManualReview actions; AutoRefund isn't needed because the check runs before capture. Tests: 23 (fake
+  Hyperswitch and Tazama on real HTTP, settlement in Temporal's test environment); `TazamaLiveTest` checks the client
+  against a real Tazama.
