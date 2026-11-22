@@ -5,14 +5,11 @@ PSP (PA/PG) simulator for DIFME (owner decision 2026-11-21). Upstream https://gi
 
 Left out (not part of the Cargo workspace): `docs/`, `postman/`, `cypress-tests/`, `api-reference/`.
 
-Local changes (patch files in `vendor/patches/hyperswitch/`, re-applied by `ci/vendor-sync.sh`):
-- `0001-v1-without-common-default`: the router's `v1` feature no longer implies `common_default` (`default` still lists
-  it, so upstream's default build is unchanged). Lets DIFME's image build only what it uses and fit 16 GB runners:
-  no payouts, no `frm` (external paid FRM services only; fraud and FRM are Tazama, ADR-023), no Stripe compatibility
-  layer, no KV store.
+Local changes: none. (A 2026-11-22 patch to build without payouts/frm/kv_store was dropped: upstream does not
+compile with those features off, so it saved nothing.)
 
 How DIFME runs it:
-- Image: `deploy/images/hyperswitch/Dockerfile` builds `router` with the default features (v1 + dummy connector).
+- Image: `deploy/images/hyperswitch/Dockerfile` builds `router` with the default features, one crate at a time, router at opt-level 0 (memory: docs/knowledge-base/build.md).
 - Config: the upstream `config/docker_compose.toml`, with DIFME's hosts and secrets as `ROUTER__*` environment
   overrides (`deploy/platform/rails/hyperswitch/hyperswitch.yaml`).
 - Schema: `deploy/images/hyperswitch/migrate.sh` applies `migrations/` with psql and records versions in diesel's

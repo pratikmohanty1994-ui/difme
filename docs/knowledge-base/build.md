@@ -134,3 +134,11 @@ preinstalled SDKs and adds a swapfile (on `/mnt` where it has room, else the roo
 `ci/image-disk.sh swap` before building. Prevention: any image whose compiler peaks near the runner's RAM gets the same
 input rather than lower optimisation.
 
+
+**Measured per crate (2026-11-22, 16 GB / 4 CPU container, peak RSS of each rustc):** diesel 11.4 GB (its
+`128-column-tables` feature, needed for the 97-column `payment_attempt`), router 13.6 GB at opt-level 0 (killed above
+8.6 GB at opt-level 1 when other crates ran alongside), hyperswitch_connectors 8.1 GB, diesel_models 3.9 GB. The
+router's memory is the compiler front end, so a lower optimisation level helps only so far. Turning features off is not
+an option: hyperswitch_connectors does not compile without `payouts`/`frm` (1,348 errors) and router not without
+`kv_store` (12 errors); upstream builds only full feature sets. **Fix:** `-j 1` so the peaks never overlap, router at
+opt-level 0, default features; the 24 GB swapfile stays as a backstop.

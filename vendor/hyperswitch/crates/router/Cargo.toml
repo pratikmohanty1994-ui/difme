@@ -123,8 +123,8 @@ v2 = [
     "tokenization_v2",
     "subscriptions/v2",
 ]
-# DIFME patch 0001: v1 no longer implies common_default (default still lists it), so a build can pick features.
 v1 = [
+    "common_default",
     "api_models/v1",
     "diesel_models/v1",
     "hyperswitch_domain_models/v1",
