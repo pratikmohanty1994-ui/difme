@@ -42,6 +42,17 @@ class AesTest {
     }
 
     @Test
+    void tr31VersionBInteroperatesWithPsec() {
+        byte[] kbpk = H.parseHex("0123456789ABCDEFFEDCBA9876543210"), key = H.parseHex("1C1C1C1C1C1C1C1C2A2A2A2A2A2A2A2A");
+        // psec.tr31.wrap(kbpk, "B0000P0TE00N0000", key)
+        String psec = "B0096P0TE00N0000F53F51138D51E3317E7DC30C00C05633C21B0FFA3E1339C503D4D4FF81E1FD8E541DAC634C5DC2B2";
+        assertArrayEquals(key, Tr31.unwrap(kbpk, psec).key());
+        String ours = Tr31.wrap(kbpk, "B0000P0TE00N0000", key);
+        assertEquals(96, ours.length());
+        assertArrayEquals(key, Tr31.unwrap(kbpk, ours).key());
+    }
+
+    @Test
     void iso4PinBlocksInteroperateWithPsecAndTranslateToZpk() throws Exception {
         String pinKey = hsm.aesKeyFromComponents("P0", "00112233445566778899AABBCCDDEEFF");
         SecureDESKey zpk = hsm.keyFromComponents(SMAdapter.TYPE_ZPK, "1C1C1C1C1C1C1C1C2A2A2A2A2A2A2A2A");

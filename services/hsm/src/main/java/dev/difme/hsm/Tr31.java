@@ -13,8 +13,9 @@ import org.bouncycastle.crypto.macs.CMac;
 import org.bouncycastle.crypto.params.KeyParameter;
 
 /**
- * TR-31 / ANSI X9.143 key blocks, version D (AES key block protection key, CMAC-derived encryption and MAC keys,
- * AES-CBC with the 16-byte MAC as IV). How DIFME stores and exchanges AES keys (the jPOS software module has no AES):
+ * TR-31 / ANSI X9.143 key blocks: version D (AES KBPK, AES-CMAC-derived encryption and MAC keys, AES-CBC with the
+ * 16-byte MAC as IV) and version B (TDES KBPK, TDES-CMAC derivation, TDES-CBC with the 8-byte MAC as IV), the
+ * latter for exchanging TDES keys with networks and terminals. How DIFME stores and exchanges AES keys (the jPOS software module has no AES):
  * every AES working key is a key block wrapped under the module's KBPK. Interoperates with psec's tr31 (tests).
  */
 public final class Tr31 {
@@ -34,6 +35,26 @@ public final class Tr31 {
         return out;
     }
 
+    static byte[] tdesCmac(byte[] key, byte[] data) {
+        CMac m = new CMac(new org.bouncycastle.crypto.engines.DESedeEngine());
+        m.init(new KeyParameter(key));
+        m.update(data, 0, data.length);
+        byte[] out = new byte[8];
+        m.doFinal(out, 0);
+        return out;
+    }
+
+    /** Version B derivation: counter, usage, 00, algorithm (0000 2-key / 0001 3-key TDES), length in bits. */
+    static byte[] deriveB(byte[] kbpk, int usage) {
+        int alg = kbpk.length == 16 ? 0 : 1, bits = kbpk.length * 8;
+        byte[] out = new byte[kbpk.length];
+        for (int i = 0, counter = 1; i < out.length; i += 8, counter++) {
+            byte[] d = {(byte) counter, (byte) (usage >> 8), (byte) usage, 0, (byte) (alg >> 8), (byte) alg, (byte) (bits >> 8), (byte) bits};
+            System.arraycopy(tdesCmac(kbpk, d), 0, out, i, 8);
+        }
+        return out;
+    }
+
     /** NIST SP 800-108 counter-mode KDF with AES-CMAC, as X9.143 specifies for version D. usage 0000 = encryption, 0001 = MAC. */
     static byte[] derive(byte[] kbpk, int usage) {
         int alg = switch (kbpk.length) { case 16 -> 2; case 24 -> 3; case 32 -> 4; default -> throw new IllegalArgumentException("KBPK length"); };
@@ -49,9 +70,13 @@ public final class Tr31 {
 
     /** Wraps {@code key} under {@code kbpk}; {@code header16} is the 16-character header without its length digits filled (they are set here). */
     public static String wrap(byte[] kbpk, String header16, byte[] key) {
-        if (header16.length() != 16 || header16.charAt(0) != 'D') throw new IllegalArgumentException("version D header, 16 characters");
-        // key-length masking (X9.143): pad as if the key were as long as the KBPK, so the block does not reveal it
-        int padded = ((2 + Math.max(key.length, kbpk.length) + 15) / 16) * 16;
+        if (header16.length() != 16 || (header16.charAt(0) != 'D' && header16.charAt(0) != 'B'))
+            throw new IllegalArgumentException("version B or D header, 16 characters");
+        boolean b = header16.charAt(0) == 'B';
+        // key-length masking (X9.143): pad as if the key had the longest length for its algorithm family, so the
+        // block does not reveal it (D: the KBPK's length; B: 24 bytes, three-key TDES)
+        int blk = b ? 8 : 16, mask = b ? Math.max(key.length, 24) : Math.max(key.length, kbpk.length);
+        int padded = ((2 + mask + blk - 1) / blk) * blk;
         byte[] payload = new byte[padded];
         payload[0] = (byte) ((key.length * 8) >> 8);
         payload[1] = (byte) (key.length * 8);
@@ -59,25 +84,41 @@ public final class Tr31 {
         byte[] pad = new byte[padded - 2 - key.length];
         RNG.nextBytes(pad);
         System.arraycopy(pad, 0, payload, 2 + key.length, pad.length);
-        int total = 16 + padded * 2 + 32;
+        int total = 16 + padded * 2 + blk * 2;
         String header = header16.charAt(0) + String.format("%04d", total) + header16.substring(5);
-        byte[] mac = cmac(derive(kbpk, 1), concat(header.getBytes(StandardCharsets.US_ASCII), payload));
-        byte[] enc = aesCbc(Cipher.ENCRYPT_MODE, derive(kbpk, 0), mac, payload);
+        byte[] hb = header.getBytes(StandardCharsets.US_ASCII);
+        byte[] mac = b ? tdesCmac(deriveB(kbpk, 1), concat(hb, payload)) : cmac(derive(kbpk, 1), concat(hb, payload));
+        byte[] enc = b ? cbc("DESede", Cipher.ENCRYPT_MODE, deriveB(kbpk, 0), mac, payload) : aesCbc(Cipher.ENCRYPT_MODE, derive(kbpk, 0), mac, payload);
         return header + HEX.formatHex(enc) + HEX.formatHex(mac);
     }
 
     public static Unwrapped unwrap(byte[] kbpk, String block) {
-        if (block.length() < 16 + 64 || block.charAt(0) != 'D') throw new IllegalArgumentException("not a version D key block");
+        char v = block.isEmpty() ? '?' : block.charAt(0);
+        if (block.length() < 16 + 32 || (v != 'D' && v != 'B')) throw new IllegalArgumentException("not a version B or D key block");
+        boolean b = v == 'B';
+        int macHex = b ? 16 : 32;
         int total = Integer.parseInt(block.substring(1, 5));
         if (total != block.length()) throw new IllegalArgumentException("key block length mismatch");
         String header = block.substring(0, 16); // optional blocks are not used by DIFME
-        byte[] enc = HEX.parseHex(block.substring(16, block.length() - 32));
-        byte[] mac = HEX.parseHex(block.substring(block.length() - 32));
-        byte[] payload = aesCbc(Cipher.DECRYPT_MODE, derive(kbpk, 0), mac, enc);
-        byte[] expect = cmac(derive(kbpk, 1), concat(header.getBytes(StandardCharsets.US_ASCII), payload));
+        byte[] enc = HEX.parseHex(block.substring(16, block.length() - macHex));
+        byte[] mac = HEX.parseHex(block.substring(block.length() - macHex));
+        byte[] hb = header.getBytes(StandardCharsets.US_ASCII);
+        byte[] payload = b ? cbc("DESede", Cipher.DECRYPT_MODE, deriveB(kbpk, 0), mac, enc) : aesCbc(Cipher.DECRYPT_MODE, derive(kbpk, 0), mac, enc);
+        byte[] expect = b ? tdesCmac(deriveB(kbpk, 1), concat(hb, payload)) : cmac(derive(kbpk, 1), concat(hb, payload));
         if (!java.security.MessageDigest.isEqual(expect, mac)) throw new IllegalArgumentException("key block MAC invalid");
         int len = ((payload[0] & 0xff) << 8 | (payload[1] & 0xff)) / 8;
         return new Unwrapped(header, Arrays.copyOfRange(payload, 2, 2 + len));
+    }
+
+    static byte[] cbc(String alg, int mode, byte[] key, byte[] iv, byte[] data) {
+        try {
+            byte[] k = alg.equals("DESede") && key.length == 16 ? concat(key, Arrays.copyOf(key, 8)) : key;
+            Cipher c = Cipher.getInstance(alg + "/CBC/NoPadding");
+            c.init(mode, new SecretKeySpec(k, alg), new IvParameterSpec(iv));
+            return c.doFinal(data);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     static byte[] aesCbc(int mode, byte[] key, byte[] iv, byte[] data) {
