@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:fluxnova="http://fluxnova.finos.org/schema/1.0/bpmn"
+                  id="loan-origination-definitions" targetNamespace="https://difme.local/processes">
+  <!-- Loan origination (ADR-025): application -> fraud screening (Temporal -> Tazama) -> DMN credit decision ->
+       underwriter for REFER -> booking in Fineract (Temporal: loan, approval, disbursement) -> booked. -->
+  <bpmn:message id="msg-loan-screened" name="loan-screened" />
+  <bpmn:message id="msg-loan-booked" name="loan-booked" />
+  <bpmn:process id="loan-origination" name="Loan origination" isExecutable="true" fluxnova:historyTimeToLive="P90D">
+    <bpmn:startEvent id="start" name="Application submitted" fluxnova:formKey="formio:loan-application">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="screen" name="Fraud screening (Temporal)" fluxnova:type="external" fluxnova:topic="temporal:LoanScreeningWorkflow">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:intermediateCatchEvent id="wait-screened" name="Screened">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:messageEventDefinition messageRef="msg-loan-screened" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:businessRuleTask id="decide" name="Credit decision" fluxnova:decisionRef="credit-decision"
+                           fluxnova:resultVariable="creditDecision" fluxnova:mapDecisionResult="singleEntry">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:exclusiveGateway id="decision-gw" name="Decision?" default="f-approve">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f-approve</bpmn:outgoing>
+      <bpmn:outgoing>f-refer</bpmn:outgoing>
+      <bpmn:outgoing>f-decline</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="underwriting" name="Underwriting" fluxnova:candidateGroups="credit" fluxnova:formKey="formio:loan-review">
+      <bpmn:incoming>f-refer</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="approved-gw" name="Approved?" default="f-rejected">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f-approved</bpmn:outgoing>
+      <bpmn:outgoing>f-rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="book" name="Book and disburse in Fineract (Temporal)" fluxnova:type="external" fluxnova:topic="temporal:LoanBookingWorkflow">
+      <bpmn:incoming>f-approve</bpmn:incoming>
+      <bpmn:incoming>f-approved</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:intermediateCatchEvent id="wait-booked" name="Booked">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+      <bpmn:messageEventDefinition messageRef="msg-loan-booked" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="disbursed" name="Disbursed"><bpmn:incoming>f7</bpmn:incoming></bpmn:endEvent>
+    <bpmn:endEvent id="declined" name="Declined"><bpmn:incoming>f-decline</bpmn:incoming><bpmn:incoming>f-rejected</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="start" targetRef="screen" />
+    <bpmn:sequenceFlow id="f2" sourceRef="screen" targetRef="wait-screened" />
+    <bpmn:sequenceFlow id="f3" sourceRef="wait-screened" targetRef="decide" />
+    <bpmn:sequenceFlow id="f4" sourceRef="decide" targetRef="decision-gw" />
+    <bpmn:sequenceFlow id="f-approve" name="APPROVE" sourceRef="decision-gw" targetRef="book" />
+    <bpmn:sequenceFlow id="f-refer" name="REFER" sourceRef="decision-gw" targetRef="underwriting">
+      <bpmn:conditionExpression>${creditDecision == 'REFER'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f-decline" name="DECLINE" sourceRef="decision-gw" targetRef="declined">
+      <bpmn:conditionExpression>${creditDecision == 'DECLINE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f5" sourceRef="underwriting" targetRef="approved-gw" />
+    <bpmn:sequenceFlow id="f-approved" name="yes" sourceRef="approved-gw" targetRef="book">
+      <bpmn:conditionExpression>${approved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f-rejected" name="no" sourceRef="approved-gw" targetRef="declined" />
+    <bpmn:sequenceFlow id="f6" sourceRef="book" targetRef="wait-booked" />
+    <bpmn:sequenceFlow id="f7" sourceRef="wait-booked" targetRef="disbursed" />
+  </bpmn:process>
+</bpmn:definitions>

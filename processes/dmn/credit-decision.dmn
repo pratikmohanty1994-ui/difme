@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="credit-decision-definitions" name="Credit decision"
+             namespace="https://difme.local/rules">
+  <!-- Loan origination (ADR-025): FIRST hit. Fraud screening (Tazama) comes first, then bureau score and affordability
+       (debt-to-income after the new instalment, percent). REFER goes to an underwriter. -->
+  <decision id="credit-decision" name="Credit decision">
+    <decisionTable id="credit-decision-table" hitPolicy="FIRST">
+      <input id="in-fraud" label="Fraud verdict"><inputExpression id="ie-fraud" typeRef="string"><text>fraudVerdict</text></inputExpression></input>
+      <input id="in-score" label="Bureau score"><inputExpression id="ie-score" typeRef="integer"><text>bureauScore</text></inputExpression></input>
+      <input id="in-dti" label="Debt-to-income %"><inputExpression id="ie-dti" typeRef="integer"><text>dtiPercent</text></inputExpression></input>
+      <input id="in-amount" label="Amount (minor units)"><inputExpression id="ie-amount" typeRef="long"><text>amountMinor</text></inputExpression></input>
+      <output id="out-decision" label="Decision" name="creditDecision" typeRef="string" />
+      <rule id="c1"><description>Fraud interdiction</description>
+        <inputEntry id="c1-1"><text>"INTERDICT"</text></inputEntry><inputEntry id="c1-2"><text></text></inputEntry><inputEntry id="c1-3"><text></text></inputEntry><inputEntry id="c1-4"><text></text></inputEntry>
+        <outputEntry id="c1-o"><text>"DECLINE"</text></outputEntry></rule>
+      <rule id="c2"><description>Fraud alert or no verdict: a person looks</description>
+        <inputEntry id="c2-1"><text>"ALERT","UNKNOWN"</text></inputEntry><inputEntry id="c2-2"><text></text></inputEntry><inputEntry id="c2-3"><text></text></inputEntry><inputEntry id="c2-4"><text></text></inputEntry>
+        <outputEntry id="c2-o"><text>"REFER"</text></outputEntry></rule>
+      <rule id="c3"><description>Bureau score too low</description>
+        <inputEntry id="c3-1"><text></text></inputEntry><inputEntry id="c3-2"><text>&lt; 550</text></inputEntry><inputEntry id="c3-3"><text></text></inputEntry><inputEntry id="c3-4"><text></text></inputEntry>
+        <outputEntry id="c3-o"><text>"DECLINE"</text></outputEntry></rule>
+      <rule id="c4"><description>Not affordable</description>
+        <inputEntry id="c4-1"><text></text></inputEntry><inputEntry id="c4-2"><text></text></inputEntry><inputEntry id="c4-3"><text>&gt; 50</text></inputEntry><inputEntry id="c4-4"><text></text></inputEntry>
+        <outputEntry id="c4-o"><text>"DECLINE"</text></outputEntry></rule>
+      <rule id="c5"><description>Thin or fair file</description>
+        <inputEntry id="c5-1"><text></text></inputEntry><inputEntry id="c5-2"><text>&lt; 650</text></inputEntry><inputEntry id="c5-3"><text></text></inputEntry><inputEntry id="c5-4"><text></text></inputEntry>
+        <outputEntry id="c5-o"><text>"REFER"</text></outputEntry></rule>
+      <rule id="c6"><description>Large loan (over INR 5 lakh) or stretched affordability</description>
+        <inputEntry id="c6-1"><text></text></inputEntry><inputEntry id="c6-2"><text></text></inputEntry><inputEntry id="c6-3"><text></text></inputEntry><inputEntry id="c6-4"><text>&gt; 50000000</text></inputEntry>
+        <outputEntry id="c6-o"><text>"REFER"</text></outputEntry></rule>
+      <rule id="c7">
+        <inputEntry id="c7-1"><text></text></inputEntry><inputEntry id="c7-2"><text></text></inputEntry><inputEntry id="c7-3"><text>&gt; 40</text></inputEntry><inputEntry id="c7-4"><text></text></inputEntry>
+        <outputEntry id="c7-o"><text>"REFER"</text></outputEntry></rule>
+      <rule id="c8"><description>Everything else</description>
+        <inputEntry id="c8-1"><text></text></inputEntry><inputEntry id="c8-2"><text></text></inputEntry><inputEntry id="c8-3"><text></text></inputEntry><inputEntry id="c8-4"><text></text></inputEntry>
+        <outputEntry id="c8-o"><text>"APPROVE"</text></outputEntry></rule>
+    </decisionTable>
+  </decision>
+</definitions>

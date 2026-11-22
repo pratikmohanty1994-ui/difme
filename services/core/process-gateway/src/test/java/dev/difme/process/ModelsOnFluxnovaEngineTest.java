@@ -40,7 +40,8 @@ class ModelsOnFluxnovaEngineTest {
         Path root = Path.of(System.getProperty("user.dir")).resolve("../../../processes").normalize();
         DeploymentBuilder d = engine.getRepositoryService().createDeployment().name("difme-processes");
         try (Stream<Path> files = Files.walk(root)) {
-            for (Path p : files.filter(f -> f.toString().matches(".*\\.(bpmn|dmn|cmmn)$")).toList()) {
+            // processes/ph-ee holds Zeebe-format models, deployed only after ci/zeebe-bpmn-to-fluxnova.py converts them
+            for (Path p : files.filter(f -> f.toString().matches(".*\\.(bpmn|dmn|cmmn)$") && !f.toString().contains("/ph-ee/")).toList()) {
                 InputStream in = Files.newInputStream(p);
                 d.addInputStream(p.getFileName().toString(), in);
             }
@@ -113,6 +114,71 @@ class ModelsOnFluxnovaEngineTest {
         assertEquals("compliance-review", review.getTaskDefinitionKey());
         engine.getTaskService().complete(review.getId(), vars("approved", false, "reviewNotes", "insufficient evidence"));
         assertEquals(0, engine.getRuntimeService().createProcessInstanceQuery().processInstanceId(pi.getId()).count());
+    }
+
+    private static Object credit(String fraud, int score, int dti, long amount) {
+        return engine.getDecisionService().evaluateDecisionTableByKey("credit-decision",
+                vars("fraudVerdict", fraud, "bureauScore", score, "dtiPercent", dti, "amountMinor", amount)).getSingleResult().getSingleEntry();
+    }
+
+    @Test
+    void creditDecision() {
+        assertEquals("APPROVE", credit("NO_ALERT", 760, 25, 20_000_000L));
+        assertEquals("DECLINE", credit("INTERDICT", 820, 10, 1_000_000L));
+        assertEquals("REFER", credit("ALERT", 820, 10, 1_000_000L));
+        assertEquals("REFER", credit("UNKNOWN", 820, 10, 1_000_000L));
+        assertEquals("DECLINE", credit("NO_ALERT", 540, 10, 1_000_000L));
+        assertEquals("DECLINE", credit("NO_ALERT", 760, 55, 1_000_000L));
+        assertEquals("REFER", credit("NO_ALERT", 620, 10, 1_000_000L));
+        assertEquals("REFER", credit("NO_ALERT", 760, 10, 60_000_000L));
+        assertEquals("REFER", credit("NO_ALERT", 760, 45, 1_000_000L));
+    }
+
+    private ProcessInstance applyForLoan(String key, String fraudVerdict, int score, int dti, long amount) {
+        ProcessInstance pi = engine.getRuntimeService().startProcessInstanceByKey("loan-origination", key,
+                vars("applicantId", "cust-1", "fineractClientId", 7L, "amountMinor", amount, "termMonths", 12, "bureauScore", score, "dtiPercent", dti));
+        List<LockedExternalTask> screen = engine.getExternalTaskService().fetchAndLock(50, "test")
+                .topic("temporal:LoanScreeningWorkflow", 10_000).execute().stream().filter(t -> t.getProcessInstanceId().equals(pi.getId())).toList();
+        assertEquals(1, screen.size());
+        engine.getExternalTaskService().complete(screen.get(0).getId(), "test");
+        engine.getRuntimeService().createMessageCorrelation("loan-screened").processInstanceId(pi.getId())
+                .setVariable("fraudVerdict", fraudVerdict).correlate();
+        return pi;
+    }
+
+    private boolean running(ProcessInstance pi) {
+        return engine.getRuntimeService().createProcessInstanceQuery().processInstanceId(pi.getId()).count() == 1;
+    }
+
+    private void booked(ProcessInstance pi) {
+        List<LockedExternalTask> book = engine.getExternalTaskService().fetchAndLock(50, "test")
+                .topic("temporal:LoanBookingWorkflow", 10_000).execute().stream().filter(t -> t.getProcessInstanceId().equals(pi.getId())).toList();
+        assertEquals(1, book.size(), "booking started");
+        engine.getExternalTaskService().complete(book.get(0).getId(), "test");
+        assertTrue(running(pi), "waiting for the booking callback");
+        engine.getRuntimeService().createMessageCorrelation("loan-booked").processInstanceId(pi.getId()).setVariable("loanId", 42L).correlate();
+        assertFalse(running(pi));
+    }
+
+    @Test
+    void loanApprovedAutomaticallyIsBooked() {
+        booked(applyForLoan("loan-ok", "NO_ALERT", 760, 25, 20_000_000L));
+    }
+
+    @Test
+    void loanReferredGoesToUnderwriting() {
+        ProcessInstance pi = applyForLoan("loan-refer", "ALERT", 760, 25, 20_000_000L);
+        Task t = engine.getTaskService().createTaskQuery().processInstanceId(pi.getId()).singleResult();
+        assertEquals("underwriting", t.getTaskDefinitionKey());
+        engine.getTaskService().complete(t.getId(), vars("approved", true, "underwritingNotes", "verified income"));
+        booked(pi);
+    }
+
+    @Test
+    void loanDeclinedEndsWithoutBooking() {
+        ProcessInstance pi = applyForLoan("loan-decline", "INTERDICT", 760, 25, 20_000_000L);
+        assertFalse(running(pi));
+        assertEquals(0, engine.getExternalTaskService().createExternalTaskQuery().topicName("temporal:LoanBookingWorkflow").count());
     }
 
     @Test

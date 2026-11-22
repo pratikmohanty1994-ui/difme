@@ -1,0 +1,118 @@
+{
+  "title": "Loan application",
+  "name": "loanApplication",
+  "path": "loan-application",
+  "type": "form",
+  "display": "form",
+  "properties": {
+    "processKey": "loan-origination",
+    "owner": "credit"
+  },
+  "components": [
+    {
+      "type": "textfield",
+      "key": "applicantId",
+      "label": "Customer id",
+      "validate": {
+        "required": true
+      },
+      "input": true
+    },
+    {
+      "type": "number",
+      "key": "fineractClientId",
+      "label": "Fineract client id",
+      "validate": {
+        "required": true
+      },
+      "input": true
+    },
+    {
+      "type": "currency",
+      "key": "amountMinor",
+      "label": "Amount (paise)",
+      "currency": "INR",
+      "validate": {
+        "required": true,
+        "min": 100000,
+        "max": 500000000
+      },
+      "input": true
+    },
+    {
+      "type": "number",
+      "key": "termMonths",
+      "label": "Term (months)",
+      "validate": {
+        "required": true,
+        "min": 3,
+        "max": 84
+      },
+      "input": true
+    },
+    {
+      "type": "currency",
+      "key": "monthlyIncomeMinor",
+      "label": "Monthly income (paise)",
+      "currency": "INR",
+      "validate": {
+        "required": true,
+        "min": 1
+      },
+      "input": true
+    },
+    {
+      "type": "currency",
+      "key": "monthlyDebtMinor",
+      "label": "Existing monthly debt payments (paise)",
+      "currency": "INR",
+      "validate": {
+        "required": true,
+        "min": 0
+      },
+      "input": true
+    },
+    {
+      "type": "number",
+      "key": "bureauScore",
+      "label": "Bureau score",
+      "validate": {
+        "required": true,
+        "min": 300,
+        "max": 900
+      },
+      "input": true
+    },
+    {
+      "type": "select",
+      "key": "purpose",
+      "label": "Purpose",
+      "data": {
+        "values": [
+          {
+            "label": "Working capital",
+            "value": "WORKING_CAPITAL"
+          },
+          {
+            "label": "Equipment",
+            "value": "EQUIPMENT"
+          },
+          {
+            "label": "Personal",
+            "value": "PERSONAL"
+          }
+        ]
+      },
+      "validate": {
+        "required": true
+      },
+      "input": true
+    },
+    {
+      "type": "button",
+      "key": "submit",
+      "label": "Apply",
+      "action": "submit"
+    }
+  ]
+}
