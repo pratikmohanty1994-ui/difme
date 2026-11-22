@@ -1,6 +1,6 @@
 # Status and next steps
 
-Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIBUTING.md.
+Updated 2026-11-22 (late). **Start with docs/next-session.md** (handoff: A–F status, open asks, everything pending), then this file and CONTRIBUTING.md.
 
 ## Where things stand
 ## Pending for completion (2026-11-22)

@@ -43,7 +43,7 @@ spec:
     metadata: { labels: { app: tazama-tms, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: tms
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-tms-service:0.1.0
@@ -67,7 +67,7 @@ spec:
     metadata: { labels: { app: tazama-event-director, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: event-director
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-event-director:0.1.0
@@ -88,7 +88,7 @@ spec:
     metadata: { labels: { app: tazama-rule-901, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: rule-901
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-901:0.1.0
@@ -111,7 +111,7 @@ spec:
     metadata: { labels: { app: tazama-rule-902, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: rule-902
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-902:0.1.0
@@ -134,7 +134,7 @@ spec:
     metadata: { labels: { app: tazama-rule-d01, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: rule-d01
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-d01:0.1.0
@@ -157,7 +157,7 @@ spec:
     metadata: { labels: { app: tazama-rule-d02, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: rule-d02
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-rule-d02:0.1.0
@@ -180,7 +180,7 @@ spec:
     metadata: { labels: { app: tazama-typology-processor, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: typology-processor
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-typology-processor:0.1.0
@@ -201,7 +201,7 @@ spec:
     metadata: { labels: { app: tazama-event-adjudicator, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: event-adjudicator
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-event-adjudicator:0.1.0
@@ -224,7 +224,7 @@ spec:
     metadata: { labels: { app: tazama-admin-service, difme/team: fraud, business.metric: fraud-monitoring } }
     spec:
       serviceAccountName: tazama
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: admin-service
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-admin-service:0.1.0

@@ -1,0 +1,84 @@
+# Next session: start here (updated 2026-11-22, late)
+
+Read this, then `docs/status.md`. Owner rules still apply: commits as `pratikmohanty1994
+<pratikmohanty1994@users.noreply.github.com>`, no assistant trailers (process.md rule 15); free and open source only
+(OSI; no BSL/SSPL/ELv2); `[skip ci]` unless a run is wanted; one cluster-verify at a time; push to `main` and mirror to
+the session branch; nothing runs on the owner's PC.
+
+## 1. The carried-over list (A–F): what is done
+
+| # | Item | State |
+|---|---|---|
+| A1 | Image names → `ghcr.io/pratikmohanty1994-ui/…` | **Done** |
+| A2 | Argo CD repoURLs → this repo | **Done** (also Fleet, Tekton, bootstrap, Kyverno signing identity) |
+| A3 | Actions enabled, `images.yml` / `verify.yml` green | **Done**: every image group green 2026-11-22 |
+| A4 | Actions secrets / ghcr permissions | **Done**: none needed (GITHUB_TOKEN + keyless cosign); packages publish |
+| A5 | Archive `pratikmohanty1994/difme` | **Owner** |
+| A6 | Revoke the token pasted in chat | **Owner** (do this first) |
+| B1 | Build every changed image (payment hub, Hyperswitch) | **Done**: all built and signed, both platforms |
+| B2 | Cluster sync breaks the old hub / missing Hyperswitch image | **Resolved**: cluster run 2 (45020164756) rails **converged** |
+| B3 | Hyperswitch OOM in 16 GB | **Resolved**: `-j 1`, router opt-level 0, LLD on arm64 (no bigger runner needed) |
+| B4 | Router on OpenBao secrets, `/health`, admin API call | **Partly**: router up on OpenBao secrets (555 migrations), readiness `/health`; admin API call not yet checked |
+| B5 | Image workflows for PH-EE connectors and Mojaloop | **Pending** |
+| C1 | Cluster checks | OpenBao login/injector/seed for Hyperswitch **done**; Fineract `fineract-service-users` **failing** (CrashLoop, see §3); VMPodScrape / Hyperswitch telemetry **not verified** |
+| C2 | Istio RequestAuthentication + AuthorizationPolicy for PH-EE channel | **Pending** (with the PH-EE manifests) |
+| C3 | PH-EE pods' metrics label/annotation | **Pending** (with the PH-EE manifests) |
+| C4 | Fineract demo user `interopUser` (super user) | **Owner yes/no**, then delete/disable in the bootstrap job |
+| D1–D5 | PH-EE + Mojaloop manifests, Spring Boot 3 / Camel 4 / Java 25 upgrade, switch the exchange and delete the interim hub, known gaps, exchange rails wiring | **Pending** |
+| E1 | Temporal vs Fluxnova | **Owner** |
+| E2 | CKEditor GPL badge vs Quill | **Owner** |
+| E3 | WTFPL `dom-set`, `spark-md5` | **Owner** |
+| E4 | Hyperswitch runner vs features | **Resolved** by B3 |
+| E5 | Testing Toolkit reports on FerretDB | **Noted** (only if reports are kept) |
+| F1 | Keep status.md / component-reuse.md current | Ongoing |
+| F2 | OpenBao `initialize` blocks only run on first init | **Pending**: a job that applies KV mount, policies, roles idempotently |
+
+## 2. Done this session (beyond A–F)
+- Tazama replaces Hyperswitch FRM (ADR-023): built from source on DIFME's stack, rules 901/902/D01/D02, payment-hub
+  fraud check before capture, verified end to end locally.
+- Network tokens in scheme-sim (ADR-024); attested key release Trustee + OpenBao (ADR-026).
+- Fineract credit gate (ADR-025): revolving line works; limit enforced by card-issuer (Fineract's own is not revolving).
+- Security module `services/hsm` (jPOS): CVV2, CVV, CAVV + HTTP interface; card-cryptography plan
+  (`docs/architecture/card-cryptography-plan.md`, incl. dCVV/dCVV2 and full CAVV lifecycle).
+- Lightweight 3DS ACS (ADR-027) connected to CMS, Tazama, hsm and the authorisation switch; `ci/acs-e2e.sh` passes.
+
+## 3. Cluster run 2 result and fixes pushed
+core, streaming, security, **rails converged**; **fraud failed**:
+- Tazama pods `CreateContainerConfigError`: `runAsNonRoot` with the image's non-numeric user `node`. **Fixed**:
+  `runAsUser/runAsGroup: 1000` (render.py). Needs the next cluster run.
+- `fineract-service-users` CrashLoop; logs were not captured. Likely cause: the Keycloak client-credentials token
+  (`service-account-fineract-admin`) maps to no Fineract user, so the first API call is 401. cluster-verify now saves
+  events + logs of every failing pod (`failing-pods.txt` in the artifact) to confirm. Fix options: map the service
+  account's username claim to Fineract's seed user, or seed that user in Fineract's DB.
+
+## 4. Owner's latest asks, still open
+1. **"Finish all crypto modules"**: build every row of `card-cryptography-plan.md` in `services/hsm` (keys/TR-31,
+   CNP incl. dCVV2/AAV/TAVV, PIN incl. ISO-4/AES DUKPT/IBM 3624, chip ARQC/ARPC incl. AES CVN 22, dCVV/CVC3, issuer
+   scripts, personalisation RSA, MACs/terminals), each cross-checked with psec/pyemv/published vectors, then wire the
+   callers (card-issuer, scheme-sim TSP) and delete the stopgaps.
+2. **Align the ACS to EMV 3DS 2.3.1, all authentication methods**: 2.3.1 message fields (e.g. `messageVersion`
+   2.3.1, `acsInfoInd`, `threeDSRequestorAuthenticationInfo`, `transStatusReason` codes incl. 2.3.1 additions,
+   device channels 01 app / 02 browser / 03 3RI, message categories 01 PA / 02 NPA), challenge UIs: native text
+   (OTP), single/multi select, out-of-band (DIFME app push with biometric), HTML; browser challenge page with
+   base64url CReq/CRes and `notificationURL`; app channel JWE (ECDH-ES ephemeral key from the SDK, A128CBC-HS256 /
+   A128GCM); decoupled authentication (`acsDecConInd`); 3RI; SPC/FIDO (WebAuthn) for 2.3.1 where possible; RReq/RRes
+   with the DS; a DS simulator; attempts CAVV; durable challenge store.
+3. **Image + manifests for hsm and ACS** (rails), mTLS AuthorizationPolicy naming callers, LMK via attested release.
+
+## 5. Everything else pending (overall)
+- **Cards:** card-issuer (CMS: debit/prepaid on Fineract savings with holds, then credit with open-to-buy, statements,
+  grace, renewal), card vault, Hyperswitch JWE adapter for network tokens; credit gate parts still to run (interest,
+  delinquency bucket, chargeback).
+- **Lending:** loan origination on Form.io + Fluxnova + DMN + Tazama (ADR-025).
+- **Fraud:** D02 end to end and its image; Tazama double counting of 3DS authentications (separate network map).
+- **Payment hub:** PH-EE modernisation, rails manifests (PH-EE, Mojaloop), retire the interim Temporal hub (D1–D5).
+- **Actions runs:** rails + fraud on a cluster (next run), all profiles at once (run 5), ml + fraud scorer and the
+  FAIL path on a cluster, dbt lineage, dev memory halving, scale-to-zero decision after run 5.
+- **PDF gaps:** §5.1 edge app, §13 deployment scenarios, rest of the §5.2 QUIC hub; README coverage matrix paths.
+- **Later (owner):** migrate the authorisation switch to jPOS.
+- **Owner actions:** A5, A6, C4, E1–E3; Codespaces idle timeout 30 min; retry the free arm64 VM.
+
+## 6. Local tooling notes
+JDK 25 at `/opt/jdk25` (system java is older: set JAVA_HOME); Maven/Gradle in `/opt`; Go 1.26; psec and pyemv via
+pip; Docker may need `nohup dockerd` and mirror.gcr.io for Docker Hub 429s; Fineract test: `apache/fineract:latest`
+(1.16.1 tag absent) with Postgres, see `ci/fineract-credit-gate.sh`.

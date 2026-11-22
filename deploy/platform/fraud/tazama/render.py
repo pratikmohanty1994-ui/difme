@@ -68,7 +68,7 @@ spec:
     metadata: {{ labels: {{ app: tazama-{name}, difme/team: fraud, business.metric: fraud-monitoring }} }}
     spec:
       serviceAccountName: tazama
-      securityContext: {{ runAsNonRoot: true, seccompProfile: {{ type: RuntimeDefault }} }}
+      securityContext: {{ runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: {{ type: RuntimeDefault }} }}
       containers:
         - name: {name}
           image: ghcr.io/pratikmohanty1994-ui/difme-tazama-{image}:0.1.0
