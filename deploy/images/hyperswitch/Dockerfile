@@ -3,12 +3,15 @@
 # `release` set (cloud KMS clients, encryption service, S3): DIFME needs none of them and they double the build.
 # Native binary: built per arch on a matching runner (images.yml), never under emulation.
 FROM rust:1.97-trixie AS build
-RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev libssl-dev pkg-config protobuf-compiler libprotobuf-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev libssl-dev pkg-config protobuf-compiler libprotobuf-dev lld \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY vendor/hyperswitch /src
 # release-fast (upstream's profile: optimised, no LTO) without debug info, stripped: half the build time and memory
 # of full LTO, which a simulator doesn't need.
+# arm64: the unoptimised router's code exceeds the ±128 MB reach of a direct branch, and GNU ld then fails with
+# "relocation truncated to fit: R_AARCH64_CALL26" (2026-11-22). LLD inserts range-extension thunks. amd64 keeps GNU ld.
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld"
 ENV CARGO_INCREMENTAL=0 CARGO_NET_RETRY=10 CARGO_PROFILE_RELEASE_FAST_DEBUG=0 CARGO_PROFILE_RELEASE_FAST_STRIP=symbols
 # Memory (measured 2026-11-22, docs/knowledge-base/build.md): rustc peaks per crate at diesel 11.4 GB, router 13.6 GB
 # (opt-level 0) and hyperswitch_connectors 8.1 GB. Building one crate at a time (-j 1) keeps those peaks from
