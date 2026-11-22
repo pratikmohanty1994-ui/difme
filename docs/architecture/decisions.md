@@ -432,6 +432,9 @@ CVK from clear components (key ceremony, returned only under the LMK), CVV2, mag
 pyemv 1.5 has no CVV function, so psec is the CVV/CAVV reference (pyemv stays the reference for ARQC/ARPC).
 Next: the mTLS service around it, LMK from the attested key release, then card-issuer and scheme-sim calling it
 (replacing the keyed-hash CVV and the HMAC token cryptogram), then PIN/PVV and ARQC/ARPC.
+Full scope (all card cryptography: key management, CNP, PIN, chip, issuer scripts, personalisation, terminals),
+with the reference test and caller for each function and jPOS's gaps (no AES, IBM 3624 offset, TR-31, RSA signing):
+[card-cryptography-plan.md](card-cryptography-plan.md).
 
 **Keys never in clear outside the module — attested key release (verified hands-on 2026-11-22):**
 - The master key (LMK) lives in **OpenBao**; working keys exist only encrypted under it.

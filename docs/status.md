@@ -16,7 +16,7 @@ Hyperswitch: deep readiness check timed out; Fineract service-users: Keycloak re
 ADR-026); all non-Hyperswitch images built and signed under the new owner.
 **Designed, to build:** Tazama DIFME rules, payment-hub hooks and cluster run (ADR-023); card vault, network
 tokens, card-issuer with debit/prepaid first (ADR-024); loan origination, plus interest/delinquency/chargeback in the credit gate (ADR-025; spend/repay/re-spend gate passed 2026-11-22, limit enforced by card-issuer);
-security module service and callers, then PIN, ARQC/ARPC, issuer scripts (ADR-026; `services/hsm` CVV2/CVV/CAVV on jPOS verified 2026-11-22); PH-EE modernisation and rails
+security module service and callers, then PIN, ARQC/ARPC, issuer scripts (ADR-026; `services/hsm` CVV2/CVV/CAVV on jPOS verified 2026-11-22; full plan in docs/architecture/card-cryptography-plan.md); PH-EE modernisation and rails
 manifests (PH-EE, Mojaloop); retire the interim Temporal hub.
 **Needs Actions runs:** rails profile on a cluster; all profiles at once (run 5); ml + fraud scorer and the FAIL path
 on a cluster; dbt lineage; dev memory halving; scale-to-zero decision after run 5.
