@@ -28,6 +28,9 @@ func main() {
 		n.HSM = threeds.NewHSMClient(u)        // 3-D Secure CAVV verification (ADR-027)
 		n.Tokens.HSM = threeds.NewHSMClient(u) // network token cryptograms as TAVV (ADR-024/026)
 	}
+	if u := os.Getenv("ISSUER_URL"); u != "" {
+		n.Issuer = scheme.NewIssuerClient(u) // card-issuer is the issuer host for its cards (ADR-024)
+	}
 	if seed := os.Getenv("SEED_CARDS"); seed != "" {
 		var cards []scheme.Card
 		if err := json.Unmarshal([]byte(seed), &cards); err != nil {

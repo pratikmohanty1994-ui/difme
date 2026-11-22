@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -65,12 +66,16 @@ type Txn struct {
 	ECI          string    `json:"eci,omitempty"`         // 3-D Secure: 05 authenticated (CAVV verified), 06 attempt
 
 	pan           string // full PAN, never serialised: reversals and refunds find the card by it, not by the mask
+	issuerAuth    string // the issuer host's authorisation id (cards held by card-issuer)
 	refundedMinor int64  // purchases: total credited back so far
 }
 
 // Network is the simulated scheme plus issuers. Safe for concurrent use.
 type Network struct {
 	Tokens *tokens.Vault // network tokens (ADR-024): swapped for the card number before the issuer sees them
+	// Issuer is the issuer host for cards the network does not hold itself (card-issuer, ADR-024): it decides,
+	// holds the funds and clears; nil means only the simulator's own test cards exist.
+	Issuer Issuer
 	// HSM verifies 3-D Secure CAVVs (ADR-027); nil means CAVV payments cannot be verified and are declined (91).
 	HSM   threeds.HSM
 	atns  map[string]bool // PAN|ATN of accepted CAVVs: each authentication pays once
@@ -235,6 +240,10 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 		}
 	}
 	c, ok := n.cards[pan]
+	if !ok && n.Issuer != nil && tokenErr == nil && cavvErr == nil && stan != "" && pan != "" && aerr == nil && amount > 0 &&
+		!(cavv != nil && n.atns[pan+"|"+strconv.FormatUint(uint64(cavv.ATN), 10)]) {
+		return n.viaIssuer(t, key, req, mti, pan, amount, cavv)
+	}
 	switch {
 	case stan == "" || pan == "" || aerr != nil:
 		t.ResponseCode = FormatError
@@ -286,6 +295,45 @@ func (n *Network) authorise(req *iso8583.Message, mti string) *Txn {
 }
 
 var errNoHSM = errors.New("no security module for CAVV")
+
+// viaIssuer asks the issuer host for the decision (caller holds n.mu). 0200 purchases are cleared at once.
+func (n *Network) viaIssuer(t *Txn, key string, req *iso8583.Message, mti, pan string, amount int64, cavv *threeds.CAVV) *Txn {
+	ir := IssuerRequest{PAN: pan, Expiry: wire.Get(req, 14), AmountMinor: amount, Currency: wire.Get(req, 49), Merchant: wire.Get(req, 42)}
+	if f48 := wire.Get(req, 48); strings.HasPrefix(f48, "CVV2:") {
+		ir.CVV2 = strings.TrimPrefix(f48, "CVV2:")
+	}
+	if pb := wire.Get(req, 52); pb != "" {
+		ir.PINBlock = strings.ToUpper(hex.EncodeToString([]byte(pb)))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	code, id, err := n.Issuer.Authorise(ctx, ir)
+	switch {
+	case err != nil:
+		t.ResponseCode = IssuerDown
+	case code != Approved:
+		t.ResponseCode = code
+	default:
+		t.ResponseCode, t.State, t.AuthCode, t.issuerAuth = Approved, "AUTHORISED", digits(6), id
+		if mti == "0200" {
+			if err := n.Issuer.Clear(ctx, id, amount); err != nil {
+				_ = n.Issuer.Reverse(ctx, id)
+				t.ResponseCode, t.State, t.AuthCode = IssuerDown, "DECLINED", ""
+			}
+		}
+		if t.State == "AUTHORISED" && cavv != nil {
+			n.atns[pan+"|"+strconv.FormatUint(uint64(cavv.ATN), 10)] = true
+			t.ECI = fmt.Sprintf("%02d", cavv.ECI)
+		}
+	}
+	t.RRN = digits(12)
+	if t.State == "AUTHORISED" {
+		n.byRRN[t.RRN] = t
+	}
+	n.seen[key] = t
+	n.record(t)
+	return t
+}
 
 // refund credits part or all of an earlier approved purchase back to its card: field 37 carries the purchase's RRN,
 // field 2 must be that purchase's card, and the credits on one purchase never add up to more than it.
@@ -342,6 +390,16 @@ func (n *Network) reverse(req *iso8583.Message) string {
 		r.ResponseCode = Approved // already reversed: idempotent
 		n.record(r)
 		return Approved
+	}
+	if t.issuerAuth != "" && n.Issuer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := n.Issuer.Reverse(ctx, t.issuerAuth)
+		cancel()
+		if err != nil {
+			r.ResponseCode = IssuerDown
+			n.record(r)
+			return IssuerDown
+		}
 	}
 	if c, ok := n.cards[t.pan]; ok {
 		c.OutstandingMinor -= t.AmountMinor - t.refundedMinor // what a refund already credited isn't released twice

@@ -35,8 +35,9 @@ echo "fineract: client $client savings $sav (INR 1000) credit line loan $loan"
 (cd services/hsm && mvn -q -B -DskipTests package dependency:build-classpath -Dmdep.outputFile="$W/cp" >/dev/null)
 AESPIN=00112233445566778899AABBCCDDEEFF
 HSM_DEV_INSECURE=true HSM_DEV_REBUILD_LMK=true HSM_ADDR=127.0.0.1:18702 \
-  HSM_DEV_KEYS="cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;aes-pin=AES/P0:$AESPIN" java -cp "services/hsm/target/classes:$(cat "$W/cp")" dev.difme.hsm.HsmServer >"$W/hsm.log" 2>&1 & pids+=($!)
+  HSM_DEV_KEYS="cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;aes-pin=AES/P0:$AESPIN;acs-hmac=AES/M7;acs-sign=RSA" java -cp "services/hsm/target/classes:$(cat "$W/cp")" dev.difme.hsm.HsmServer >"$W/hsm.log" 2>&1 & pids+=($!)
 (cd services/card-issuer && go build -o "$W/card-issuer" ./cmd/card-issuer)
+(cd services/scheme-sim && go build -o "$W/" ./cmd/scheme-sim ./cmd/iso-adapter ./cmd/acs)
 ADDR=127.0.0.1:18085 HSM_URL=http://127.0.0.1:18702 FINERACT_URL="$F" FINERACT_PAYMENT_TYPE="$pt" FINERACT_USER=mifos FINERACT_PASSWORD=password "$W/card-issuer" >"$W/issuer.log" 2>&1 & pids+=($!)
 for u in 18702 18085; do for i in $(seq 40); do curl -sf "localhost:$u/healthz" >/dev/null && break; sleep 1; done; done
 ci() { curl -s -X "$1" "localhost:18085$2" ${3:+-d "$3"}; }
@@ -74,4 +75,33 @@ api POST "loans/$loan/transactions?command=repayment" "{\"transactionDate\":\"$D
 [ "$(ci GET "/v1/cards/$crid/open-to-buy" | j openToBuyMinor)" = 400000 ] || fail "open to buy after repayment"
 [ "$(ci POST /v1/authorisations "{\"pan\":\"$crp\",\"amountMinor\":400000}" | j responseCode)" = 00 ] || fail "re-spend"
 echo "ok: repayment of INR 2000 in Fineract restored the line: INR 4000 approved"
+# --- the whole chain: ISO adapter (acquirer) -> switch (scheme-sim) -> issuer host (card-issuer) -> Fineract / hsm
+ISSUER_URL=http://127.0.0.1:18085 HSM_URL=http://127.0.0.1:18702 ISO_LISTEN=127.0.0.1:18583 HTTP_LISTEN=127.0.0.1:18080 "$W/scheme-sim" >"$W/sim.log" 2>&1 & pids+=($!)
+NETWORK_ADDR=127.0.0.1:18583 HTTP_LISTEN=127.0.0.1:18081 "$W/iso-adapter" >"$W/adapter.log" 2>&1 & pids+=($!)
+python3 -c "
+import http.server
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(s):
+        b=s.rfile.read(int(s.headers['content-length'])); open('$W/rreq.json','wb').write(b); s.send_response(200); s.end_headers()
+    def log_message(s,*a): pass
+http.server.HTTPServer(('127.0.0.1',18082),H).serve_forever()" & pids+=($!)
+ACS_ADDR=127.0.0.1:18090 ACS_CMS_URL=http://127.0.0.1:18085 HSM_URL=http://127.0.0.1:18702 ACS_DS_URL=http://127.0.0.1:18082/rreq "$W/acs" >"$W/acs.log" 2>&1 & pids+=($!)
+for u in 18080 18081 18090; do for i in $(seq 60); do curl -sf "localhost:$u/healthz" >/dev/null && break; sleep 1; done; done
+exp=$(echo "$deb" | j expiry)
+pay() { curl -s -X POST localhost:18081/v1/authorize -d "{\"pan\":\"$pan\",\"expiry\":\"$exp\",\"amountMinor\":$1,\"merchantId\":\"MERCHANT01\",\"terminalId\":\"WEB00001\",$2}" | j responseCode; }
+b0=$(bal); [ "$(pay 10000 '"cvv2":"'"$cvv"'","capture":true')" = 00 ] || fail "purchase through the switch"
+[ "$(bal)" = "$(python3 -c "print($b0-100.0)")" ] || fail "purchase not posted in Fineract: $b0 -> $(bal)"
+echo "ok: purchase through ISO adapter -> switch -> card-issuer: INR 100 withdrawn in Fineract ($b0 -> $(bal))"
+[ "$(pay 10000 '"cvv2":"000"')" = 05 ] || fail "wrong CVV2 through the switch"; echo "ok: wrong CVV2 through the switch declined 05"
+# 3-D Secure: the ACS reads the card from card-issuer (channels sms+app: out-of-band app approval), CAVV checked at the switch
+ares=$(curl -s -X POST localhost:18090/3ds/areq -d "{\"messageType\":\"AReq\",\"messageVersion\":\"2.3.1\",\"messageCategory\":\"01\",\"deviceChannel\":\"02\",
+ \"threeDSServerTransID\":\"srv-live\",\"dsTransID\":\"ds-live\",\"acctNumber\":\"$pan\",\"cardExpiryDate\":\"$exp\",\"purchaseAmount\":\"20000\",
+ \"purchaseCurrency\":\"356\",\"merchantName\":\"Shop\",\"acquirerMerchantID\":\"MERCHANT01\"}")
+acsid=$(echo "$ares" | j acsTransID); [ "$(echo "$ares" | j authenticationType)" = 03 ] || fail "expected out-of-band (app enrolled): $ares"
+curl -s -X POST "localhost:18090/3ds/oob/$acsid" -d '{"approved":true}' >/dev/null
+cres=$(curl -s -X POST localhost:18090/3ds/creq -d "{\"messageType\":\"CReq\",\"messageVersion\":\"2.3.1\",\"threeDSServerTransID\":\"srv-live\",\"acsTransID\":\"$acsid\",\"oobContinue\":\"Y\"}")
+[ "$(echo "$cres" | j transStatus)" = Y ] || fail "OOB: $cres"; cavv=$(j authenticationValue <"$W/rreq.json")
+[ "$(pay 20000 '"cavv":"'"$cavv"'"')" = 00 ] || fail "CAVV payment through the switch"
+[ "$(pay 20000 '"cavv":"'"$cavv"'"')" = 05 ] || fail "CAVV replay"
+echo "ok: 3-D Secure 2.3.1 out-of-band approval (ACS reads card-issuer), CAVV verified at the switch, replay declined"
 echo "card-issuer live PASS"

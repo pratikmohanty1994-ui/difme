@@ -6,6 +6,7 @@ package adapter
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,8 +109,10 @@ type AuthRequest struct {
 	MCC         string `json:"mcc"`
 	MerchantID  string `json:"merchantId"`
 	TerminalID  string `json:"terminalId"`
-	Capture     bool   `json:"capture"`        // true: 0200 purchase, false: 0100 authorisation only
-	CAVV        string `json:"cavv,omitempty"` // 3-D Secure authenticationValue from the ACS (field 48 "CAVV:", ADR-027)
+	Capture     bool   `json:"capture"`            // true: 0200 purchase, false: 0100 authorisation only
+	CAVV        string `json:"cavv,omitempty"`     // 3-D Secure authenticationValue from the ACS (field 48 "CAVV:", ADR-027)
+	CVV2        string `json:"cvv2,omitempty"`     // card security code (field 48 "CVV2:" when there is no CAVV)
+	PINBlock    string `json:"pinBlock,omitempty"` // ISO 9564 format 0 under the network ZPK, hex (field 52)
 }
 
 // AuthResult is the network's answer.
@@ -140,7 +143,7 @@ func (c *Client) Authorise(a AuthRequest) (AuthResult, error) {
 	for f, v := range map[int]string{
 		2: a.PAN, 3: "000000", 4: fmt.Sprintf("%012d", a.AmountMinor), 7: now.Format("0102150405"), 11: stan,
 		12: now.Format("150405"), 13: now.Format("0102"), 14: a.Expiry, 18: a.MCC, 22: "810", // 81x: e-commerce / agent-initiated
-		41: fmt.Sprintf("%-8.8s", a.TerminalID), 42: fmt.Sprintf("%-15.15s", a.MerchantID), 49: a.Currency, 48: cavvField(a.CAVV),
+		41: fmt.Sprintf("%-8.8s", a.TerminalID), 42: fmt.Sprintf("%-15.15s", a.MerchantID), 49: a.Currency, 48: f48(a.CAVV, a.CVV2), 52: pinField(a.PINBlock),
 	} {
 		if v != "" {
 			if err := m.Field(f, v); err != nil {
@@ -262,9 +265,20 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func cavvField(v string) string {
-	if v == "" {
+func f48(cavv, cvv2 string) string {
+	switch {
+	case cavv != "":
+		return "CAVV:" + cavv
+	case cvv2 != "":
+		return "CVV2:" + cvv2
+	}
+	return ""
+}
+
+func pinField(h string) string {
+	b, err := hex.DecodeString(h)
+	if err != nil || len(b) != 8 {
 		return ""
 	}
-	return "CAVV:" + v
+	return string(b)
 }
