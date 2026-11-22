@@ -15,7 +15,8 @@ rules:
     languages: [java]
     severity: ERROR
     message: "Credentials must come from OpenBao / config, not literals."
-    pattern-regex: '(?i)(password|secret|api_?key)\s*=\s*"[^"$]{6,}"'
+    # The keyword must start an identifier: a form field inside a string ("&client_secret=" + value) is not a literal.
+    pattern-regex: '(?i)(?<![&"?\w])\w*(password|secret|api_?key)\w*\s*=\s*"[^"$]{6,}"'
   - id: difme-idempotency-key-must-be-uuid7
     languages: [java]
     severity: WARNING
