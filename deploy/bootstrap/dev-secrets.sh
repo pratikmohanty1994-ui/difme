@@ -54,11 +54,7 @@ hex32() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }   # Hyperswitch
 secret rails         hyperswitch db-password="$HYPERSWITCH_PG" admin-api-key="$(rand 32)" jwt-secret="$(rand 48)" \
                      master-enc-key="$(hex32)" api-key-hash-key="$(hex32)" acquirer-api-key="$(rand 32)"
 secret database-tier hyperswitch-db password="$HYPERSWITCH_PG"
-# Card security (ADR-026/027): dev-only test keys for the software security module's start-up key ceremony
-# (production: attested key release). Labels as services/hsm HsmServer expects.
-k16() { head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' | tr a-f A-F; }
-HSM_DEV_KEYS="cvk=CVK:$(k16);dcvv2=CVK:$(k16);zpk=ZPK:$(k16);pvk=PVK:$(k16);imk-ac=MK-AC:$(k16);imk-smi=MK-SMI:$(k16);tak=TAK:$(k16);aes-pin=AES/P0:$(k16);aes-mac=AES/M7:$(k16)"
-secret rails         card-security-dev hsm-dev-keys="$HSM_DEV_KEYS" acs-payer-key="$(rand 32)"
+# Card security (ADR-026/027): no keys here. The security module gets them only through attested key release.
 TAZAMA_PG=$(rand)
 secret fraud         tazama-db password="$TAZAMA_PG"
 secret database-tier tazama-db password="$TAZAMA_PG"

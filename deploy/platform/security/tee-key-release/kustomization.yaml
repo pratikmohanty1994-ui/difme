@@ -1,0 +1,6 @@
+resources: [trustee.yaml]
+namespace: security
+generatorOptions: { disableNameSuffixHash: true }
+configMapGenerator:
+  - name: trustee-policies
+    files: [attestation-policy.dev.rego, resource-policy.rego, trustee-setup.sh]

@@ -34,6 +34,7 @@ components:
   - { name: notary,            ns: security,        kind: path, profile: security, wave: 1,  pdf: "ADR-020" }
   - { name: exchange-evidence, ns: core-platform,   kind: path, profile: security, wave: 3,  pdf: "ADR-020" }   # switches exchange-svc to OpenBao transit + notary
   - { name: keycloak,          ns: security,        kind: path, profile: security, wave: 0,  pdf: "4.1/ADR-010" }
+  - { name: tee-key-release,   ns: security,        kind: path, profile: security, wave: 0,  pdf: "ADR-026" }   # Trustee KBS/AS/RVPS: attested key release
 
   # ── Layers 3–5 · Core, workflow, OLTP data (profile: core) ─────────────────
   - { name: valkey,            ns: cache-tier,      kind: path, profile: core, wave: -2, pdf: "8" }

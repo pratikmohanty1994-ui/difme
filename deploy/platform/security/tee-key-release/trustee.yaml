@@ -1,0 +1,162 @@
+# Trustee (Confidential Containers; Apache-2.0) for attested key release (ADR-026): the key broker (KBS), attestation
+# service (AS) and reference-value service (RVPS) in one pod. Resources come from OpenBao (KV v1 mount "kbs") through
+# the KBS vault_kv backend with a read-only token; the KBS releases them only to an attested TEE (DIFME dev policy:
+# Trustee's emulated "sample" TEE whose svn stands in for the security module's measurement), as JWE encrypted to the
+# TEE's key. Production: upstream's attestation policy on SEV-SNP/TDX nodes (a software TEE is never affirming).
+# Admin endpoints are used only from inside this pod (configure container); the mesh lets only the security module in.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: trustee }
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: trustee-config }
+data:
+  as-config.json: |
+    {
+      "storage_backend": { "storage_type": "LocalFs", "backends": { "local_fs": { "dir_path": "/var/lib/attestation-service/storage" } } },
+      "rvps_config": { "type": "GrpcRemote", "address": "http://127.0.0.1:50003" },
+      "attestation_token_broker": { "duration_min": 5, "signer": {
+        "key_path": "/opt/confidential-containers/kbs/user-keys/token.key",
+        "cert_path": "/opt/confidential-containers/kbs/user-keys/token-cert-chain.pem" } }
+    }
+  rvps.json: |
+    { "storage": { "storage_type": "LocalFs", "backends": { "local_fs": { "dir_path": "/var/lib/rvps" } } } }
+  kbs-config.toml.tmpl: |
+    [http_server]
+    sockets = ["0.0.0.0:8080"]
+    insecure_http = true   # TLS is the mesh's (ztunnel mTLS)
+
+    [attestation_token]
+    trusted_certs_paths = ["/opt/confidential-containers/kbs/user-keys/ca-cert.pem"]
+
+    [attestation_service]
+    type = "coco_as_grpc"
+    as_addr = "http://127.0.0.1:50004"
+
+    [admin]
+    authorization_mode = "AuthenticatedAuthorization"
+
+    [admin.authentication.bearer_jwt]
+    identity_providers = [{ issuer = "TrusteeInDocker", public_key_uri = "/opt/confidential-containers/kbs/user-keys/public.pub" }]
+
+    [admin.authorization.regex_acl]
+    acls = [{ role = "admin", allowed_endpoints = "^/kbs/.+$" }]
+
+    [[plugins]]
+    name = "resource"
+    storage_backend_type = "Vault"
+    vault_url = "http://openbao.security.svc:8200"
+    token = "@TOKEN@"
+    mount_path = "kbs"
+    verify_ssl = false   # plain HTTP inside the mesh; set true with DIFME's CA when OpenBao serves TLS itself
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: trustee, labels: { app: trustee } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: trustee } }
+  template:
+    metadata: { labels: { app: trustee, difme/team: security, business.metric: key-release } }
+    spec:
+      serviceAccountName: trustee
+      securityContext: { seccompProfile: { type: RuntimeDefault } }
+      initContainers:
+        - name: keys   # KBS admin key + token, AS token-signing CA (Trustee's own setup script)
+          image: alpine/openssl@sha256:9698e7956c08e713265da24c4587205beba3eaa6af2b319d73575d30a6ff033e
+          command: [/bin/ash, /policies/trustee-setup.sh]
+          volumeMounts: [{ name: user-keys, mountPath: /opt/confidential-containers/kbs/user-keys }, { name: policies, mountPath: /policies }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+        - name: openbao-login   # read-only OpenBao token for the KBS resource backend (Kubernetes auth, role trustee-kbs)
+          image: curlimages/curl:8.11.1
+          env: [{ name: BAO_ADDR, value: "http://openbao.security.svc:8200" }]
+          command: [sh, -c]
+          args:
+            - |
+              set -eu
+              for i in $(seq 60); do
+                LOGIN=$(curl -s -X POST "$BAO_ADDR/v1/auth/kubernetes/login" -d "{\"role\":\"trustee-kbs\",\"jwt\":\"$(cat /var/run/secrets/openbao/token)\"}" || true)
+                TOKEN=$(printf '%s' "$LOGIN" | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p')
+                [ -n "$TOKEN" ] && break; sleep 5
+              done
+              [ -n "$TOKEN" ] || { echo "OpenBao login failed"; exit 1; }
+              sed "s|@TOKEN@|$TOKEN|" /config/kbs-config.toml.tmpl > /opt/confidential-containers/kbs/user-keys/kbs-config.toml
+          volumeMounts:
+            - { name: user-keys, mountPath: /opt/confidential-containers/kbs/user-keys }
+            - { name: config, mountPath: /config }
+            - { name: openbao-token, mountPath: /var/run/secrets/openbao, readOnly: true }
+          securityContext: { runAsNonRoot: true, runAsUser: 100, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+      containers:
+        - name: rvps
+          image: ghcr.io/confidential-containers/staged-images/rvps@sha256:16410d79f4f509dc604cc69ff2d42f7cde16252915fb3a6b155b40bc90dd97ba
+          command: [rvps, --address, "127.0.0.1:50003", --config, /config/rvps.json]
+          volumeMounts: [{ name: config, mountPath: /config }, { name: rvps, mountPath: /var/lib/rvps }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
+        - name: as
+          image: ghcr.io/confidential-containers/staged-images/coco-as-grpc@sha256:b0b86ba68ad7aed28aba125a6f4119a9e05be1ed1be1bd3924e8f060397ef722
+          command: [grpc-as, --socket, "127.0.0.1:50004", --config-file, /config/as-config.json]
+          volumeMounts:
+            - { name: config, mountPath: /config }
+            - { name: user-keys, mountPath: /opt/confidential-containers/kbs/user-keys, readOnly: true }
+            - { name: as, mountPath: /var/lib/attestation-service }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 256Mi } }
+        - name: kbs
+          image: ghcr.io/confidential-containers/staged-images/kbs-grpc-as@sha256:c24e5fdaa53a2eeb04aa82712f9e9a22a592e6e2c33303efbbb49c9c4e4e1467
+          command: [/usr/local/bin/kbs, --config-file, /opt/confidential-containers/kbs/user-keys/kbs-config.toml]
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { tcpSocket: { port: 8080 }, periodSeconds: 10 }
+          volumeMounts: [{ name: user-keys, mountPath: /opt/confidential-containers/kbs/user-keys, readOnly: true }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
+        - name: configure   # DIFME policies and the module's reference measurement, re-applied every minute (RVPS/AS are in memory)
+          image: curlimages/curl:8.11.1
+          env: [{ name: HSM_MEASUREMENT, value: "1" }]   # the security module build's measurement (sample TEE svn)
+          command: [sh, -c]
+          args:
+            - |
+              T=$(cat /opt/confidential-containers/kbs/user-keys/admin-token)
+              b64u() { base64 -w0 "$1" | tr '+/' '-_' | tr -d '='; }
+              adm() { curl -sf -o /dev/null -H "Authorization: Bearer $T" -H 'content-type: application/json' "$@"; }
+              while true; do
+                adm -d "{\"type\":\"rego\",\"policy_id\":\"default_cpu\",\"policy\":\"$(b64u /policies/attestation-policy.dev.rego)\"}" http://127.0.0.1:8080/kbs/v0/attestation-policy \
+                && adm -d "{\"policy\":\"$(b64u /policies/resource-policy.rego)\"}" http://127.0.0.1:8080/kbs/v0/resource-policy \
+                && adm -d "{\"version\":\"0.1.0\",\"type\":\"sample\",\"payload\":\"$(printf '{"difme_hsm_measurement":["%s"]}' "$HSM_MEASUREMENT" | base64 -w0)\"}" http://127.0.0.1:8080/kbs/v0/reference-value \
+                && echo "policies and reference value applied" || echo "KBS not ready"
+                sleep 60
+              done
+          volumeMounts:
+            - { name: user-keys, mountPath: /opt/confidential-containers/kbs/user-keys, readOnly: true }
+            - { name: policies, mountPath: /policies }
+          securityContext: { runAsNonRoot: true, runAsUser: 100, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 32Mi } }
+      volumes:
+        - { name: user-keys, emptyDir: { medium: Memory, sizeLimit: 1Mi } }
+        - { name: as, emptyDir: { sizeLimit: 64Mi } }
+        - { name: rvps, emptyDir: { sizeLimit: 16Mi } }
+        - { name: config, configMap: { name: trustee-config } }
+        - { name: policies, configMap: { name: trustee-policies } }
+        - name: openbao-token
+          projected: { sources: [{ serviceAccountToken: { audience: vault, expirationSeconds: 600, path: token } }] }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: trustee-kbs }
+spec:
+  selector: { app: trustee }
+  ports: [{ name: http, port: 8080 }]
+---
+# Only the security module may run the attestation protocol and fetch resources; nobody reaches the admin API
+# through the mesh (the configure container uses it over the pod's loopback).
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: trustee-kbs-callers }
+spec:
+  selector: { matchLabels: { app: trustee } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/hsm"] } }]
+      to: [{ operation: { paths: ["/kbs/v0/auth", "/kbs/v0/attest", "/kbs/v0/resource/difme/hsm/*"] } }]

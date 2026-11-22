@@ -100,6 +100,48 @@ server:
             }
           }
         }
+        initialize "key-release" {
+          # Attested key release (ADR-026): the security module's LMK, KBPK and key list live under kbs/difme/hsm
+          # (KV v1, base64 values). Trustee's KBS may only read them; the module may only create missing ones on its
+          # first start (never read, update or delete). Nothing else has access.
+          request "mount-kbs" {
+            operation = "update"
+            path = "sys/mounts/kbs"
+            data = { type = "kv", options = { version = "1" } }
+          }
+          request "kbs-read-policy" {
+            operation = "update"
+            path = "sys/policies/acl/trustee-kbs"
+            data = { policy = "path \"kbs/difme/*\" { capabilities = [\"read\"] }" }
+          }
+          request "kbs-read-role" {
+            operation = "update"
+            path = "auth/kubernetes/role/trustee-kbs"
+            data = {
+              bound_service_account_names = ["trustee"]
+              bound_service_account_namespaces = ["security"]
+              audience = "vault"
+              token_policies = ["trustee-kbs"]
+              token_ttl = "720h"
+            }
+          }
+          request "hsm-bootstrap-policy" {
+            operation = "update"
+            path = "sys/policies/acl/hsm-bootstrap"
+            data = { policy = "path \"kbs/difme/hsm/*\" { capabilities = [\"create\"] }" }
+          }
+          request "hsm-bootstrap-role" {
+            operation = "update"
+            path = "auth/kubernetes/role/hsm-bootstrap"
+            data = {
+              bound_service_account_names = ["hsm"]
+              bound_service_account_namespaces = ["rails"]
+              audience = "vault"
+              token_policies = ["hsm-bootstrap"]
+              token_ttl = "5m"
+            }
+          }
+        }
         initialize "rails-secrets" {
           # Component reuse (owner 2026-11-21): Hyperswitch reads its secrets from here (KV v2) instead of Kubernetes
           # Secrets. Hyperswitch may only read its own path; the seeding Job may only create what is missing.

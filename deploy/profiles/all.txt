@@ -12,6 +12,7 @@ attestation
 notary
 exchange-evidence
 keycloak
+tee-key-release
 valkey
 tigerbeetle
 yugabytedb

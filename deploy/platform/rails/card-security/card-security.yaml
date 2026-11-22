@@ -1,8 +1,10 @@
 # Card security (ADR-026, ADR-027): the security module (services/hsm, jPOS) and the 3-D Secure ACS
 # (services/scheme-sim cmd/acs). The hsm answers only the ACS and scheme-sim (AuthorizationPolicy); it returns no keys.
-# Keys: in dev a key ceremony at start-up from the card-security-dev secret (test keys, dev-secrets.sh). In production
-# HSM_LMK/HSM_KEYS come from the attested key release (Trustee + OpenBao, ADR-026) into memory-backed /run/hsm, and
-# HSM_DEV_* are absent.
+# Keys: only through attested key release. The hsm attests to Trustee's KBS (security/tee-key-release) and receives its
+# LMK, KBPK and key list as JWE to its TEE key, in memory; on the very first start (nothing in OpenBao yet) it generates
+# them itself and stores them through a create-only OpenBao role. No key material in Secrets, env or disk; the ACS holds
+# none (signing and HMAC are hsm calls). TEE: Trustee's emulated "sample" TEE in development (HSM_TEE_SVN stands in for
+# the build's measurement); Confidential Containers on SEV-SNP/TDX nodes in production (runtimeClassName kata-cc).
 apiVersion: v1
 kind: ServiceAccount
 metadata: { name: hsm }
@@ -23,18 +25,25 @@ spec:
         - name: hsm
           image: ghcr.io/pratikmohanty1994-ui/difme-hsm:0.1.0
           env:
-            - { name: HSM_DEV_REBUILD_LMK, value: "true" }
-            - { name: HSM_LMK, value: /run/hsm/lmk }
-            - { name: HSM_DEV_KEYS, valueFrom: { secretKeyRef: { name: card-security-dev, key: hsm-dev-keys } } }
-            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC" }
+            - { name: HSM_KBS_URL, value: "http://trustee-kbs.security.svc:8080" }
+            - { name: HSM_TEE_SVN, value: "1" }          # emulated TEE: the measurement registered in Trustee (dev)
+            - { name: HSM_TMPFS, value: /run/hsm }
+            - { name: HSM_BOOTSTRAP_OPENBAO, value: "http://openbao.security.svc:8200" }
+            - { name: HSM_BOOTSTRAP_KEYS, value: "cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA" }
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+DisableAttachMechanism -XX:-CreateCoredumpOnCrash" }
           ports: [{ name: http, containerPort: 8700 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8700 }, periodSeconds: 10 }
-          volumeMounts: [{ name: run, mountPath: /run/hsm }, { name: tmp, mountPath: /tmp }]
+          volumeMounts:
+            - { name: run, mountPath: /run/hsm }
+            - { name: tmp, mountPath: /tmp }
+            - { name: openbao-token, mountPath: /var/run/secrets/openbao, readOnly: true }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 20m, memory: 128Mi }, limits: { memory: 256Mi } }
       volumes:
         - { name: run, emptyDir: { medium: Memory, sizeLimit: 1Mi } }   # LMK never on disk
-        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
+        - { name: tmp, emptyDir: { medium: Memory, sizeLimit: 16Mi } }
+        - name: openbao-token   # used only on the first start (create-only role hsm-bootstrap)
+          projected: { sources: [{ serviceAccountToken: { audience: vault, expirationSeconds: 600, path: token } }] }
 ---
 apiVersion: v1
 kind: Service
@@ -70,7 +79,6 @@ spec:
             - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
             - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
             - { name: ACS_CHALLENGE_URL, value: "https://acs.difme.local/3ds/challenge" }
-            - { name: ACS_PAYER_KEY, valueFrom: { secretKeyRef: { name: card-security-dev, key: acs-payer-key } } }
           ports: [{ name: http, containerPort: 8090 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8090 }, periodSeconds: 10 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }

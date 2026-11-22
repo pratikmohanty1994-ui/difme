@@ -446,6 +446,18 @@ Full scope (all card cryptography: key management, CNP, PIN, chip, issuer script
 with the reference test and caller for each function and jPOS's gaps (no AES, IBM 3624 offset, TR-31, RSA signing):
 [card-cryptography-plan.md](card-cryptography-plan.md).
 
+**Keys only in the (emulated) TEE — enforced on the cluster (2026-11-22, later):** the security module has its own
+KBS client (`KbsClient`: protocol 0.4.0, sample TEE evidence with report data = SHA-384 of the RFC 8785 runtime data,
+RSA-OAEP-256 + A256GCM JWE) and starts only through `KeyRelease`: attest, fetch `difme/hsm/{lmk,kbpk,keys}` into
+memory; on the very first start (resources absent, attestation affirming) generate them inside the module and store
+them through OpenBao role `hsm-bootstrap` (create only). It refuses to start without HSM_KBS_URL (dev switches need
+HSM_DEV_INSECURE=true and exist only for local tests). The ACS holds no keys (PS256 signing and HMAC are hsm calls).
+Cluster: Trustee (KBS + AS + RVPS) as app `tee-key-release` in `security`, reading OpenBao mount `kbs` with role
+`trustee-kbs` (read only), admin API only over the pod loopback, mesh access only for `rails/hsm`; no keys in
+Kubernetes Secrets (`dev-secrets.sh` holds none; `ci/no-key-material.sh` in verify fails on key material in
+`deploy/`). Verified against real Trustee (`ci/hsm-key-release-test.sh`): first start generates and stores; restart
+gets the same keys by attestation; a changed measurement and a missing KBS both prevent start-up.
+
 **Keys never in clear outside the module — attested key release (verified hands-on 2026-11-22):**
 - The master key (LMK) lives in **OpenBao**; working keys exist only encrypted under it.
 - **Trustee** (Confidential Containers; Apache-2.0) releases the LMK: its key broker reads OpenBao through its

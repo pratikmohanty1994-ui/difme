@@ -12,3 +12,4 @@ attestation
 notary
 exchange-evidence
 keycloak
+tee-key-release
