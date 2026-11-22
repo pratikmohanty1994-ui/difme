@@ -3,13 +3,17 @@
 package main
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/ntadapter"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/scheme"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/server"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/threeds"
@@ -48,7 +52,27 @@ func main() {
 		log.Fatal(err)
 	}
 	go func() { log.Fatal(server.ServeISO(l, n)) }()
-	srv := &http.Server{Addr: env("HTTP_LISTEN", ":8080"), Handler: server.Admin(n), ReadHeaderTimeout: 5 * time.Second}
+	var handler http.Handler = server.Admin(n)
+	// Network tokenization service for Hyperswitch (ADR-024): /nts/* when configured. The JWE private key stays in
+	// the security module (key nts-jwe); Hyperswitch's public key (PEM) encrypts the responses.
+	if key, pubPEM, hsm := os.Getenv("NTS_API_KEY"), os.Getenv("NTS_HYPERSWITCH_PUBLIC_KEY"), os.Getenv("HSM_URL"); key != "" && pubPEM != "" && hsm != "" {
+		blk, _ := pem.Decode([]byte(pubPEM))
+		if blk == nil {
+			log.Fatal("NTS_HYPERSWITCH_PUBLIC_KEY: PEM public key required")
+		}
+		pk, err := x509.ParsePKIXPublicKey(blk.Bytes)
+		rsaPub, ok := pk.(*rsa.PublicKey)
+		if err != nil || !ok {
+			log.Fatal("NTS_HYPERSWITCH_PUBLIC_KEY: RSA public key required")
+		}
+		nts := ntadapter.New(n.Tokens, env("NTS_REQUESTOR", "HYPERSWITCH"), key, env("NTS_KEY_ID", "nts-jwe"), ntadapter.HSMUnwrap(hsm, "nts-jwe"), rsaPub)
+		mux := http.NewServeMux()
+		mux.Handle("/nts/", nts.Handler("/nts"))
+		mux.Handle("/", handler)
+		handler = mux
+		log.Printf("network tokenization service for Hyperswitch on /nts")
+	}
+	srv := &http.Server{Addr: env("HTTP_LISTEN", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	log.Printf("scheme-sim: ISO 8583 on %s, admin on %s", l.Addr(), srv.Addr)
 	log.Fatal(srv.ListenAndServe())
 }

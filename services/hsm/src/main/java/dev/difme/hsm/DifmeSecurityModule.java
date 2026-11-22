@@ -159,6 +159,41 @@ public class DifmeSecurityModule extends JCESecurityModule {
         }
     }
 
+    /** A new RSA-2048 encryption key as a TR-31 D block ("D1", PKCS#8 inside) plus its public key (X.509 SubjectPublicKeyInfo, base64). */
+    public String[] generateRsaEncryptionKey() throws SMException {
+        try {
+            java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("RSA");
+            g.initialize(2048);
+            java.security.KeyPair kp = g.generateKeyPair();
+            return new String[] {Tr31.wrap(kbpk(), "D0000D1RN00E0000", kp.getPrivate().getEncoded()),
+                    java.util.Base64.getEncoder().encodeToString(kp.getPublic().getEncoded())};
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        }
+    }
+
+    /** RSA-OAEP with SHA-256 (JWE RSA-OAEP-256 key unwrap) with an encryption key block ("D1"). */
+    public byte[] rsaOaepDecrypt(String rsaKeyBlock, byte[] data) throws SMException {
+        Tr31.Unwrapped u;
+        try {
+            u = Tr31.unwrap(kbpk(), rsaKeyBlock);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        }
+        if (!u.header().substring(5, 7).equals("D1")) throw new SMException("not an encryption key");
+        try {
+            java.security.PrivateKey k = java.security.KeyFactory.getInstance("RSA").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(u.key()));
+            javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("RSA/ECB/OAEPPadding");
+            c.init(javax.crypto.Cipher.DECRYPT_MODE, k, new javax.crypto.spec.OAEPParameterSpec("SHA-256", "MGF1",
+                    java.security.spec.MGF1ParameterSpec.SHA256, javax.crypto.spec.PSource.PSpecified.DEFAULT));
+            return c.doFinal(data);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException("RSA-OAEP decryption failed");
+        } finally {
+            java.util.Arrays.fill(u.key(), (byte) 0);
+        }
+    }
+
     /** RSASSA-PSS with SHA-256 (JWS PS256) with a signing key block; the key exists in clear only inside this call. */
     public byte[] signPs256(String rsaKeyBlock, byte[] data) throws SMException {
         Tr31.Unwrapped u;

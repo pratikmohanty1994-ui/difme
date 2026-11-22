@@ -29,7 +29,7 @@ spec:
             - { name: HSM_TEE_SVN, value: "1" }          # emulated TEE: the measurement registered in Trustee (dev)
             - { name: HSM_TMPFS, value: /run/hsm }
             - { name: HSM_BOOTSTRAP_OPENBAO, value: "http://openbao.security.svc:8200" }
-            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA" }
+            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA;nts-jwe=RSA-ENC" }
             - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+DisableAttachMechanism -XX:-CreateCoredumpOnCrash" }
           ports: [{ name: http, containerPort: 8700 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8700 }, periodSeconds: 10 }

@@ -99,13 +99,16 @@ public final class KeyRelease {
         }
     }
 
-    /** Generates the bootstrap key list: "label=TYPE;…", TYPE a jPOS key type, AES/&lt;usage&gt; or RSA (signing key + certificate). */
+    /** Generates the bootstrap key list: "label=TYPE;…", TYPE a jPOS key type, AES/&lt;usage&gt;, RSA (signing key + certificate) or RSA-ENC (encryption key + public key). */
     static HsmServer.KeyStore generate(SecurityModule hsm, String spec) throws SMException {
         HsmServer.KeyStore ks = new HsmServer.KeyStore();
         for (String e : spec.split(";")) {
             if (e.isBlank()) continue;
             String[] lt = e.trim().split("=", 2);
-            if (lt[1].equals("RSA")) {
+            if (lt[1].equals("RSA-ENC")) { // encryption key (JWE key unwrap); "certificate" slot holds the public key
+                String[] kp = hsm.generateRsaEncryptionKey();
+                ks.putRsa(lt[0], kp[0], kp[1]);
+            } else if (lt[1].equals("RSA")) {
                 String[] kc = hsm.generateRsaSigningKey("DIFME " + lt[0] + " (dev)");
                 ks.putRsa(lt[0], kc[0], kc[1]);
             } else if (lt[1].startsWith("AES/")) {

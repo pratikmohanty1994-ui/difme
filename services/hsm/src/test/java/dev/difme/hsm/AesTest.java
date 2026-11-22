@@ -80,6 +80,19 @@ class AesTest {
     }
 
     @Test
+    void rsaOaepKeyUnwrapForJwe() throws Exception {
+        String[] kp = hsm.generateRsaEncryptionKey();
+        java.security.PublicKey pub = java.security.KeyFactory.getInstance("RSA")
+                .generatePublic(new java.security.spec.X509EncodedKeySpec(java.util.Base64.getDecoder().decode(kp[1])));
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("RSA/ECB/OAEPPadding");
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, pub, new javax.crypto.spec.OAEPParameterSpec("SHA-256", "MGF1",
+                java.security.spec.MGF1ParameterSpec.SHA256, javax.crypto.spec.PSource.PSpecified.DEFAULT));
+        byte[] cek = H.parseHex("00112233445566778899AABBCCDDEEFF");
+        assertArrayEquals(cek, hsm.rsaOaepDecrypt(kp[0], c.doFinal(cek)));
+        assertThrows(SMException.class, () -> hsm.rsaOaepDecrypt(hsm.generateRsaSigningKey("x")[0], new byte[256]), "signing key used to decrypt");
+    }
+
+    @Test
     void cmacMatchesNistVectors() throws Exception {
         String k = hsm.aesKeyFromComponents("M7", "2B7E151628AED2A6ABF7158809CF4F3C");
         assertEquals("BB1D6929E95937287FA37D129B756746", H.formatHex(hsm.aesCmac(k, new byte[0])));

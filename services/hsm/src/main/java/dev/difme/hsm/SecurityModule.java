@@ -187,6 +187,10 @@ public final class SecurityModule {
 
     public String[] generateRsaSigningKey(String cn) throws SMException { return ext().generateRsaSigningKey(cn); }
 
+    public String[] generateRsaEncryptionKey() throws SMException { return ext().generateRsaEncryptionKey(); }
+
+    public byte[] rsaOaepDecrypt(String rsaKeyBlock, byte[] data) throws SMException { return ext().rsaOaepDecrypt(rsaKeyBlock, data); }
+
     public byte[] signPs256(String rsaKeyBlock, byte[] data) throws SMException { return ext().signPs256(rsaKeyBlock, data); }
 
     public byte[] hmacSha256(String macKeyBlock, byte[] data) throws SMException { return ext().hmacSha256(macKeyBlock, data); }
