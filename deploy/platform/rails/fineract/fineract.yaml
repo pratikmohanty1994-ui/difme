@@ -107,9 +107,11 @@ spec:
             - |
               set -eu
               until curl -sf "$FINERACT/actuator/health" >/dev/null; do sleep 5; done
-              TOKEN=$(curl -sf -X POST "$TOKEN_URL" -d grant_type=client_credentials --data-urlencode "client_id=$CLIENT_ID" \
-                --data-urlencode "client_secret=$CLIENT_SECRET" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
-              [ -n "$TOKEN" ] || { echo "no token from Keycloak"; exit 1; }
+              RESP=$(curl -s -w '\n%{http_code}' -X POST "$TOKEN_URL" -d grant_type=client_credentials --data-urlencode "client_id=$CLIENT_ID" \
+                --data-urlencode "client_secret=$CLIENT_SECRET" || echo "connection failed")
+              TOKEN=$(echo "$RESP" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+              # On failure say why (HTTP status and Keycloak's error code), never the secret or a token.
+              [ -n "$TOKEN" ] || { echo "no token from Keycloak: HTTP $(echo "$RESP" | tail -1), $(echo "$RESP" | grep -o '"error[a-z_]*":"[^"]*"' | tr '\n' ' ')"; exit 1; }
               api() { curl -sf -H "Authorization: Bearer $TOKEN" -H 'Fineract-Platform-TenantId: default' -H 'Content-Type: application/json' "$@"; }
               # id of the first object whose "name" (roles) or "username" (users) is $2, from the JSON list in $1
               id_of() { printf '%s' "$1" | tr '{' '\n' | grep "\"$2\":\"$3\"" | sed -n 's/.*"id":\([0-9]*\).*/\1/p' | head -1; }

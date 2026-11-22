@@ -92,7 +92,10 @@ spec:
             - { name: ROUTER__SERVER__WORKERS, value: "2" }
           ports: [{ name: http, containerPort: 8080 }]
           startupProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 5, failureThreshold: 60 }
-          readinessProbe: { httpGet: { path: /health/ready, port: 8080 }, periodSeconds: 15 }
+          # Shallow check: /health/ready is Hyperswitch's deep check, which also probes services DIFME doesn't run (analytics,
+          # OpenSearch, gRPC, decision engine) and an outgoing request to the internet that egress policy blocks, so it
+          # timed out on the first cluster run (2026-11-22). Database and Valkey failures surface on requests and logs.
+          readinessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 15, timeoutSeconds: 5 }
           livenessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 30 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 50m, memory: 160Mi }, limits: { memory: 512Mi } }

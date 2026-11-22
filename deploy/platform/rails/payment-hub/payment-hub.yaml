@@ -35,7 +35,9 @@ spec:
             - { name: HYPERSWITCH_URL, value: "http://hyperswitch.rails.svc:8080" }
             - { name: HYPERSWITCH_ADMIN_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: admin-api-key } } }
             - { name: ACQUIRER_API_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: acquirer-api-key } } }
-            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -Xss512k" }
+            # No GC flag here: the image's entrypoint already selects G1 (services/core/Dockerfile.jvm), and a second
+            # one stops the JVM ("Multiple garbage collectors selected", first cluster run 2026-11-22).
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
           ports: [{ name: http, containerPort: 8090 }]
           readinessProbe: { httpGet: { path: /q/health/ready, port: 8090 }, periodSeconds: 10 }
           livenessProbe: { httpGet: { path: /q/health/live, port: 8090 }, periodSeconds: 30 }
