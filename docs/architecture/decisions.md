@@ -443,3 +443,19 @@ OpenBao and an HMAC token cryptogram become the standard algorithms in the secur
   token; Veraison stays for device/edge attestation, §11.1); Arm CCA realms under QEMU (FEAT_RME is experimental in
   QEMU and needs the full firmware stack: not viable on a 4-core VM); SoftHSM2 (BSD; derives keys inside the token,
   but has no payment functions).
+
+**ADR-023 progress (2026-11-22):**
+- Built from source, all test suites green (libraries and services), every package's `@tazama-lf` dependency from
+  `vendor/tazama` (`ci/tazama-local-deps.py`). Upstream bugs found and patched: `tslib` missing from frms-coe-lib's
+  runtime dependencies; rule-executer's rule alias only resolvable with npm's install-links.
+- Kafka transport verified against a real Kafka 4.1 broker (load sharing, exactly-once handling per transaction in the
+  test, broadcast, runtime subscribe); OpenTelemetry swap verified for trace continuation.
+- **End to end** (`ci/tazama-e2e.sh`, Docker): TMS → event director → rules 901/902 → typology processor →
+  adjudicator over Kafka, schema via `deploy/platform/fraud/tazama/schema.sh` on databases `tazama_*`, the committed env
+  files: a pacs.008 + pacs.002 ends as an **ALRT** evaluation (901 `.01` + 902 `.01` = 200 = alert threshold).
+- Cluster manifests: profile `fraud` (`deploy/platform/fraud/tazama`); role and databases from the shared Postgres's
+  init (`96-tazama.sh`, secret `tazama-db`). `NODE_ENV=dev`: in Tazama it only decides whether Redis needs a password,
+  and DIFME's Valkey is reached over the mesh without one. Not yet run on a cluster; admin-service image built but not
+  deployed (configuration is loaded by the schema job for now).
+- Next: DIFME rules (the ONNX fraud score as a rule processor, the §7.4 business rules), the payment-hub hooks (checks
+  before the charge and before capture; cancel / refund / review actions), cluster run.

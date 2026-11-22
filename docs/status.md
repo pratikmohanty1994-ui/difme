@@ -7,7 +7,10 @@ Updated 2026-11-18 (evening). Read this first when picking up work, then CONTRIB
 **In flight:** Hyperswitch image memory (trims beyond the Stripe compatibility layer don't compile upstream; next:
 one-crate-at-a-time build, router at opt-level 0 measured at 13.6 GB peak, swap as backstop, then the image on
 Actions); TEE key-release test (Trustee + OpenBao, emulated TEE) → ADR-026.
-**Designed, to build:** Tazama images, manifests, DIFME rules and payment-hub hooks (ADR-023); card vault, network
+**Done 2026-11-22:** Tazama builds from source with Kafka/OpenTelemetry swaps, images (7) in CI, manifests (profile
+`fraud`), end to end locally (`ci/tazama-e2e.sh`: ALRT); attested key release verified (`ci/tee-key-release-test.sh`,
+ADR-026); all non-Hyperswitch images built and signed under the new owner.
+**Designed, to build:** Tazama DIFME rules, payment-hub hooks and cluster run (ADR-023); card vault, network
 tokens, card-issuer with debit/prepaid first (ADR-024); Fineract credit gate test and loan origination (ADR-025);
 security module: CVV2/CAVV first, then PIN, ARQC/ARPC, issuer scripts (ADR-026); PH-EE modernisation and rails
 manifests (PH-EE, Mojaloop); retire the interim Temporal hub.
