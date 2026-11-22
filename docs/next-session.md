@@ -1,6 +1,23 @@
-# Next session: start here (updated 2026-11-22, late)
+# Next session: start here (updated 2026-11-22, night)
 
-Read this, then `docs/status.md`. Owner rules still apply: commits as `pratikmohanty1994
+Read this, then `docs/status.md`.
+
+## 0. Latest (2026-11-22, night) — read first
+- **Keys only in the (emulated) TEE, enforced:** services/hsm starts only through attested key release (own KBS
+  client; Trustee app `tee-key-release` in `security`; OpenBao mount `kbs`, roles `trustee-kbs` read-only and
+  `hsm-bootstrap` create-only); no keys in Secrets (`ci/no-key-material.sh` in verify); ACS holds no keys (signing
+  and HMAC in the hsm). Verified against real Trustee: `ci/hsm-key-release-test.sh` (needs TRUSTEE_DIR checkout).
+- **card-issuer built** (`services/card-issuer`, Go): debit on Fineract savings holds, credit line with issuer-enforced
+  open-to-buy, CVV2/dCVV2/PIN (ISO-4 from the app) via the hsm, issuer authorisation/clearing/reversal, ACS card
+  lookup, Postgres store with the **card vault** (PAN only as HMAC index + AES-GCM ciphertext, keys in the hsm).
+  The switch (scheme-sim) delegates issuer decisions to it (CVV2 field 48, PIN field 52, 0200 cleared, 0400 reversed).
+  Live: `ci/card-issuer-live.sh` (Fineract docker + hsm + scheme-sim + ISO adapter + ACS) PASS.
+- **Cluster:** apps `card-security` (hsm attested, ACS, card-issuer) and `tee-key-release`; images difme-hsm,
+  difme-card-issuer, difme-scheme-sim (with acs). Not yet run on a cluster: next cluster-verify with
+  core,streaming,security,rails,fraud. Watch: Trustee pod start (init keys, OpenBao login), hsm first-start bootstrap,
+  Keycloak client card-issuer → Fineract user card-issuer (same mechanism as fineract-service-users, still failing in
+  run 2: see §3).
+ Owner rules still apply: commits as `pratikmohanty1994
 <pratikmohanty1994@users.noreply.github.com>`, no assistant trailers (process.md rule 15); free and open source only
 (OSI; no BSL/SSPL/ELv2); `[skip ci]` unless a run is wanted; one cluster-verify at a time; push to `main` and mirror to
 the session branch; nothing runs on the owner's PC.
