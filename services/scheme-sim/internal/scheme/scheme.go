@@ -43,6 +43,8 @@ type Card struct {
 	OutstandingMinor int64  `json:"outstandingMinor"`
 	Status           string `json:"status"` // ACTIVE, BLOCKED, RESTRICTED
 	Holder           string `json:"holder,omitempty"`
+	// 3-D Secure authentication channels the cardholder enrolled (ADR-027): "sms", "email", "app" (DIFME app, out of band)
+	Channels []string `json:"channels,omitempty"`
 }
 
 // Txn is one processed message, kept for the admin API (PAN masked).

@@ -48,7 +48,12 @@ func main() {
 	}
 	a := acs.New(acs.Config{FrictionlessLimitMinor: limit, ChallengeURL: env("ACS_CHALLENGE_URL", "http://acs/3ds/creq"), PayerKey: []byte(key)},
 		acs.NewCMSClient(env("ACS_CMS_URL", "http://127.0.0.1:8080")), frm, threeds.NewHSMClient(env("HSM_URL", "http://127.0.0.1:8700")),
-		acs.LogOTP{}, acs.NewDSClient(os.Getenv("ACS_DS_URL")))
+		acs.LogOTP{}, acs.LogOOB{}, acs.NewDSClient(os.Getenv("ACS_DS_URL")))
+	go func() { // decoupled authentications past their maximum time get their RReq
+		for range time.Tick(30 * time.Second) {
+			a.Expire(context.Background())
+		}
+	}()
 	addr := env("ACS_ADDR", ":8090")
 	log.Printf("acs listening on %s", addr)
 	log.Fatal((&http.Server{Addr: addr, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second}).ListenAndServe())

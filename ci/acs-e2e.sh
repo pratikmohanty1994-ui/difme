@@ -32,13 +32,13 @@ fail() { echo "FAIL: $*"; for f in "$W"/*.log; do echo "== $f"; tail -n 8 "$f"; 
 j() { python3 -c "import json,sys; print(json.load(sys.stdin).get('$1',''))"; }
 echo "hsm: $(grep -o 'check value.*' "$W/hsm.log")"
 
-ares=$(curl -s -X POST localhost:18090/3ds/areq -d "{\"messageType\":\"AReq\",\"messageVersion\":\"2.2.0\",\"messageCategory\":\"01\",\"deviceChannel\":\"02\",
+ares=$(curl -s -X POST localhost:18090/3ds/areq -d "{\"messageType\":\"AReq\",\"messageVersion\":\"2.3.1\",\"messageCategory\":\"01\",\"deviceChannel\":\"02\",
  \"threeDSServerTransID\":\"srv-e2e\",\"dsTransID\":\"ds-e2e\",\"acctNumber\":\"$PAN\",\"cardExpiryDate\":\"$EXP\",\"purchaseAmount\":\"125000\",
  \"purchaseCurrency\":\"356\",\"merchantName\":\"Shop\",\"acquirerMerchantID\":\"MERCHANT01\"}")
 [[ $(echo "$ares" | j transStatus) == C ]] || fail "ARes $ares"; echo "ARes: challenge"
 acs=$(echo "$ares" | j acsTransID); sleep 0.3
 otp=$(grep -o 'otp=[0-9]*' "$W/acs.log" | tail -1 | cut -d= -f2)
-cres=$(curl -s -X POST localhost:18090/3ds/creq -d "{\"messageType\":\"CReq\",\"messageVersion\":\"2.2.0\",\"threeDSServerTransID\":\"srv-e2e\",\"acsTransID\":\"$acs\",\"challengeDataEntry\":\"$otp\"}")
+cres=$(curl -s -X POST localhost:18090/3ds/creq -d "{\"messageType\":\"CReq\",\"messageVersion\":\"2.3.1\",\"threeDSServerTransID\":\"srv-e2e\",\"acsTransID\":\"$acs\",\"challengeDataEntry\":\"$otp\"}")
 [[ $(echo "$cres" | j transStatus) == Y ]] || fail "CRes $cres"; echo "CRes: Y"
 cavv=$(j authenticationValue <"$W/rreq.json"); [[ -n $cavv ]] || fail "no CAVV in RReq"; echo "RReq: Y, ECI $(j eci <"$W/rreq.json"), CAVV $cavv"
 pay() { curl -s -X POST localhost:18081/v1/authorize -d "{\"pan\":\"$PAN\",\"expiry\":\"$EXP\",\"amountMinor\":125000,\"merchantId\":\"MERCHANT01\",\"terminalId\":\"WEB00001\",\"cavv\":\"$1\"}" | j responseCode; }

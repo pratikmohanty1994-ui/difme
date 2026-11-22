@@ -41,10 +41,11 @@ func (c *CMSClient) Card(ctx context.Context, pan string) (Card, bool, error) {
 	}
 	var card Card
 	err = json.NewDecoder(r.Body).Decode(&struct {
-		Expiry *string `json:"expiry"`
-		Status *string `json:"status"`
-		Holder *string `json:"holder"`
-	}{&card.Expiry, &card.Status, &card.Holder})
+		Expiry   *string   `json:"expiry"`
+		Status   *string   `json:"status"`
+		Holder   *string   `json:"holder"`
+		Channels *[]string `json:"channels"`
+	}{&card.Expiry, &card.Status, &card.Holder, &card.Channels})
 	return card, err == nil, err
 }
 
@@ -83,12 +84,23 @@ func (d *DSClient) Send(ctx context.Context, rr RReq) error {
 // it through the notification service (SMS / app push) and never logs it.
 type LogOTP struct{}
 
-func (LogOTP) Send(_ context.Context, pan string, _ Card, otp string) error {
-	slog.Warn("3ds DEV passcode (never in production)", "card", pan[:6]+"******"+pan[len(pan)-4:], "otp", otp)
+func (LogOTP) Send(_ context.Context, pan string, _ Card, channel, otp string) error {
+	slog.Warn("3ds DEV passcode (never in production)", "card", mask(pan), "channel", channel, "otp", otp)
 	return nil
 }
 
-// Handler serves POST /3ds/areq, POST /3ds/creq and GET /healthz.
+// LogOOB is the development app-push channel: it logs the request; approve it with POST /3ds/oob/{acsTransID}.
+type LogOOB struct{}
+
+func (LogOOB) Notify(_ context.Context, pan, acsTransID, merchant string, amountMinor int64, currency string) error {
+	slog.Warn("3ds DEV app push (never in production)", "card", mask(pan), "acsTransID", acsTransID, "merchant", merchant, "amount", amountMinor, "currency", currency)
+	return nil
+}
+
+func mask(pan string) string { return pan[:6] + "******" + pan[len(pan)-4:] }
+
+// Handler serves POST /3ds/areq, POST /3ds/creq (app, JSON), POST /3ds/challenge (browser, HTML),
+// POST /3ds/oob/{acsTransID} (DIFME app's answer: {"approved":true}) and GET /healthz.
 func (a *ACS) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
@@ -110,6 +122,17 @@ func (a *ACS) Handler() http.Handler {
 		res, err := a.Challenge(r.Context(), q)
 		reply(w, res, err)
 	})
+	mux.HandleFunc("POST /3ds/oob/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Approved bool `json:"approved"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&in); err != nil {
+			writeJSON(w, 400, map[string]string{"error": "{\"approved\": bool} required"})
+			return
+		}
+		reply(w, map[string]string{"status": "recorded"}, a.OOBResult(r.Context(), r.PathValue("id"), in.Approved))
+	})
+	mux.HandleFunc("POST /3ds/challenge", a.browserChallenge)
 	return mux
 }
 

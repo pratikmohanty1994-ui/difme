@@ -2,10 +2,13 @@ package acs_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -20,7 +23,11 @@ import (
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/wire"
 )
 
-const pan = "4375510000000001"
+const (
+	pan    = "4375510000000001"
+	appPAN = "4375510000000027" // DIFME app enrolled
+	twoPAN = "4375510000000035" // SMS and email
+)
 
 type fakeFRM struct {
 	verdict acs.Verdict
@@ -33,14 +40,21 @@ func (f *fakeFRM) Evaluate(_ context.Context, id, payer, merchant string, amount
 }
 
 type otpBox struct {
-	mu   sync.Mutex
-	last string
+	mu            sync.Mutex
+	last, channel string
 }
 
-func (o *otpBox) Send(_ context.Context, _ string, _ acs.Card, otp string) error {
+func (o *otpBox) Send(_ context.Context, _ string, _ acs.Card, channel, otp string) error {
 	o.mu.Lock()
-	o.last = otp
+	o.last, o.channel = otp, channel
 	o.mu.Unlock()
+	return nil
+}
+
+type oobBox struct{ pushed []string }
+
+func (o *oobBox) Notify(_ context.Context, _, acsTransID, _ string, _ int64, _ string) error {
+	o.pushed = append(o.pushed, acsTransID)
 	return nil
 }
 
@@ -55,6 +69,7 @@ type world struct {
 	acs   *acs.ACS
 	frm   *fakeFRM
 	otp   *otpBox
+	oob   *oobBox
 	rreqs *rreqBox
 	now   time.Time
 }
@@ -65,21 +80,23 @@ func newWorld(t *testing.T, verdict acs.Verdict) *world {
 	n.HSM = hsm
 	exp := time.Now().AddDate(2, 0, 0).Format("0601")
 	for _, c := range []scheme.Card{{PAN: pan, Expiry: exp, LimitMinor: 10_000_000, Status: "ACTIVE"},
-		{PAN: "4375510000000019", Expiry: exp, LimitMinor: 10_000_000, Status: "BLOCKED"}} {
+		{PAN: "4375510000000019", Expiry: exp, LimitMinor: 10_000_000, Status: "BLOCKED"},
+		{PAN: appPAN, Expiry: exp, LimitMinor: 10_000_000, Status: "ACTIVE", Channels: []string{"app", "sms"}},
+		{PAN: twoPAN, Expiry: exp, LimitMinor: 10_000_000, Status: "ACTIVE", Channels: []string{"sms", "email"}}} {
 		if err := n.PutCard(c); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cms := httptest.NewServer(server.Admin(n))
 	t.Cleanup(cms.Close)
-	w := &world{net: n, frm: &fakeFRM{verdict: verdict}, otp: &otpBox{}, rreqs: &rreqBox{}, now: time.Now()}
+	w := &world{net: n, frm: &fakeFRM{verdict: verdict}, otp: &otpBox{}, oob: &oobBox{}, rreqs: &rreqBox{}, now: time.Now()}
 	w.acs = acs.New(acs.Config{FrictionlessLimitMinor: 500_000, ChallengeURL: "http://acs/3ds/creq", PayerKey: []byte("test-key-0123456789"),
-		Now: func() time.Time { return w.now }}, acs.NewCMSClient(cms.URL), w.frm, hsm, w.otp, w.rreqs)
+		Now: func() time.Time { return w.now }}, acs.NewCMSClient(cms.URL), w.frm, hsm, w.otp, w.oob, w.rreqs)
 	return w
 }
 
 func areq(card string, amount int64) acs.AReq {
-	return acs.AReq{MessageType: "AReq", MessageVersion: "2.2.0", MessageCategory: "01", DeviceChannel: "02", ThreeDSServerTransID: "srv-1",
+	return acs.AReq{MessageType: "AReq", MessageVersion: "2.3.1", MessageCategory: "01", DeviceChannel: "02", ThreeDSServerTransID: "srv-1",
 		DSTransID: "ds-1", AcctNumber: card, PurchaseAmount: fmt.Sprint(amount), PurchaseCurrency: "356", MerchantName: "Shop", AcquirerMerchantID: "MERCHANT01"}
 }
 
@@ -207,7 +224,7 @@ func TestDeclinedAuthentications(t *testing.T) {
 	for _, c := range []struct{ card, status, reason string }{
 		{pan, "R", acs.ReasonFraud},                       // FRM interdiction
 		{"4375510000000019", "N", acs.ReasonNotPermitted}, // blocked in CMS
-		{"4375510000000027", "N", acs.ReasonNoCardRecord}, // unknown card
+		{"4375510000000043", "N", acs.ReasonNoCardRecord}, // unknown card
 	} {
 		res, err := w.acs.Authenticate(context.Background(), areq(c.card, 1000))
 		if err != nil || res.TransStatus != c.status || res.TransStatusReason != c.reason || res.AuthenticationValue != "" {
@@ -264,5 +281,147 @@ func TestHTTPAndTazamaClient(t *testing.T) {
 	}
 	if r, _ := http.Post(srv.URL+"/3ds/creq", "application/json", strings.NewReader(`{"messageType":"CReq","acsTransID":"nope"}`)); r.StatusCode != 400 {
 		t.Errorf("unknown challenge: %d", r.StatusCode)
+	}
+}
+
+func TestVersions(t *testing.T) {
+	w := newWorld(t, acs.NoAlert)
+	for _, v := range []string{"2.3.1", "2.2.0"} {
+		q := areq(pan, 1000)
+		q.MessageVersion = v
+		if res, err := w.acs.Authenticate(context.Background(), q); err != nil || res.MessageVersion != v || res.TransStatus != "Y" {
+			t.Errorf("%s: %v %+v", v, err, res)
+		}
+	}
+	q := areq(pan, 1000)
+	q.MessageVersion = "2.1.0"
+	if _, err := w.acs.Authenticate(context.Background(), q); err == nil {
+		t.Error("2.1.0 accepted")
+	}
+}
+
+func TestSingleSelectThenPasscode(t *testing.T) {
+	w := newWorld(t, acs.Alert)
+	res, _ := w.acs.Authenticate(context.Background(), areq(twoPAN, 1000))
+	if res.TransStatus != "C" || res.ACSRenderingType == nil || res.ACSRenderingType.Template != "06" && res.ACSRenderingType.Template != "02" || w.otp.last != "" {
+		t.Fatalf("%+v %+v", res, res.ACSRenderingType)
+	}
+	creq := acs.CReq{MessageType: "CReq", MessageVersion: "2.3.1", ThreeDSServerTransID: "srv-1", ACSTransID: res.ACSTransID}
+	cres, _ := w.acs.Challenge(context.Background(), creq)
+	if cres.ACSUIType != "02" || len(cres.ChallengeSelectInfo) != 2 {
+		t.Fatalf("select screen: %+v", cres)
+	}
+	creq.ChallengeDataEntry = "email"
+	cres, _ = w.acs.Challenge(context.Background(), creq)
+	if cres.ACSUIType != "01" || w.otp.channel != "email" || w.otp.last == "" {
+		t.Fatalf("after choosing email: %+v channel=%q", cres, w.otp.channel)
+	}
+	creq.ChallengeDataEntry = w.otp.last
+	if cres, _ = w.acs.Challenge(context.Background(), creq); cres.TransStatus != "Y" {
+		t.Fatalf("%+v", cres)
+	}
+	if rr := w.rreqs.got[0]; rr.AuthenticationType != acs.AuthOTP || rr.MessageVersion != "2.3.1" {
+		t.Fatalf("%+v", rr)
+	}
+}
+
+func TestOutOfBandAppApproval(t *testing.T) {
+	w := newWorld(t, acs.Alert)
+	res, _ := w.acs.Authenticate(context.Background(), areq(appPAN, 1000))
+	if res.TransStatus != "C" || res.AuthenticationType != acs.AuthOOB || len(w.oob.pushed) != 1 {
+		t.Fatalf("%+v pushes=%v", res, w.oob.pushed)
+	}
+	creq := acs.CReq{MessageType: "CReq", MessageVersion: "2.3.1", ThreeDSServerTransID: "srv-1", ACSTransID: res.ACSTransID, OOBContinue: "Y"}
+	if cres, _ := w.acs.Challenge(context.Background(), creq); cres.ACSUIType != "04" || cres.ChallengeCompletionInd != "N" {
+		t.Fatalf("before approval: %+v", cres)
+	}
+	if err := w.acs.OOBResult(context.Background(), res.ACSTransID, true); err != nil {
+		t.Fatal(err)
+	}
+	if cres, _ := w.acs.Challenge(context.Background(), creq); cres.TransStatus != "Y" {
+		t.Fatalf("after approval: %+v", cres)
+	}
+	rr := w.rreqs.got[0]
+	if c, _ := threeds.Decode(rr.AuthenticationValue); rr.AuthenticationType != acs.AuthOOB || c.SecondFactor != 2 {
+		t.Fatalf("%+v %+v", rr, c)
+	}
+	if code := authorise(t, w.net, 1000, rr.AuthenticationValue); code != scheme.DoNotHonour {
+		// the CAVV belongs to appPAN, authorise() pays with pan: must not verify
+		t.Fatalf("CAVV of another card accepted: %s", code)
+	}
+}
+
+func TestDecoupledAuthentication(t *testing.T) {
+	w := newWorld(t, acs.Alert)
+	q := areq(appPAN, 1000)
+	q.DecReqInd, q.DecMaxTime = "Y", "5"
+	res, _ := w.acs.Authenticate(context.Background(), q)
+	if res.TransStatus != "D" || res.ACSDecConInd != "Y" || res.AuthenticationType != acs.AuthDecoupled {
+		t.Fatalf("%+v", res)
+	}
+	if _, err := w.acs.Challenge(context.Background(), acs.CReq{MessageType: "CReq", ThreeDSServerTransID: "srv-1", ACSTransID: res.ACSTransID}); err == nil {
+		t.Error("a decoupled authentication accepted a CReq")
+	}
+	_ = w.acs.OOBResult(context.Background(), res.ACSTransID, true)
+	if rr := w.rreqs.got[0]; rr.TransStatus != "Y" || rr.AuthenticationType != acs.AuthDecoupled || rr.AuthenticationValue == "" {
+		t.Fatalf("%+v", rr)
+	}
+	// a second one is never approved: expires after DecMaxTime
+	res, _ = w.acs.Authenticate(context.Background(), q)
+	w.now = w.now.Add(6 * time.Minute)
+	w.acs.Expire(context.Background())
+	if rr := w.rreqs.got[1]; rr.TransStatus != "N" || rr.TransStatusReason != acs.ReasonDecoupledExp {
+		t.Fatalf("expired: %+v", rr)
+	}
+}
+
+func TestThreeRI(t *testing.T) {
+	w := newWorld(t, acs.NoAlert)
+	q := areq(pan, 0)
+	q.DeviceChannel, q.MessageCategory, q.PurchaseAmount = "03", "02", ""
+	if res, _ := w.acs.Authenticate(context.Background(), q); res.TransStatus != "Y" || res.AuthenticationValue == "" {
+		t.Fatalf("3RI NPA: %+v", res)
+	}
+	q = areq(pan, 1000)
+	q.DeviceChannel = "03"
+	if res, _ := w.acs.Authenticate(context.Background(), q); res.TransStatus != "N" || res.TransStatusReason != acs.Reason3RINotSupp {
+		t.Fatalf("3RI PA: %+v", res)
+	}
+}
+
+func TestBrowserChallengePage(t *testing.T) {
+	w := newWorld(t, acs.Alert)
+	srv := httptest.NewServer(w.acs.Handler())
+	defer srv.Close()
+	q := areq(pan, 1000)
+	q.NotificationURL = "https://merchant.example/3ds/notify"
+	res, _ := w.acs.Authenticate(context.Background(), q)
+	creq, _ := json.Marshal(acs.CReq{MessageType: "CReq", MessageVersion: "2.3.1", ThreeDSServerTransID: "srv-1", ACSTransID: res.ACSTransID})
+	post := func(form url.Values) string {
+		r, err := http.PostForm(srv.URL+"/3ds/challenge", form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		if r.StatusCode != 200 {
+			t.Fatalf("%d %s", r.StatusCode, b)
+		}
+		return string(b)
+	}
+	html := post(url.Values{"creq": {base64.RawURLEncoding.EncodeToString(creq)}, "threeDSSessionData": {"sess-1"}})
+	if !strings.Contains(html, `name="challengeDataEntry"`) || !strings.Contains(html, res.ACSTransID) {
+		t.Fatalf("challenge page: %s", html)
+	}
+	html = post(url.Values{"acsTransID": {res.ACSTransID}, "threeDSServerTransID": {"srv-1"}, "messageVersion": {"2.3.1"},
+		"threeDSSessionData": {"sess-1"}, "challengeDataEntry": {w.otp.last}})
+	if !strings.Contains(html, `action="https://merchant.example/3ds/notify"`) || !strings.Contains(html, `value="sess-1"`) {
+		t.Fatalf("final page: %s", html)
+	}
+	enc := html[strings.Index(html, `name="cres" value="`)+len(`name="cres" value="`):]
+	enc = enc[:strings.Index(enc, `"`)]
+	b, _ := base64.RawURLEncoding.DecodeString(enc)
+	var cres acs.CRes
+	if err := json.Unmarshal(b, &cres); err != nil || cres.TransStatus != "Y" || cres.ChallengeCompletionInd != "Y" {
+		t.Fatalf("cres: %v %s", err, b)
 	}
 }
