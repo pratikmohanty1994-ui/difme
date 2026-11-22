@@ -63,7 +63,7 @@ class LoanWorkflowsTest {
         String basic = Base64.getEncoder().encodeToString("mifos:password".getBytes());
         HttpClient h = HttpClient.newHttpClient();
         ObjectMapper m = new ObjectMapper();
-        String d = java.time.LocalDate.now().format(LoanActivitiesImpl.D);
+        String d = java.time.LocalDate.now(LoanActivitiesImpl.TENANT_ZONE).format(LoanActivitiesImpl.D);
         java.util.function.BiFunction<String, String, JsonNode> post = (path, body) -> {
             try {
                 return m.readTree(h.send(HttpRequest.newBuilder(URI.create(f + "/api/v1/" + path)).header("Authorization", "Basic " + basic)

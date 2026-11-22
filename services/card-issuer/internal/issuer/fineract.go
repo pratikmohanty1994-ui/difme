@@ -21,10 +21,13 @@ type Fineract struct {
 	TokenURL, ClientID, ClientSecret string
 	User, Password                   string
 	PaymentTypeID                    int64 // Fineract payment type for card withdrawals ("Card network")
-	HTTP                             *http.Client
-	mu                               sync.Mutex
-	token                            string
-	tokenExp                         time.Time
+	// Location is the tenant's timezone (FINERACT_TIMEZONE): Fineract dates transactions on its business date, so
+	// dating them in UTC fails around midnight in Asia/Kolkata ("date can not be before last transaction date").
+	Location *time.Location
+	HTTP     *http.Client
+	mu       sync.Mutex
+	token    string
+	tokenExp time.Time
 }
 
 const dateFmt = "02 January 2006"
@@ -119,8 +122,15 @@ func (f *Fineract) Available(ctx context.Context, savings int64) (int64, error) 
 	return minor(a.Summary.AccountBalance - a.Summary.TotalOnHold), nil
 }
 
+func (f *Fineract) now() time.Time {
+	if f.Location != nil {
+		return time.Now().In(f.Location)
+	}
+	return time.Now()
+}
+
 func (f *Fineract) today() map[string]any {
-	return map[string]any{"locale": "en", "dateFormat": "dd MMMM yyyy", "transactionDate": time.Now().Format(dateFmt)}
+	return map[string]any{"locale": "en", "dateFormat": "dd MMMM yyyy", "transactionDate": f.now().Format(dateFmt)}
 }
 
 func (f *Fineract) Hold(ctx context.Context, savings, amountMinor int64, reason string) (int64, error) {
@@ -163,7 +173,7 @@ func (f *Fineract) Outstanding(ctx context.Context, loan int64) (int64, error) {
 
 func (f *Fineract) Disburse(ctx context.Context, loan, amountMinor int64) error {
 	return f.call(ctx, http.MethodPost, fmt.Sprintf("loans/%d?command=disburse", loan), map[string]any{"locale": "en", "dateFormat": "dd MMMM yyyy",
-		"actualDisbursementDate": time.Now().Format(dateFmt), "transactionAmount": money(amountMinor)}, nil)
+		"actualDisbursementDate": f.now().Format(dateFmt), "transactionAmount": money(amountMinor)}, nil)
 }
 
 // Transactions lists a loan's transactions (credit line): disbursements are purchases, repayments payments.
@@ -197,7 +207,12 @@ func (f *Fineract) Transactions(ctx context.Context, loan int64) ([]LedgerTxn, e
 		case t.Type.Chargeback:
 			typ = "CHARGEBACK"
 		}
-		out = append(out, LedgerTxn{Date: time.Date(t.Date[0], time.Month(t.Date[1]), t.Date[2], 12, 0, 0, 0, time.Local), Type: typ, AmountMinor: minor(t.Amount)})
+		loc := f.Location
+		if loc == nil {
+			loc = time.Local
+		}
+		// a business date: the start of that day in the tenant's timezone (a transaction dated today is not "after now")
+		out = append(out, LedgerTxn{Date: time.Date(t.Date[0], time.Month(t.Date[1]), t.Date[2], 0, 0, 0, 0, loc), Type: typ, AmountMinor: minor(t.Amount)})
 	}
 	return out, nil
 }

@@ -7,11 +7,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 F=${FINERACT:-http://127.0.0.1:8443/fineract-provider}; A="$F/api/v1"
 H=(-s -u mifos:password -H "Fineract-Platform-TenantId: default" -H "Content-Type: application/json")
-D=$(date +'%d %B %Y'); L='"locale":"en","dateFormat":"dd MMMM yyyy"'
+D=$(TZ=Asia/Kolkata date +'%d %B %Y'); L='"locale":"en","dateFormat":"dd MMMM yyyy"'
 api() { curl "${H[@]}" -X "$1" "$A/$2" ${3:+-d "$3"}; }
 id() { python3 -c "import json,sys; d=json.load(sys.stdin); v=d.get('$1') or d.get('resourceId'); print(v) if v else sys.exit('no id: '+json.dumps([e.get('developerMessage') for e in d.get('errors',[])] or d)[:400])"; }
 W=$(mktemp -d); pids=(); trap 'kill "${pids[@]}" 2>/dev/null || true; rm -rf "$W"' EXIT
-fail() { echo "FAIL: $*"; tail -5 "$W"/*.log; exit 1; }
+fail() { echo "FAIL: $*"; for f in "$W"/*.log; do echo "== $f"; tail -n 6 "$f"; done; exit 1; }
 # --- Fineract: a client with a savings account (debit) and a credit line
 client=$(api POST clients "{\"officeId\":1,\"legalFormId\":1,\"firstname\":\"Card\",\"lastname\":\"Holder$RANDOM\",\"active\":true,\"activationDate\":\"$D\",$L}" | id clientId)
 sp=$(api POST savingsproducts "{\"name\":\"Card savings $RANDOM\",\"shortName\":\"S$((RANDOM%900+100))\",\"currencyCode\":\"INR\",\"digitsAfterDecimal\":2,\"inMultiplesOf\":0,
@@ -58,7 +58,7 @@ a=$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":60000,\"curren
 ci POST "/v1/authorisations/$(echo "$a" | j id)/clear" '{"amountMinor":55000}' | j state | grep -q CLEARED || fail "clear"
 [ "$(bal)" = 450.0 ] || fail "after clearing: $(bal)"; echo "ok: cleared INR 550 (withdrawal, hold released): available 450"
 dc=$(ci GET "/v1/cards/$cid/dcvv2" | j dcvv2)
-[ "$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"cvv2\":\"$dc\"}" | j responseCode)" = 00 ] || fail "dCVV2"; echo "ok: dynamic CVV2 $dc accepted"
+r=$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"cvv2\":\"$dc\"}"); [ "$(echo "$r" | j responseCode)" = 00 ] || fail "dCVV2 $dc: $r"; echo "ok: dynamic CVV2 $dc accepted"
 # PIN from the app: ISO 9564 format 4 under the app PIN key, then a PIN-verified authorisation (network ZPK block)
 iso4=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),'2468','$pan').hex().upper())")
 ci POST "/v1/cards/$cid/pin" "{\"pinBlock\":\"$iso4\"}" | grep -q "PIN set" || fail "PIN set"

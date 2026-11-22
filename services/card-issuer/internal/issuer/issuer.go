@@ -15,6 +15,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"sync"
@@ -208,6 +209,10 @@ type AuthRequest struct {
 func (i *Issuer) Authorise(ctx context.Context, r AuthRequest) (Auth, error) {
 	a := Auth{ID: "auth-" + randomDigits(12), AmountMinor: r.AmountMinor, Currency: r.Currency, Merchant: r.Merchant, State: "DECLINED", At: i.now()}
 	decline := func(code string) (Auth, error) { a.Code = code; return a, i.store.PutAuth(ctx, a) }
+	sysErr := func(where string, err error) (Auth, error) {
+		slog.Error("authorisation: system error", "auth", a.ID, "step", where, "err", err)
+		return decline(SystemError)
+	}
 	c, err := i.store.CardByPAN(ctx, r.PAN)
 	if errors.Is(err, ErrNotFound) {
 		a.Code = InvalidCard
@@ -232,7 +237,7 @@ func (i *Issuer) Authorise(ctx context.Context, r AuthRequest) (Auth, error) {
 			ok, err = i.hsm.VerifyDCVV2(ctx, c.PAN, r.CVV2)
 		}
 		if err != nil {
-			return decline(SystemError)
+			return sysErr("card security code", err)
 		}
 		if !ok {
 			return decline(DoNotHonour)
@@ -244,7 +249,7 @@ func (i *Issuer) Authorise(ctx context.Context, r AuthRequest) (Auth, error) {
 		}
 		ok, err := i.hsm.VerifyPVV(ctx, c.PAN, r.PINBlock, c.PVV)
 		if err != nil {
-			return decline(SystemError)
+			return sysErr("PIN", err)
 		}
 		if !ok {
 			return decline(WrongPIN)
@@ -256,20 +261,20 @@ func (i *Issuer) Authorise(ctx context.Context, r AuthRequest) (Auth, error) {
 	case Debit:
 		avail, err := i.ledger.Available(ctx, c.Account)
 		if err != nil {
-			return decline(SystemError)
+			return sysErr("available balance", err)
 		}
 		if avail < r.AmountMinor {
 			return decline(Insufficient)
 		}
 		ref, err := i.ledger.Hold(ctx, c.Account, r.AmountMinor, "card auth "+a.ID)
 		if err != nil {
-			return decline(SystemError)
+			return sysErr("hold", err)
 		}
 		a.HoldRef = ref
 	case Credit:
 		otb, err := i.openToBuy(ctx, c)
 		if err != nil {
-			return decline(SystemError)
+			return sysErr("open to buy", err)
 		}
 		if otb < r.AmountMinor {
 			return decline(Insufficient)

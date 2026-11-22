@@ -28,6 +28,8 @@ import java.util.UUID;
 public class LoanActivitiesImpl implements LoanActivities {
     static final ObjectMapper JSON = new ObjectMapper();
     static final DateTimeFormatter D = DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.ENGLISH);
+    /** Fineract's tenant timezone: transactions are dated on its business date (UTC dates fail around midnight IST). */
+    static final java.time.ZoneId TENANT_ZONE = java.time.ZoneId.of(System.getenv().getOrDefault("FINERACT_TIMEZONE", "Asia/Kolkata"));
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String fineract, tokenUrl, clientId, clientSecret, basicAuth, tms, admin;
     private long loanProductId;
@@ -114,7 +116,7 @@ public class LoanActivitiesImpl implements LoanActivities {
             if (items.isArray() && !items.isEmpty()) {
                 loanId = items.get(0).path("id").asLong();
             } else {
-                String today = LocalDate.now().format(D);
+                String today = LocalDate.now(TENANT_ZONE).format(D);
                 ObjectNode b = JSON.createObjectNode().put("clientId", a.fineractClientId()).put("productId", productId())
                         .put("principal", a.amountMinor() / 100.0).put("loanTermFrequency", a.termMonths()).put("loanTermFrequencyType", 2)
                         .put("numberOfRepayments", a.termMonths()).put("repaymentEvery", 1).put("repaymentFrequencyType", 2)
@@ -125,7 +127,7 @@ public class LoanActivitiesImpl implements LoanActivities {
                 loanId = call("POST", "loans", b).path("loanId").asLong();
             }
             JsonNode loan = call("GET", "loans/" + loanId, null);
-            String today = LocalDate.now().format(D);
+            String today = LocalDate.now(TENANT_ZONE).format(D);
             if (loan.path("status").path("pendingApproval").asBoolean())
                 call("POST", "loans/" + loanId + "?command=approve", JSON.createObjectNode().put("approvedOnDate", today).put("locale", "en").put("dateFormat", "dd MMMM yyyy"));
             loan = call("GET", "loans/" + loanId, null);

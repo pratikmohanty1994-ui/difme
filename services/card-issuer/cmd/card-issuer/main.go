@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+	_ "time/tzdata" // distroless image has no zoneinfo
 
 	"github.com/pratikmohanty1994/difme/services/card-issuer/internal/issuer"
 )
@@ -27,6 +28,11 @@ func main() {
 	f := &issuer.Fineract{BaseURL: env("FINERACT_URL", "http://fineract.rails.svc:8080/fineract-provider"), Tenant: env("FINERACT_TENANT", "default"),
 		TokenURL: os.Getenv("FINERACT_TOKEN_URL"), ClientID: os.Getenv("FINERACT_CLIENT_ID"), ClientSecret: os.Getenv("FINERACT_CLIENT_SECRET"),
 		User: os.Getenv("FINERACT_USER"), Password: os.Getenv("FINERACT_PASSWORD"), HTTP: &http.Client{Timeout: 10 * time.Second}}
+	if loc, err := time.LoadLocation(env("FINERACT_TIMEZONE", "Asia/Kolkata")); err == nil {
+		f.Location = loc // the tenant's timezone (deploy/platform/rails/fineract: Asia/Kolkata)
+	} else {
+		log.Fatalf("FINERACT_TIMEZONE: %v", err)
+	}
 	if pt, err := strconv.ParseInt(os.Getenv("FINERACT_PAYMENT_TYPE"), 10, 64); err == nil {
 		f.PaymentTypeID = pt
 	}
