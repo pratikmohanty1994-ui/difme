@@ -38,6 +38,7 @@ jobs:
       hyperswitch: ${{ steps.d.outputs.hyperswitch }}
       debezium: ${{ steps.d.outputs.debezium }}
       veraison: ${{ steps.d.outputs.veraison }}
+      tazama: ${{ steps.d.outputs.tazama }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -137,6 +138,31 @@ jobs:
       dockerfile: pwa/discountai/Dockerfile
       build-args: |
         APP=${{ matrix.app }}
+
+  tazama:
+    needs: changes
+    if: needs.changes.outputs.tazama == 'true'
+    # Tazama fraud and AML monitoring (ADR-023): one image per service, one rule-executer image per rule. Built from
+    # vendor/tazama with DIFME's patches; Node images, so both platforms come from one job.
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { image: tms-service,        service: tms-service }
+          - { image: event-director,     service: event-director }
+          - { image: typology-processor, service: typology-processor }
+          - { image: event-adjudicator,  service: event-adjudicator }
+          - { image: admin-service,      service: admin-service }
+          - { image: rule-901,           service: rule-executer, rule: rule-901 }
+          - { image: rule-902,           service: rule-executer, rule: rule-902 }
+    uses: ./.github/workflows/_image.yml
+    with:
+      name: difme-tazama-${{ matrix.image }}
+      dockerfile: deploy/images/tazama/Dockerfile
+      build-args: |
+        SERVICE=${{ matrix.service }}
+        RULE=${{ matrix.rule || 'rule-901' }}
 
   flink-jobs:
     needs: changes

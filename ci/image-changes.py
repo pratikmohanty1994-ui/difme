@@ -33,6 +33,7 @@ GROUPS = [
     ("hyperswitch", "hyperswitch", r"^(vendor/hyperswitch/|deploy/images/hyperswitch/)"),
     ("debezium", "debezium-connect", r"^deploy/images/debezium-connect/"),
     ("veraison", "veraison", r"^deploy/images/veraison/"),
+    ("tazama", "tazama", r"^(vendor/tazama/|deploy/images/tazama/)"),
 ]
 
 
