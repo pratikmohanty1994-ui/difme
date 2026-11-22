@@ -5,7 +5,7 @@ metadata:
   namespace: argocd
   labels:
     difme/profile: security
-    difme/pdf-section: 4.1/ADR-010
+    difme/pdf-section: 4.1_ADR-010
   annotations:
     argocd.argoproj.io/sync-wave: '0'
   finalizers:

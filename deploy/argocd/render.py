@@ -4,6 +4,7 @@
 Usage: python deploy/argocd/render.py [--check]
 --check exits non-zero if the generated files are out of date (used in CI).
 """
+import re
 import pathlib
 import sys
 
@@ -51,7 +52,9 @@ def application(c: dict) -> dict:
         "metadata": {
             "name": c["name"],
             "namespace": "argocd",
-            "labels": {"difme/profile": c["profile"], "difme/pdf-section": str(c["pdf"])},
+            # label values allow only [A-Za-z0-9._-]: "4.1/ADR-010" -> "4.1_ADR-010" (an invalid label made Argo CD
+            # reject the whole Application, so Keycloak never deployed in cluster runs 2 and 3)
+            "labels": {"difme/profile": c["profile"], "difme/pdf-section": re.sub(r"[^A-Za-z0-9._-]", "_", str(c["pdf"])).strip("_.-") or "none"},
             "annotations": {"argocd.argoproj.io/sync-wave": str(c["wave"])},
             "finalizers": ["resources-finalizer.argocd.argoproj.io"],
         },
