@@ -3,6 +3,8 @@ package dev.difme.hsm;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.nio.file.Files;
 import java.util.HexFormat;
@@ -90,6 +92,25 @@ class AesTest {
         byte[] cek = H.parseHex("00112233445566778899AABBCCDDEEFF");
         assertArrayEquals(cek, hsm.rsaOaepDecrypt(kp[0], c.doFinal(cek)));
         assertThrows(SMException.class, () -> hsm.rsaOaepDecrypt(hsm.generateRsaSigningKey("x")[0], new byte[256]), "signing key used to decrypt");
+    }
+
+    @Test
+    void weakPinsAreRefusedAndNeverGenerated() throws Exception {
+        for (String w : new String[] {"1111", "1234", "4321", "7890", "0987", "2580", "123456", "999999"})
+            assertTrue(DifmeSecurityModule.weakPin(w), w);
+        for (String ok : new String[] {"2468x".substring(0, 0) + "3917", "8264", "590173"}) assertFalse(DifmeSecurityModule.weakPin(ok), ok);
+        String key = "00112233445566778899AABBCCDDEEFF", pinKey = hsm.aesKeyFromComponents("P0", key);
+        SecureDESKey zpk = hsm.keyFromComponents(SMAdapter.TYPE_ZPK, "1C1C1C1C1C1C1C1C2A2A2A2A2A2A2A2A");
+        byte[] weak = Iso4.encipher(H.parseHex(key), "1234", PAN);
+        assertThrows(DifmeSecurityModule.WeakPin.class, () -> hsm.translateIso4ToZpkRejectWeak(weak, PAN, pinKey, zpk));
+        assertEquals("EAEF33E33F471DA9", hsm.translateIso4ToZpk(weak, PAN, pinKey, zpk)); // without the check (network PINs)
+        for (int i = 0; i < 20; i++) {
+            String[] g = hsm.generatePin(PAN, 4, zpk, pinKey);
+            String pin = Iso4.decipher(H.parseHex(key), H.parseHex(g[1]), PAN);
+            assertFalse(DifmeSecurityModule.weakPin(pin), pin);
+            // both forms carry the same PIN: the ZPK block re-enciphered for the app gives it back
+            assertEquals(pin, Iso4.decipher(H.parseHex(key), hsm.translateZpkToIso4(SecurityModule.pinBlock(g[0], PAN), PAN, zpk, pinKey), PAN));
+        }
     }
 
     @Test

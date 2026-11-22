@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -56,7 +57,26 @@ func (h *HSMClient) VerifyDCVV2(ctx context.Context, pan, code string) (bool, er
 }
 
 func (h *HSMClient) PINFromApp(ctx context.Context, pan, iso4Hex string) (string, error) {
-	return h.call(ctx, "/v1/pin/iso4-to-zpk", map[string]string{"pan": pan, "pinBlock": iso4Hex}, "pinBlock")
+	v, err := h.call(ctx, "/v1/pin/iso4-to-zpk", map[string]string{"pan": pan, "pinBlock": iso4Hex, "rejectWeak": "true"}, "pinBlock")
+	if err != nil && strings.Contains(err.Error(), "HTTP 422") {
+		return "", ErrWeakPIN
+	}
+	return v, err
+}
+
+func (h *HSMClient) GeneratePIN(ctx context.Context, pan string) (string, string, error) {
+	b, _ := json.Marshal(map[string]string{"pan": pan})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, h.URL+"/v1/pin/generate", bytes.NewReader(b))
+	r, err := h.HTTP.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer r.Body.Close()
+	var out map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&out); err != nil || r.StatusCode != 200 {
+		return "", "", fmt.Errorf("hsm /v1/pin/generate: HTTP %d", r.StatusCode)
+	}
+	return out["pinBlock"], out["appPinBlock"], nil
 }
 
 func (h *HSMClient) PVV(ctx context.Context, pan, block string) (string, error) {

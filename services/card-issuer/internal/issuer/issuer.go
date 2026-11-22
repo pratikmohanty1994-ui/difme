@@ -76,7 +76,10 @@ type HSM interface {
 	DCVV2(ctx context.Context, pan string) (string, error)
 	VerifyDCVV2(ctx context.Context, pan, code string) (bool, error)
 	// PINFromApp translates an ISO 9564 format 4 block (app, AES key) to format 0 under the issuer's ZPK.
-	PINFromApp(ctx context.Context, pan, iso4Hex string) (string, error)
+	PINFromApp(ctx context.Context, pan, iso4Hex string) (string, error) // refuses weak PINs (ErrWeakPIN)
+	// GeneratePIN makes a random non-weak PIN in the security module: under the ZPK (for the PVV) and as an ISO 4
+	// block under the app's AES key (shown once in the app).
+	GeneratePIN(ctx context.Context, pan string) (zpkBlock, appBlock string, err error)
 	PVV(ctx context.Context, pan, pinBlockZPK string) (string, error)
 	VerifyPVV(ctx context.Context, pan, pinBlockZPK, pvv string) (bool, error)
 }
@@ -154,6 +157,9 @@ func (i *Issuer) Issue(ctx context.Context, r IssueRequest) (Issued, error) {
 
 var ErrInvalid = errors.New("invalid request")
 
+// ErrWeakPIN: the chosen PIN is one a guesser tries first (repeated digits, a run, a common PIN).
+var ErrWeakPIN = fmt.Errorf("%w: weak PIN, choose another", ErrInvalid)
+
 // SetStatus blocks, restricts or reactivates a card.
 func (i *Issuer) SetStatus(ctx context.Context, id, status string) (Card, error) {
 	if status != "ACTIVE" && status != "BLOCKED" && status != "RESTRICTED" {
@@ -174,7 +180,9 @@ func (i *Issuer) SetPIN(ctx context.Context, id, iso4Hex string) error {
 		return err
 	}
 	block, err := i.hsm.PINFromApp(ctx, c.PAN, iso4Hex)
-	if err != nil {
+	if errors.Is(err, ErrWeakPIN) {
+		return ErrWeakPIN
+	} else if err != nil {
 		return fmt.Errorf("%w: PIN block not accepted", ErrInvalid)
 	}
 	pvv, err := i.hsm.PVV(ctx, c.PAN, block)
@@ -183,6 +191,23 @@ func (i *Issuer) SetPIN(ctx context.Context, id, iso4Hex string) error {
 	}
 	c.PVV = pvv
 	return i.store.PutCard(ctx, c)
+}
+
+// GeneratePIN issues a random PIN (card issuance or PIN reset): stores its PVV and returns the PIN as an ISO 9564
+// format 4 block under the app's key, for one-time display in the app.
+func (i *Issuer) GeneratePIN(ctx context.Context, id string) (string, error) {
+	c, err := i.store.Card(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	zpkBlock, appBlock, err := i.hsm.GeneratePIN(ctx, c.PAN)
+	if err != nil {
+		return "", err
+	}
+	if c.PVV, err = i.hsm.PVV(ctx, c.PAN, zpkBlock); err != nil {
+		return "", err
+	}
+	return appBlock, i.store.PutCard(ctx, c)
 }
 
 // DynamicCVV2 returns the card's current dCVV2 for the app's display.

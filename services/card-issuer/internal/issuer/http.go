@@ -13,6 +13,7 @@ import (
 //	GET  /v1/cards/{id}                  card (masked)
 //	PUT  /v1/cards/{id}/status           {"status":"BLOCKED"}
 //	POST /v1/cards/{id}/pin              {"pinBlock":"<ISO 9564 format 4, hex>"} (app PIN set)
+//	POST /v1/cards/{id}/pin/generate     random PIN (issuance / reset): {"appPinBlock": ISO 4 under the app key}
 //	GET  /v1/cards/{id}/dcvv2            the current dynamic CVV2 (app display)
 //	GET  /v1/cards/{id}/open-to-buy
 //	GET  /v1/cards/{pan}  (card management lookup for the ACS: expiry, status, channels; the path segment is a PAN)
@@ -59,6 +60,10 @@ func Handler(i *Issuer) http.Handler {
 			return
 		}
 		reply(w, 200, map[string]string{"status": "PIN set"}, i.SetPIN(r.Context(), r.PathValue("id"), q.PINBlock))
+	})
+	mux.HandleFunc("POST /v1/cards/{id}/pin/generate", func(w http.ResponseWriter, r *http.Request) {
+		v, err := i.GeneratePIN(r.Context(), r.PathValue("id"))
+		reply(w, 200, map[string]string{"appPinBlock": v}, err)
 	})
 	mux.HandleFunc("GET /v1/cards/{id}/dcvv2", func(w http.ResponseWriter, r *http.Request) {
 		v, err := i.DynamicCVV2(r.Context(), r.PathValue("id"))

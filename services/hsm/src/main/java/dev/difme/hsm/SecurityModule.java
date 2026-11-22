@@ -176,6 +176,14 @@ public final class SecurityModule {
         return org.jpos.iso.ISOUtil.hexString(ext().translateDukptAesToZpk(iso4, pan, ksn, bdkKeyBlock, zpk).getPINBlock());
     }
 
+    public String translateIso4ToZpkRejectWeak(byte[] iso4, String pan, String aesPinKey, SecureDESKey zpk) throws SMException {
+        return org.jpos.iso.ISOUtil.hexString(ext().translateIso4ToZpkRejectWeak(iso4, pan, aesPinKey, zpk).getPINBlock());
+    }
+
+    public String[] generatePin(String pan, int length, SecureDESKey zpk, String aesPinKey) throws SMException {
+        return ext().generatePin(pan, length, zpk, aesPinKey);
+    }
+
     public byte[] translateZpkToIso4(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, String aesPinKey) throws SMException {
         return ext().translateZpkToIso4(pinUnderZpk, pan, zpk, aesPinKey);
     }

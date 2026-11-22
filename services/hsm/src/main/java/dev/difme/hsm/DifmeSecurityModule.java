@@ -87,6 +87,56 @@ public class DifmeSecurityModule extends JCESecurityModule {
         return exportPIN(underLmk, zpk, FORMAT01);
     }
 
+    /** Common PINs refused at PIN set and never generated (plus repeated digits and ascending/descending runs). */
+    static final java.util.Set<String> COMMON = java.util.Set.of("1212", "2580", "0852", "1004", "2000", "6969", "1122", "1313", "4321", "1010",
+            "7777", "2001", "1999", "2222", "5683", "0007", "1066", "2468", "1357", "0101");
+
+    /** True for PINs a guesser tries first: all one digit, a straight ascending or descending run, or a common PIN. */
+    public static boolean weakPin(String pin) {
+        if (pin.chars().distinct().count() == 1 || COMMON.contains(pin)) return true;
+        boolean up = true, down = true;
+        for (int i = 1; i < pin.length(); i++) {
+            int d = pin.charAt(i) - pin.charAt(i - 1);
+            up &= d == 1 || d == -9;
+            down &= d == -1 || d == 9;
+        }
+        return up || down;
+    }
+
+    /** As {@link #translateIso4ToZpk} but refuses weak PINs (app PIN set). */
+    public EncryptedPIN translateIso4ToZpkRejectWeak(byte[] iso4, String pan, String aesPinKeyBlock, SecureDESKey zpk) throws SMException {
+        String pin;
+        try {
+            pin = Iso4.decipher(aes(aesPinKeyBlock, "P0"), iso4, pan);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        }
+        if (weakPin(pin)) throw new WeakPin();
+        return exportPIN(encryptPIN(pin, pan, true), zpk, FORMAT01);
+    }
+
+    /** A weak PIN was refused. */
+    public static final class WeakPin extends SMException {
+        WeakPin() { super("weak PIN"); }
+    }
+
+    /**
+     * A random PIN generated in the module (weak PINs excluded): returned under the ZPK (for the PVV) and as an ISO 4
+     * block under the app's AES PIN key (shown once in the app). The clear PIN never leaves this method.
+     */
+    public String[] generatePin(String pan, int length, SecureDESKey zpk, String aesPinKeyBlock) throws SMException {
+        java.security.SecureRandom r = new java.security.SecureRandom();
+        String pin;
+        do {
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < length; i++) b.append(r.nextInt(10));
+            pin = b.toString();
+        } while (weakPin(pin));
+        EncryptedPIN underZpk = exportPIN(encryptPIN(pin, pan, true), zpk, FORMAT01);
+        byte[] app = Iso4.encipher(aes(aesPinKeyBlock, "P0"), pin, pan);
+        return new String[] {ISOUtil.hexString(underZpk.getPINBlock()), ISOUtil.hexString(app)};
+    }
+
     /** A PIN under a TDES ZPK, re-enciphered as an ISO 9564 format 4 block under an AES PIN key (app PIN set / reveal). */
     public byte[] translateZpkToIso4(EncryptedPIN pinUnderZpk, String pan, SecureDESKey zpk, String aesPinKeyBlock) throws SMException {
         String pin = decryptPIN(importPIN(pinUnderZpk, zpk));

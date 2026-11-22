@@ -60,7 +60,7 @@ ci POST "/v1/authorisations/$(echo "$a" | j id)/clear" '{"amountMinor":55000}' |
 dc=$(ci GET "/v1/cards/$cid/dcvv2" | j dcvv2)
 r=$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"cvv2\":\"$dc\"}"); [ "$(echo "$r" | j responseCode)" = 00 ] || fail "dCVV2 $dc: $r"; echo "ok: dynamic CVV2 $dc accepted"
 # PIN from the app: ISO 9564 format 4 under the app PIN key, then a PIN-verified authorisation (network ZPK block)
-iso4=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),'2468','$pan').hex().upper())")
+iso4=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),'3917','$pan').hex().upper())")
 ci POST "/v1/cards/$cid/pin" "{\"pinBlock\":\"$iso4\"}" | grep -q "PIN set" || fail "PIN set"
 blk=$(curl -s -X POST -d "{\"pan\":\"$pan\",\"pinBlock\":\"$iso4\"}" localhost:18702/v1/pin/iso4-to-zpk | j pinBlock)
 [ "$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"pinBlock\":\"$blk\"}" | j responseCode)" = 00 ] || fail "PIN auth"
@@ -68,6 +68,13 @@ bad=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock
 blk=$(curl -s -X POST -d "{\"pan\":\"$pan\",\"pinBlock\":\"$bad\"}" localhost:18702/v1/pin/iso4-to-zpk | j pinBlock)
 [ "$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"pinBlock\":\"$blk\"}" | j responseCode)" = 55 ] || fail "wrong PIN"
 echo "ok: PIN set from the app (ISO-4), right PIN approved, wrong PIN declined 55"
+weak=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),'1111','$pan').hex().upper())")
+ci POST "/v1/cards/$cid/pin" "{\"pinBlock\":\"$weak\"}" | grep -q "weak PIN" || fail "weak PIN accepted"
+app=$(ci POST "/v1/cards/$cid/pin/generate" | j appPinBlock)
+gen=$(python3 -W ignore -c "import psec.pinblock as p; print(p.decipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),bytes.fromhex('$app'),'$pan'))")
+blk=$(curl -s -X POST -d "{\"pan\":\"$pan\",\"pinBlock\":\"$app\"}" localhost:18702/v1/pin/iso4-to-zpk | j pinBlock)
+[ "$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"pinBlock\":\"$blk\"}" | j responseCode)" = 00 ] || fail "generated PIN"
+echo "ok: weak PIN 1111 refused; PIN generated in the module ($(echo "$gen" | sed 's/./*/g'), shown only in the app) works for a PIN payment"
 # credit
 cr=$(ci POST /v1/cards "{\"product\":\"CREDIT\",\"account\":$loan,\"limitMinor\":500000,\"holder\":\"partner-2\"}"); crp=$(echo "$cr" | j pan); crid=$(echo "$cr" | j id)
 c1=$(ci POST /v1/authorisations "{\"pan\":\"$crp\",\"amountMinor\":300000}"); [ "$(echo "$c1" | j responseCode)" = 00 ] || fail "credit auth $c1"

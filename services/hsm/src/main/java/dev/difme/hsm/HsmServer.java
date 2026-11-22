@@ -175,8 +175,17 @@ public final class HsmServer {
                     key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK), key(in, "pvk", "pvk", SMAdapter.TYPE_PVK), Integer.parseInt(d(in, "pvki"))));
             case "/v1/pin/translate" -> out.put("pinBlock", hsm.translatePin(SecurityModule.pinBlock(hx(in, "pinBlock"), d(in, "pan")),
                     key(in, "from", null, SMAdapter.TYPE_ZPK), key(in, "to", null, SMAdapter.TYPE_ZPK)));
-            case "/v1/pin/iso4-to-zpk" -> out.put("pinBlock", hsm.translateIso4ToZpk(h(in, "pinBlock"), d(in, "pan"),
-                    keys.aes(in.getOrDefault("aesKey", "aes-pin")), key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK)));
+            case "/v1/pin/iso4-to-zpk" -> out.put("pinBlock", "true".equals(in.get("rejectWeak"))
+                    ? hsm.translateIso4ToZpkRejectWeak(h(in, "pinBlock"), d(in, "pan"), keys.aes(in.getOrDefault("aesKey", "aes-pin")),
+                            key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK))
+                    : hsm.translateIso4ToZpk(h(in, "pinBlock"), d(in, "pan"), keys.aes(in.getOrDefault("aesKey", "aes-pin")),
+                            key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK)));
+            case "/v1/pin/generate" -> {
+                String[] g = hsm.generatePin(d(in, "pan"), Integer.parseInt(in.getOrDefault("length", "4")), key(in, "zpk", "zpk", SMAdapter.TYPE_ZPK),
+                        keys.aes(in.getOrDefault("aesKey", "aes-pin")));
+                out.put("pinBlock", g[0]);
+                out.put("appPinBlock", g[1]);
+            }
             case "/v1/pin/dukpt-aes-to-zpk" -> { // AES DUKPT terminal PIN block (ISO 4) by its 24-hex KSN, to ISO 0 under a ZPK
                 byte[] ksn = h(in, "ksn");
                 AesDukpt.checkKsn(ksn);
@@ -237,6 +246,9 @@ public final class HsmServer {
         } catch (IllegalArgumentException e) {
             status = 400;
             out.put("error", e.getMessage());
+        } catch (DifmeSecurityModule.WeakPin e) {
+            status = 422;
+            out.put("error", "weak PIN");
         } catch (Exception e) {
             status = 500;
             out.put("error", "security module error"); // no detail: may concern key material

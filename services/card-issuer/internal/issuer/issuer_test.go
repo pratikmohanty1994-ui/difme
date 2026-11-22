@@ -66,7 +66,13 @@ func (fakeHSM) PINFromApp(_ context.Context, _, iso4 string) (string, error) {
 	if !strings.HasPrefix(iso4, "4") {
 		return "", errors.New("bad block")
 	}
+	if iso4 == "41111" {
+		return "", ErrWeakPIN
+	}
 	return "Z" + iso4, nil
+}
+func (fakeHSM) GeneratePIN(context.Context, string) (string, string, error) {
+	return "Z48264", "4-app", nil
 }
 func (fakeHSM) PVV(_ context.Context, _, block string) (string, error) {
 	return "P" + block[len(block)-4:], nil
@@ -160,6 +166,15 @@ func TestDeclinesAndCardSecurity(t *testing.T) {
 	}
 	if a, _ := i.Authorise(ctx, AuthRequest{PAN: c.PANFull, AmountMinor: 100, PINBlock: "Z49999"}); a.Code != WrongPIN {
 		t.Fatalf("wrong PIN: %+v", a)
+	}
+	if err := i.SetPIN(ctx, c.ID, "41111"); !errors.Is(err, ErrWeakPIN) {
+		t.Errorf("weak PIN: %v", err)
+	}
+	if app, err := i.GeneratePIN(ctx, c.ID); err != nil || app != "4-app" {
+		t.Fatalf("generate: %v %q", err, app)
+	}
+	if a, _ := i.Authorise(ctx, AuthRequest{PAN: c.PANFull, AmountMinor: 100, PINBlock: "Z48264"}); a.Code != Approved {
+		t.Fatalf("generated PIN: %+v", a)
 	}
 	if err := i.SetPIN(ctx, c.ID, "x"); !errors.Is(err, ErrInvalid) {
 		t.Errorf("bad PIN block: %v", err)
