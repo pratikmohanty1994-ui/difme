@@ -62,6 +62,13 @@ the session branch; nothing runs on the owner's PC.
 ## 3. Cluster runs
 Run 3 (45026327939, core,streaming,security,rails,fraud) dispatched 13:13 UTC with the Tazama uid fix and failing-pod log capture; a check-in is scheduled.
 
+### Run 3 result (45026327939)
+core, streaming, security, rails **converged**; fraud failed only because rule D02's image was never built (committed
+with [skip ci]); the other 8 Tazama pods **ran** (uid 1000 fix confirmed). fineract-service-users: "no token from
+Keycloak: HTTP 000" — Keycloak was never deployed: its Argo CD Application was rejected for an invalid label
+(`difme/pdf-section: "4.1/ADR-010"`). **Fixed** in render.py (labels sanitised); D02 image builds with the next images
+run (services/fraud-rules changed). Next: cluster run 4 with core,streaming,security,rails,fraud after images.
+
 ### Run 2 result and fixes pushed
 core, streaming, security, **rails converged**; **fraud failed**:
 - Tazama pods `CreateContainerConfigError`: `runAsNonRoot` with the image's non-numeric user `node`. **Fixed**:
