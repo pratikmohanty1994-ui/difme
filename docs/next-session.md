@@ -43,6 +43,25 @@ Read this, then `docs/status.md`.
 (OSI; no BSL/SSPL/ELv2); `[skip ci]` unless a run is wanted; one cluster-verify at a time; push to `main` and mirror to
 the session branch; nothing runs on the owner's PC.
 
+## 0b. Master pending list (2026-11-22, late night): owner = who is on it
+| # | Item | State / owner |
+|---|---|---|
+| 1 | Images run 19, then images hsm+scheme, then cluster-verify run 4 (core,streaming,security,rails,fraud; fail-fast) | main session, check-in 19:13 UTC |
+| 2 | PH-EE: B5 images, C2/C3/D1 manifests (pushed), D2 Spring Boot 3 / Camel 4 | agent (PH-EE) |
+| 3 | D3 switch the exchange to PH-EE, retire the interim Temporal hub; D4 known gaps; D5 exchange rails wiring | after 2 |
+| 4 | ACS FIDO/WebAuthn + SPC (3DS 2.3.1) | agent (ACS WebAuthn) |
+| 5 | ACS: real OTP delivery (email via Mailpit, SMS/push stand-ins through the notification service), 3DS Method (device fingerprint iframe) and browser data in risk, scheme-issued ACS signing cert from OpenBao | after 4 (same files) |
+| 6 | Crypto/CMS remainders: MAC verify, app PIN reveal, TC/AAC at clearing, card renewal/reissue, LMK rotation drill, issuer RSA key + perso file | agent (card crypto) |
+| 7 | Blocked (no public spec/reference): Mastercard AAV/SPA2, Amex AEVV, AES chip cryptograms, Interac | blocked |
+| 8 | Edge app §5.1 (Tauri 2, Rust core, automerge, Wasmtime, simulated TEE, HCE/WorkManager stubs) | agent (edge) |
+| 9 | §5.2 hub remainder: session manager, telemetry/dashboard relays, tonic gRPC bridge | next agent slot |
+| 10 | §13 deployment scenarios A–D: Kustomize overlays, OpenTofu modules, QUIC proxy-chain relay | main session (overlays/OpenTofu), relay with 9 |
+| 11 | Hyperswitch: B4 admin API check; live network-token tokenise → fetch (TAVV) on the cluster | cluster run after 1 |
+| 12 | Fraud: D02 end to end on the cluster; local Tazama e2e with pain.001 (running) | main session |
+| 13 | Actions: run 5 all profiles; ml + fraud scorer FAIL path; dbt lineage; dev memory halving; scale-to-zero decision | after 1 |
+| 14 | Docs: status.md / component-reuse.md / README matrix status column (F1) | main session, ongoing |
+| 15 | Owner: A5 archive old repo, A6 revoke token, C4 interopUser, E1–E3, Codespaces idle timeout, arm64 VM, Hyperswitch key path, jPOS switch migration (later) | owner |
+
 ## 1. The carried-over list (A–F): what is done
 
 | # | Item | State |
