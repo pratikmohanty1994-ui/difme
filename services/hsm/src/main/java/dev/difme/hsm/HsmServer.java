@@ -202,6 +202,8 @@ public final class HsmServer {
             case "/v1/script/mac" -> out.put("mac", ISOUtil.hexString(hsm.scriptMac(SecurityModule.Cvn.valueOf(in.getOrDefault("cvn", "")),
                     key(in, "key", "imk-smi", SMAdapter.TYPE_MK_SMI), d(in, "pan"), d(in, "psn"), h(in, "atc"), h(in, "arqc"), h(in, "command"))));
             case "/v1/mac/retail" -> out.put("mac", ISOUtil.hexString(hsm.retailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"))));
+            case "/v1/mac/retail/verify" -> valid(out, hsm.verifyRetailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"), h(in, "mac")));
+            case "/v1/mac/cmac/verify" -> valid(out, hsm.verifyAesCmac(keys.aes(in.getOrDefault("aesKey", "aes-mac")), h(in, "data"), h(in, "mac")));
             case "/v1/sign/ps256" -> out.put("signature", ISOUtil.hexString(hsm.signPs256(keys.rsa(in.getOrDefault("key", "acs-sign")), h(in, "data"))));
             case "/v1/data/encrypt" -> out.put("ciphertext", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), true,
                     h(in, "data"), in.containsKey("aad") ? h(in, "aad") : null)));

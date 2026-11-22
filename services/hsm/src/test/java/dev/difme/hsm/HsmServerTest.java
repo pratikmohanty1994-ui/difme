@@ -34,7 +34,9 @@ class HsmServerTest {
                 .put("pvk", hsm.keyFromComponents(SMAdapter.TYPE_PVK, PinAndChipTest.KEY))
                 .put("imk-ac", hsm.keyFromComponents(SMAdapter.TYPE_MK_AC, PinAndChipTest.KEY))
                 .putAes("aes-pin", hsm.aesKeyFromComponents("P0", "00112233445566778899AABBCCDDEEFF"))
-                .putAes("bdk-aes", hsm.aesKeyFromComponents("B0", AesDukptTest.BDK128));
+                .putAes("bdk-aes", hsm.aesKeyFromComponents("B0", AesDukptTest.BDK128))
+                .put("tak", hsm.keyFromComponents(SMAdapter.TYPE_TAK, PinAndChipTest.KEY))
+                .putAes("aes-mac", hsm.aesKeyFromComponents("M7", "2B7E151628AED2A6ABF7158809CF4F3C"));
         http = HsmServer.serve(new HsmServer(hsm, keys), "127.0.0.1:0");
         base = "http://127.0.0.1:" + http.getAddress().getPort();
     }
@@ -95,6 +97,42 @@ class HsmServerTest {
                 "pinBlock", AesDukptTest.ISO4_128_1)).statusCode());
         assertEquals(500, post("/v1/pin/dukpt-aes-to-zpk", Map.of("pan", "4375510000000001", "ksn", AesDukptTest.KSN1, "bdk", "aes-pin",
                 "pinBlock", AesDukptTest.ISO4_128_1)).statusCode());
+    }
+
+    static final String ISO_MSG = "0200723A00010880800016437551000000000100000000000012500001";
+
+    @Test
+    void retailMacVerify() throws Exception {
+        // psec generate_retail_mac(KEY[:8], KEY[8:], msg, 2) = D1C4FBBCC5C5BCF5, pyemv mac_iso9797_3 the same
+        assertEquals("{\"mac\":\"D1C4FBBCC5C5BCF5\"}", post("/v1/mac/retail", Map.of("data", ISO_MSG)).body());
+        assertEquals("{\"valid\":\"true\"}", post("/v1/mac/retail/verify", Map.of("data", ISO_MSG, "mac", "D1C4FBBCC5C5BCF5")).body());
+        assertEquals("{\"valid\":\"true\"}", post("/v1/mac/retail/verify", Map.of("data", ISO_MSG, "mac", "d1c4fbbc")).body(), "leftmost 4 bytes");
+        // negatives: one bit off in the MAC, one byte of the message changed, another key
+        assertEquals("{\"valid\":\"false\"}", post("/v1/mac/retail/verify", Map.of("data", ISO_MSG, "mac", "D1C4FBBCC5C5BCF4")).body());
+        assertEquals("{\"valid\":\"false\"}", post("/v1/mac/retail/verify", Map.of("data", ISO_MSG.replace("0200", "0210"), "mac", "D1C4FBBCC5C5BCF5")).body());
+        // "0200 DIFME ISO8583 MESSAGE" (psec D098DBA429F16895) with the ZPK slot as key: refused by type, then a valid MAC of other data
+        assertEquals(400, post("/v1/mac/retail/verify", Map.of("key", "zpk", "data", ISO_MSG, "mac", "D1C4FBBCC5C5BCF5")).statusCode());
+        assertEquals("{\"valid\":\"false\"}", post("/v1/mac/retail/verify", Map.of("data", ISO_MSG, "mac", "D098DBA429F16895")).body());
+        // a MAC shorter than 4 or longer than 8 bytes is not a retail MAC
+        assertEquals(400, post("/v1/mac/retail/verify", Map.of("data", ISO_MSG, "mac", "D1C4FB")).statusCode());
+        assertEquals(400, post("/v1/mac/retail/verify", Map.of("data", ISO_MSG, "mac", "D1C4FBBCC5C5BCF500")).statusCode());
+    }
+
+    @Test
+    void cmacVerify() throws Exception {
+        // NIST SP 800-38B appendix D.1, AES-128 example 3 (40-byte message): DFA66747DE9AE63030CA32611497C827
+        String m = "6BC1BEE22E409F96E93D7E117393172AAE2D8A571E03AC9C9EB76FAC45AF8E5130C81C46A35CE411";
+        assertEquals("{\"valid\":\"true\"}", post("/v1/mac/cmac/verify", Map.of("data", m, "mac", "DFA66747DE9AE63030CA32611497C827")).body());
+        assertEquals("{\"valid\":\"true\"}", post("/v1/mac/cmac/verify", Map.of("data", m, "mac", "DFA66747DE9AE630")).body(), "leftmost 8 bytes");
+        assertEquals("{\"valid\":\"false\"}", post("/v1/mac/cmac/verify", Map.of("data", m, "mac", "DFA66747DE9AE63030CA32611497C826")).body());
+        // NIST example 2 (16 bytes, 070A16B46B4D4144F79BDD9DD04A287C) does not verify for the 40-byte message
+        assertEquals("{\"valid\":\"false\"}", post("/v1/mac/cmac/verify", Map.of("data", m, "mac", "070A16B46B4D4144F79BDD9DD04A287C")).body());
+        assertEquals("{\"valid\":\"true\"}", post("/v1/mac/cmac/verify", Map.of("data", "6BC1BEE22E409F96E93D7E117393172A",
+                "mac", "070A16B46B4D4144F79BDD9DD04A287C")).body());
+        assertEquals(400, post("/v1/mac/cmac/verify", Map.of("data", m, "mac", "DFA66747")).statusCode(), "shorter than 8 bytes");
+        assertEquals(400, post("/v1/mac/cmac/verify", Map.of("data", m, "aesKey", "nope", "mac", "DFA66747DE9AE630")).statusCode());
+        // a key block of another usage (PIN key) is refused inside the module
+        assertEquals(500, post("/v1/mac/cmac/verify", Map.of("data", m, "aesKey", "aes-pin", "mac", "DFA66747DE9AE630")).statusCode());
     }
 
     @Test

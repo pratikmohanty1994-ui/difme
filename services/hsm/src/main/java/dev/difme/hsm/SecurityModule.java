@@ -216,6 +216,26 @@ public final class SecurityModule {
     /** ISO 9797-1 MAC algorithm 3 (retail MAC, method 2 padding) with a TAK/ZAK, for ISO 8583 message authentication. */
     public byte[] retailMac(SecureDESKey mak, byte[] data) throws SMException { return sm.generateCBC_MAC(data, mak); }
 
+    /**
+     * Verifies a retail MAC (ISO 9797-1 alg 3): the MAC is recomputed in the module and compared in constant time over
+     * the bytes received, which may be truncated to its leftmost 4 to 8 bytes (ISO 8583 fields 64/128 carry 8).
+     */
+    public boolean verifyRetailMac(SecureDESKey mak, byte[] data, byte[] mac) throws SMException {
+        return macEquals(retailMac(mak, data), mac, 4);
+    }
+
+    /** Verifies an AES-CMAC (NIST SP 800-38B), possibly truncated to its leftmost 8 to 16 bytes, in constant time. */
+    public boolean verifyAesCmac(String macKey, byte[] data, byte[] mac) throws SMException {
+        return macEquals(aesCmac(macKey, data), mac, 8);
+    }
+
+    /** Constant-time comparison of a received MAC with the leftmost bytes of the computed one. */
+    static boolean macEquals(byte[] computed, byte[] received, int minLength) {
+        if (received == null || received.length < minLength || received.length > computed.length)
+            throw new IllegalArgumentException("MAC length " + (received == null ? 0 : received.length) + ": " + minLength + " to " + computed.length + " bytes");
+        return java.security.MessageDigest.isEqual(java.util.Arrays.copyOf(computed, received.length), received);
+    }
+
     /** Visa dCVV (contactless MSD): CVV over PAN, expiry, service code and ATC with the card's derived key. */
     public boolean verifyDcvv(SecureDESKey imkDcvv, String pan, String dcvv, String expiryYymm, String serviceCode, byte[] atc) throws SMException {
         return sm.verifydCVV(pan, imkDcvv, dcvv, expiryYymm, serviceCode, atc, org.jpos.security.MKDMethod.OPTION_A);
