@@ -10,6 +10,9 @@ bpmns:
     - id: "default"
       flows:
         payment-transfer: "PayerFundTransfer-{dfspid}"
+        # Payee in this same FSP (payee partyIdInfo.fspId = the tenant): booked inside Fineract by the on-us flow
+        # (processes/ph-ee/DifmeOnUsTransfer-DFSPID.bpmn) instead of through the switch (patch ph-ee-channel/0002).
+        onus-transfer: "DifmeOnUsTransfer-{dfspid}"
 # Idempotency of channel calls on DIFME's shared cache (Valkey, no auth inside the mesh).
 redis:
   host: "valkey.cache-tier.svc"

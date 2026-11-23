@@ -61,6 +61,7 @@ import org.mifos.connector.common.camel.AuthProperties;
 import org.mifos.connector.common.camel.ErrorHandlerRouteBuilder;
 import org.mifos.connector.common.channel.dto.RegisterAliasRequestDTO;
 import org.mifos.connector.common.channel.dto.TransactionChannelRequestDTO;
+import org.mifos.connector.common.mojaloop.dto.PartyIdInfo;
 import org.mifos.connector.common.channel.dto.TransactionStatusResponseDTO;
 import org.mifos.connector.common.gsma.dto.GsmaTransfer;
 import org.mifos.connector.common.mojaloop.dto.FspMoneyData;
@@ -338,7 +339,15 @@ public class ChannelRouteBuilder extends ErrorHandlerRouteBuilder {
                     extraVariables.put("initiatorFspId", channelRequest.getPayer().getPartyIdInfo().getFspId());
                     String tenantSpecificBpmn;
                     String bpmn = getWorkflowForTenant(tenantId, "payment-transfer");
-                    if (channelRequest.getPayer().getPartyIdInfo().getPartyIdentifier().startsWith("6666")) {
+                    // DIFME: a payee in this same FSP (payee fspId = the tenant) is an on-us transfer, booked inside the
+                    // tenant's core banking system by the tenant's "onus-transfer" flow when one is configured, instead
+                    // of going through the switch (vendor/patches/ph-ee-channel/0002).
+                    String onUsBpmn = getWorkflowForTenant(tenantId, "onus-transfer");
+                    PartyIdInfo payeeId = channelRequest.getPayee() == null ? null : channelRequest.getPayee().getPartyIdInfo();
+                    if (!"default".equals(onUsBpmn) && payeeId != null && tenantId.equals(payeeId.getFspId())) {
+                        tenantSpecificBpmn = onUsBpmn.replace("{dfspid}", tenantId);
+                        extraVariables.put("specialTermination", false);
+                    } else if (channelRequest.getPayer().getPartyIdInfo().getPartyIdentifier().startsWith("6666")) {
                         tenantSpecificBpmn = bpmn.equals("default") ? specialPaymentTransferFlow.replace("{dfspid}", tenantId)
                                 : bpmn.replace("{dfspid}", tenantId);
                         extraVariables.put("specialTermination", true);

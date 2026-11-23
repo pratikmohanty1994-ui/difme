@@ -58,6 +58,7 @@ Patches to connector-ams-mifos (`vendor/patches/ph-ee-ams-mifos/`), first for lo
   namespace (`http://camel.apache.org/schema/cxf/jaxrs`), springfox Docket and UI mapping removed (springdoc), Jackson
   2.21 API, `spring.jackson.serialization.WRITE_DATES_AS_TIMESTAMPS` dropped (no such feature in Jackson 3).
 
+On-us routing (D3): `ph-ee-channel/0002` starts the tenant's `onus-transfer` flow when the payee is in the same FSP.
 Modernisation patches to the others (D2): `ph-ee-common/0002`, `ph-ee-channel/0001`, `ph-ee-mojaloop/0003`
 (`javax.*` -> `jakarta.*`; Spring Boot 4 package moves of `RestTemplateBuilder` and the Lettuce customizer; channel also
 drops a springfox import, avoids Spring 7's ambiguous `ResponseEntity(null, status)` and uses Jackson 2.21's
