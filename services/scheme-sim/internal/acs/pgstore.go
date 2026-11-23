@@ -2,6 +2,7 @@ package acs
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,7 +67,110 @@ func (s *PostgresStore) decode(ctx context.Context, id string, doc []byte, rev i
 	return decodeState(doc, rev)
 }
 
-// NewPostgresStore connects (a pgx connection string, e.g. ACS_DATABASE_URL) and creates the table if missing.
+// acs_fido_credential holds registered WebAuthn credentials (CredentialStore, fido.go): one row per credential,
+// keyed by the SHA-256 of the credential id, filed under the ACS's HMAC card reference (never the PAN). The document
+// (credential id, COSE public key) is sealed like challenge documents (card-vault key, associated data
+// "fido|<card_ref>|<cred_key>"); the signature counter is a plain column so replicas can compare-and-set it.
+var pgCredSchema = []string{`CREATE TABLE IF NOT EXISTS acs_fido_credential (
+	cred_key   text        PRIMARY KEY,
+	card_ref   text        NOT NULL,
+	doc        jsonb       NOT NULL,
+	sign_count bigint      NOT NULL,
+	created    timestamptz NOT NULL DEFAULT now()
+)`, `CREATE INDEX IF NOT EXISTS acs_fido_credential_card ON acs_fido_credential (card_ref)`}
+
+func credKey(id []byte) string { return hex.EncodeToString(sha256Sum(id)) }
+
+func (s *PostgresStore) AddCredential(ctx context.Context, ref string, c FIDOCredential) error {
+	key := credKey(c.ID)
+	doc, err := json.Marshal(FIDOCredential{ID: c.ID, PublicKey: c.PublicKey, SPC: c.SPC, Created: c.Created})
+	if err != nil {
+		return err
+	}
+	if s.sealer != nil {
+		sealed, err := s.sealer.Seal(ctx, "fido|"+ref+"|"+key, doc)
+		if err != nil {
+			return err
+		}
+		doc, _ = json.Marshal(map[string]string{"sealed": sealed})
+	}
+	tag, err := s.db.Exec(ctx, `INSERT INTO acs_fido_credential (cred_key, card_ref, doc, sign_count) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (cred_key) DO NOTHING`, key, ref, doc, int64(c.SignCount))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrCredentialExists
+	}
+	return nil
+}
+
+func (s *PostgresStore) Credentials(ctx context.Context, ref string) ([]FIDOCredential, error) {
+	rows, err := s.db.Query(ctx, `SELECT cred_key, doc, sign_count FROM acs_fido_credential WHERE card_ref = $1 ORDER BY created, cred_key`, ref)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FIDOCredential
+	for rows.Next() {
+		var key string
+		var doc []byte
+		var n int64
+		if err := rows.Scan(&key, &doc, &n); err != nil {
+			return nil, err
+		}
+		var env struct{ Sealed string }
+		if json.Unmarshal(doc, &env) == nil && env.Sealed != "" {
+			if s.sealer == nil {
+				return nil, errors.New("sealed credential document and no sealer")
+			}
+			if doc, err = s.sealer.Open(ctx, "fido|"+ref+"|"+key, env.Sealed); err != nil {
+				return nil, err
+			}
+		}
+		var c FIDOCredential
+		if err := json.Unmarshal(doc, &c); err != nil {
+			return nil, fmt.Errorf("acs_fido_credential document: %w", err)
+		}
+		c.SignCount = uint32(n)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStore) UpdateSignCount(ctx context.Context, ref string, id []byte, old, new uint32) error {
+	key := credKey(id)
+	tag, err := s.db.Exec(ctx, `UPDATE acs_fido_credential SET sign_count = $4 WHERE cred_key = $1 AND card_ref = $2 AND sign_count = $3`,
+		key, ref, int64(old), int64(new))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		var one int
+		err := s.db.QueryRow(ctx, `SELECT 1 FROM acs_fido_credential WHERE cred_key = $1 AND card_ref = $2`, key, ref).Scan(&one)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return ErrNoCredential
+		case err != nil:
+			return err
+		}
+		return ErrConflict
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteCredential(ctx context.Context, ref string, id []byte) error {
+	tag, err := s.db.Exec(ctx, `DELETE FROM acs_fido_credential WHERE cred_key = $1 AND card_ref = $2`, credKey(id), ref)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNoCredential
+	}
+	return nil
+}
+
+// NewPostgresStore connects (a pgx connection string, e.g. ACS_DATABASE_URL) and creates the tables if missing.
 func NewPostgresStore(ctx context.Context, url string) (*PostgresStore, error) {
 	db, err := pgxpool.New(ctx, url)
 	if err != nil {
@@ -75,6 +179,12 @@ func NewPostgresStore(ctx context.Context, url string) (*PostgresStore, error) {
 	if _, err := db.Exec(ctx, pgSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("acs_challenge table: %w", err)
+	}
+	for _, q := range pgCredSchema {
+		if _, err := db.Exec(ctx, q); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("acs_fido_credential table: %w", err)
+		}
 	}
 	return &PostgresStore{db: db}, nil
 }

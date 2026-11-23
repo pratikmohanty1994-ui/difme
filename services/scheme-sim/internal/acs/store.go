@@ -14,19 +14,22 @@ import (
 // restarts during an app-channel challenge, the challenge ends with transStatus U (reason 09) — see ACS.Recover and
 // ACS.AppChallenge.
 //
-// Step is "select" (choose the passcode channel), "otp", "oob" or "decoupled".
+// Step is "select" (choose the passcode channel), "otp", "oob", "decoupled", "fido" (WebAuthn/SPC in the browser
+// challenge page) or "spc" (merchant-initiated SPC: ARes S sent, waiting for AReq #2).
 type ChallengeState struct {
-	AReq       AReq      `json:"areq"`
-	Card       Card      `json:"card"`
-	Version    string    `json:"messageVersion"`
-	ACSTransID string    `json:"acsTransID"`
-	Step       string    `json:"step"`
-	OTPMAC     []byte    `json:"otpMAC,omitempty"` // HMAC of the passcode (security module); never the passcode
-	Expires    time.Time `json:"expires"`
-	Attempts   int       `json:"attempts"`
-	OOB        string    `json:"oob,omitempty"`   // "", "approved", "declined"
-	App        bool      `json:"app,omitempty"`   // app channel: the session key lives only in Owner's memory
-	Owner      string    `json:"owner,omitempty"` // ACS instance that holds the app-channel session key
+	AReq       AReq         `json:"areq"`
+	Card       Card         `json:"card"`
+	Version    string       `json:"messageVersion"`
+	ACSTransID string       `json:"acsTransID"`
+	Step       string       `json:"step"`
+	OTPMAC     []byte       `json:"otpMAC,omitempty"` // HMAC of the passcode (security module); never the passcode
+	Expires    time.Time    `json:"expires"`
+	Attempts   int          `json:"attempts"`
+	OOB        string       `json:"oob,omitempty"`     // "", "approved", "declined"
+	App        bool         `json:"app,omitempty"`     // app channel: the session key lives only in Owner's memory
+	Owner      string       `json:"owner,omitempty"`   // ACS instance that holds the app-channel session key
+	CardRef    string       `json:"cardRef,omitempty"` // HMAC card reference (FIDO credentials are filed under it)
+	FIDO       *FIDOPending `json:"fido,omitempty"`    // steps "fido" (browser WebAuthn/SPC) and "spc" (merchant-initiated SPC)
 	// Rev is the store revision (optimistic concurrency between ACS replicas); kept outside the document.
 	Rev int64 `json:"-"`
 }
@@ -35,6 +38,15 @@ func (c *ChallengeState) clone() *ChallengeState {
 	cp := *c
 	cp.OTPMAC = slices.Clone(c.OTPMAC)
 	cp.Card.Channels = slices.Clone(c.Card.Channels)
+	cp.FIDO = c.FIDO.clone()
+	if c.AReq.ReqAuthInfo != nil {
+		v := *c.AReq.ReqAuthInfo
+		cp.AReq.ReqAuthInfo = &v
+	}
+	if c.AReq.PriorAuthInfo != nil {
+		v := *c.AReq.PriorAuthInfo
+		cp.AReq.PriorAuthInfo = &v
+	}
 	if c.AReq.SDKEphemPubKey != nil {
 		k := *c.AReq.SDKEphemPubKey
 		cp.AReq.SDKEphemPubKey = &k

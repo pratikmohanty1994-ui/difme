@@ -14,6 +14,15 @@
 //	ACS_SIGNING_CERT_CHAIN  PEM file, leaf first: the scheme-issued ACS signing certificate chain presented in
 //	                    acsSignedContent's x5c; the leaf's key is the security module's acs-sign key, which still signs.
 //	                    Empty: the security module's own certificate.
+//	ACS_FIDO_RP_ID      WebAuthn relying party id (the ACS/issuer domain); set to turn on WebAuthn / SPC authentication
+//	                    and the issuer app's credential registration (/3ds/fido/...). Credentials live in
+//	                    ACS_DATABASE_URL (table acs_fido_credential, sealed) or in memory.
+//	ACS_FIDO_RP_NAME    relying party display name
+//	ACS_FIDO_ORIGINS    comma-separated origins allowed in client data: the ACS challenge page origin, the issuer web
+//	                    app, opaque app origins (android:apk-key-hash:...)
+//	ACS_FIDO_TRUSTED_REQUESTOR_RP_IDS  comma-separated 3DS Requestor rpIds whose FIDO Authentication Data is trusted
+//	ACS_ISSUER_TOKEN    optional bearer token required on the issuer endpoints (out-of-band answer, FIDO registration)
+//	                    in addition to the mesh policy
 package main
 
 import (
@@ -23,6 +32,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/acs"
@@ -40,6 +50,16 @@ func env(k, d string) string {
 		return v
 	}
 	return d
+}
+
+func list(k string) []string {
+	var out []string
+	for _, v := range strings.Split(os.Getenv(k), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func main() {
@@ -71,14 +91,20 @@ func main() {
 	}
 	host, _ := os.Hostname()
 	cfg := acs.Config{FrictionlessLimitMinor: limit, ChallengeURL: env("ACS_CHALLENGE_URL", "http://acs/3ds/creq"), Signer: signer,
-		MAC: acs.HSMMAC(hsmURL), Instance: env("ACS_INSTANCE", host)}
+		MAC: acs.HSMMAC(hsmURL), Instance: env("ACS_INSTANCE", host),
+		FIDO: acs.FIDOConfig{RPID: os.Getenv("ACS_FIDO_RP_ID"), RPName: os.Getenv("ACS_FIDO_RP_NAME"), Origins: list("ACS_FIDO_ORIGINS"),
+			TrustedRequestorRPIDs: list("ACS_FIDO_TRUSTED_REQUESTOR_RP_IDS")}}
+	if t := os.Getenv("ACS_ISSUER_TOKEN"); t != "" {
+		cfg.IssuerAuth = acs.BearerAuth(t)
+	}
 	if url := os.Getenv("ACS_DATABASE_URL"); url != "" {
 		store, err := acs.NewPostgresStore(context.Background(), url)
 		if err != nil {
 			log.Fatalf("ACS_DATABASE_URL: %v", err)
 		}
 		defer store.Close()
-		cfg.Store = store.Seal(acs.HSMSealer{URL: hsmURL}) // documents carry the card number: ciphertext only at rest
+		sealed := store.Seal(acs.HSMSealer{URL: hsmURL}) // documents carry the card number: ciphertext only at rest
+		cfg.Store, cfg.Credentials = sealed, sealed      // FIDO credentials: sealed the same way
 	}
 	a := acs.New(cfg,
 		acs.NewCMSClient(env("ACS_CMS_URL", "http://127.0.0.1:8080")), frm, threeds.NewHSMClient(env("HSM_URL", "http://127.0.0.1:8700")),

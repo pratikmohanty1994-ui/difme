@@ -213,7 +213,7 @@ func TestPostgresDocumentHasNoKeyMaterial(t *testing.T) {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
-	want := []string{"acsTransID", "app", "areq", "attempts", "card", "expires", "messageVersion", "otpMAC", "owner", "step"}
+	want := []string{"acsTransID", "app", "areq", "attempts", "card", "cardRef", "expires", "messageVersion", "otpMAC", "owner", "step"}
 	if !slices.Equal(keys, want) {
 		t.Fatalf("document fields %v, want %v", keys, want)
 	}

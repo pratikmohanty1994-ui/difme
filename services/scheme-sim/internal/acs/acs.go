@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -84,6 +85,12 @@ type AReq struct {
 	ThreeRIInd           string `json:"threeRIInd,omitempty"`                   // 3RI reason
 	SDKEphemPubKey       *JWK   `json:"sdkEphemPubKey,omitempty"`               // app channel: SDK ephemeral key (jwe.go)
 	SDKReferenceNumber   string `json:"sdkReferenceNumber,omitempty"`           // app channel: ConcatKDF PartyVInfo
+	PurchaseExponent     string `json:"purchaseExponent,omitempty"`             // minor-unit exponent (default 2) [EMV-220]
+	SPCSupport           string `json:"threeDSRequestorSpcSupport,omitempty"`   // Y: requestor can call SPC (fido.go) [RAVELIN]
+	PayeeOrigin          string `json:"payeeOrigin,omitempty"`                  // SPC payee origin [RAVELIN]
+	// FIDO data from the requestor: 06/07 FIDO Authentication Data, 09 SPC assertion (AReq #2) (fido.go)
+	ReqAuthInfo   *ReqAuthInfo   `json:"threeDSRequestorAuthenticationInfo,omitempty"`
+	PriorAuthInfo *PriorAuthInfo `json:"threeDSRequestorPriorAuthenticationInfo,omitempty"`
 }
 
 type ARes struct {
@@ -104,6 +111,11 @@ type ARes struct {
 	ACSRenderingType     *Rend  `json:"acsRenderingType,omitempty"`
 	ACSSignedContent     string `json:"acsSignedContent,omitempty"` // app channel (jwe.go)
 	CardholderInfo       string `json:"cardholderInfo,omitempty"`
+	// 2.3.1 only (fido.go): authenticationMethod (13 WebAuthn, 14 SPC), acsInfoInd (06/07), merchant-initiated SPC data
+	AuthenticationMethod []string       `json:"authenticationMethod,omitempty"`
+	ACSInfoInd           []string       `json:"acsInfoInd,omitempty"`
+	WebAuthnCredList     []WebAuthnCred `json:"webAuthnCredList,omitempty"`
+	SPCTransData         *SPCTransData  `json:"spcTransData,omitempty"`
 }
 
 // Rend is acsRenderingType: interface 01 native / 02 HTML; template 01 text, 02 single-select, 03 multi-select,
@@ -123,42 +135,48 @@ type CReq struct {
 	ChallengeCancel      string `json:"challengeCancel,omitempty"`
 	OOBContinue          string `json:"oobContinue,omitempty"` // Y: cardholder says the app approval is done
 	ResendChallenge      string `json:"resendChallenge,omitempty"`
+	// Browser challenge page form fields (not EMV CReq members): the WebAuthn/SPC assertion (JSON PublicKeyCredential)
+	// or Y when the browser declined and the cardholder falls back to a one-time passcode.
+	FIDOAssertion string `json:"-"`
+	FIDOFallback  string `json:"-"`
 }
 
 type CRes struct {
-	MessageType            string   `json:"messageType"`
-	MessageVersion         string   `json:"messageVersion"`
-	ThreeDSServerTransID   string   `json:"threeDSServerTransID"`
-	ACSTransID             string   `json:"acsTransID"`
-	SDKTransID             string   `json:"sdkTransID,omitempty"`
-	ChallengeCompletionInd string   `json:"challengeCompletionInd"`
-	TransStatus            string   `json:"transStatus,omitempty"`
-	ACSUIType              string   `json:"acsUiType,omitempty"` // 01 text, 02 single-select, 03 multi-select, 04 OOB, 05 HTML
-	ChallengeInfoHeader    string   `json:"challengeInfoHeader,omitempty"`
-	ChallengeInfoText      string   `json:"challengeInfoText,omitempty"`
-	ChallengeSelectInfo    []Choice `json:"challengeSelectInfo,omitempty"`
-	OOBAppLabel            string   `json:"oobAppLabel,omitempty"`
-	OOBContinueLabel       string   `json:"oobContinueLabel,omitempty"`
-	ResendInformationLabel string   `json:"resendInformationLabel,omitempty"`
+	MessageType            string       `json:"messageType"`
+	MessageVersion         string       `json:"messageVersion"`
+	ThreeDSServerTransID   string       `json:"threeDSServerTransID"`
+	ACSTransID             string       `json:"acsTransID"`
+	SDKTransID             string       `json:"sdkTransID,omitempty"`
+	ChallengeCompletionInd string       `json:"challengeCompletionInd"`
+	TransStatus            string       `json:"transStatus,omitempty"`
+	ACSUIType              string       `json:"acsUiType,omitempty"` // 01 text, 02 single-select, 03 multi-select, 04 OOB, 05 HTML
+	ChallengeInfoHeader    string       `json:"challengeInfoHeader,omitempty"`
+	ChallengeInfoText      string       `json:"challengeInfoText,omitempty"`
+	ChallengeSelectInfo    []Choice     `json:"challengeSelectInfo,omitempty"`
+	OOBAppLabel            string       `json:"oobAppLabel,omitempty"`
+	OOBContinueLabel       string       `json:"oobContinueLabel,omitempty"`
+	ResendInformationLabel string       `json:"resendInformationLabel,omitempty"`
+	FIDO                   *FIDORequest `json:"-"` // browser page only: WebAuthn/SPC request (acsUiType 05)
 }
 
 // Choice is one challengeSelectInfo entry.
 type Choice map[string]string
 
 type RReq struct {
-	MessageType          string `json:"messageType"`
-	MessageVersion       string `json:"messageVersion"`
-	MessageCategory      string `json:"messageCategory"`
-	ThreeDSServerTransID string `json:"threeDSServerTransID"`
-	DSTransID            string `json:"dsTransID"`
-	ACSTransID           string `json:"acsTransID"`
-	TransStatus          string `json:"transStatus"`
-	TransStatusReason    string `json:"transStatusReason,omitempty"`
-	AuthenticationValue  string `json:"authenticationValue,omitempty"`
-	ECI                  string `json:"eci,omitempty"`
-	InteractionCounter   string `json:"interactionCounter"`
-	AuthenticationType   string `json:"authenticationType"` // 02 dynamic (OTP), 03 OOB, 04 decoupled
-	ChallengeCancel      string `json:"challengeCancel,omitempty"`
+	MessageType          string   `json:"messageType"`
+	MessageVersion       string   `json:"messageVersion"`
+	MessageCategory      string   `json:"messageCategory"`
+	ThreeDSServerTransID string   `json:"threeDSServerTransID"`
+	DSTransID            string   `json:"dsTransID"`
+	ACSTransID           string   `json:"acsTransID"`
+	TransStatus          string   `json:"transStatus"`
+	TransStatusReason    string   `json:"transStatusReason,omitempty"`
+	AuthenticationValue  string   `json:"authenticationValue,omitempty"`
+	ECI                  string   `json:"eci,omitempty"`
+	InteractionCounter   string   `json:"interactionCounter"`
+	AuthenticationType   string   `json:"authenticationType"`             // 02 dynamic (OTP, FIDO assertion), 03 OOB, 04 decoupled
+	AuthenticationMethod []string `json:"authenticationMethod,omitempty"` // 2.3.1: 13 WebAuthn, 14 SPC (fido.go)
+	ChallengeCancel      string   `json:"challengeCancel,omitempty"`
 }
 
 // EMV 3DS transStatusReason codes used here.
@@ -200,6 +218,12 @@ type Config struct {
 	// Instance names this ACS process (e.g. the pod's host name) so that, after a restart, Recover can end the
 	// app-channel challenges whose session keys died with the previous process.
 	Instance string
+	// FIDO turns on WebAuthn / SPC authentication (fido.go); Credentials stores registered credentials (nil: memory).
+	FIDO        FIDOConfig
+	Credentials CredentialStore
+	// IssuerAuth guards the issuer/cardholder endpoints (out-of-band answer, FIDO registration). nil: the mesh alone
+	// (mTLS + AuthorizationPolicy) controls who reaches them.
+	IssuerAuth func(r *http.Request) bool
 }
 
 type ACS struct {
@@ -212,6 +236,7 @@ type ACS struct {
 	results Results
 	mu      sync.Mutex
 	store   ChallengeStore
+	creds   CredentialStore
 	apps    map[string]*AppSession // app-channel session keys by acsTransID: process memory only, never stored
 }
 
@@ -228,7 +253,11 @@ func New(cfg Config, cards Cards, frm FRM, hsm threeds.HSM, otp OTPSender, oob O
 	if cfg.Store == nil {
 		cfg.Store = NewMemoryStore()
 	}
-	return &ACS{cfg: cfg, cards: cards, frm: frm, hsm: hsm, otp: otp, oob: oob, results: results, store: cfg.Store, apps: map[string]*AppSession{}}
+	if cfg.Credentials == nil {
+		cfg.Credentials = NewMemoryCredentials()
+	}
+	return &ACS{cfg: cfg, cards: cards, frm: frm, hsm: hsm, otp: otp, oob: oob, results: results, store: cfg.Store, creds: cfg.Credentials,
+		apps: map[string]*AppSession{}}
 }
 
 var ErrBadRequest = errors.New("bad request")
@@ -322,7 +351,47 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 	if verdict == Interdict {
 		return no("R", ReasonFraud)
 	}
-	frictionless := verdict == NoAlert && amount <= a.cfg.FrictionlessLimitMinor && q.ChallengeIndicator != "04"
+	// FIDO data from the 3DS Requestor (fido.go): 06/07 FIDO Authentication Data is risk input; 09 is AReq #2 of
+	// merchant-initiated SPC, whose assertion decides the outcome (Y with CAVV, N, or an OTP challenge).
+	spcFallback := false
+	if info := q.ReqAuthInfo; info != nil {
+		switch info.Method {
+		case ReqAuthFIDO, ReqAuthFIDOSigned:
+			trusted, err := a.requestorFIDO(info)
+			slog.Info("3ds requestor FIDO data", "acsTransID", res.ACSTransID, "method", info.Method, "trusted", trusted, "err", err)
+		case ReqAuthSPCAssertion:
+			var m string
+			err := errFIDOFallback // FIDO off: challenge as usual
+			if a.fidoOn() {
+				m, err = a.spcSecondAReq(ctx, q)
+			}
+			switch {
+			case err == nil:
+				v, _, err := threeds.Build(ctx, a.hsm, q.AcctNumber, threeds.ResultChallenge, SecondFactorFIDO)
+				if err != nil {
+					slog.Error("3ds: security module", "err", err)
+					return no("U", ReasonSecurity)
+				}
+				res.TransStatus, res.AuthenticationValue, res.ECI, res.AuthenticationType = "Y", v, "05", AuthOTP
+				if q.MessageVersion == "2.3.1" {
+					res.AuthenticationMethod = []string{m}
+				}
+				slog.Info("3ds authentication", "acsTransID", res.ACSTransID, "version", q.MessageVersion, "status", "Y", "flow", "spc", "prior", q.PriorAuthInfo.Ref)
+				return res, nil
+			case errors.Is(err, errFIDOFallback):
+				spcFallback = true // unknown/expired prior SPC transaction or credential: challenge with a passcode
+			case errors.Is(err, errFIDOCounter):
+				return no("N", ReasonSecurity)
+			case errors.Is(err, errFIDOVerify):
+				slog.Info("3ds SPC assertion rejected", "acsTransID", res.ACSTransID, "err", err)
+				return no("N", ReasonAuthFailed)
+			default:
+				slog.Error("3ds: SPC", "acsTransID", res.ACSTransID, "err", err)
+				return no("U", ReasonSecurity)
+			}
+		}
+	}
+	frictionless := verdict == NoAlert && amount <= a.cfg.FrictionlessLimitMinor && q.ChallengeIndicator != "04" && !spcFallback
 	// 3RI: no cardholder to challenge. Non-payment (card verification, recurring set-up) only, on a clear risk verdict.
 	if q.DeviceChannel == "03" {
 		if q.MessageCategory != "02" {
@@ -343,8 +412,23 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 		slog.Info("3ds authentication", "acsTransID", res.ACSTransID, "version", q.MessageVersion, "status", "Y", "flow", "frictionless")
 		return res, nil
 	}
-	ch := &ChallengeState{AReq: q, Card: c, Version: q.MessageVersion, ACSTransID: res.ACSTransID, Expires: a.cfg.Now().Add(a.cfg.OTPTTL)}
+	ch := &ChallengeState{AReq: q, Card: c, Version: q.MessageVersion, ACSTransID: res.ACSTransID, Expires: a.cfg.Now().Add(a.cfg.OTPTTL), CardRef: ref}
 	hasApp := slices.Contains(c.Channels, "app")
+	// WebAuthn / SPC (fido.go): browser channel, card with registered credentials; else the methods below (OTP).
+	var creds []FIDOCredential
+	if a.fidoOn() && q.DeviceChannel == "02" && !spcFallback {
+		if creds, err = a.creds.Credentials(ctx, ref); err != nil {
+			slog.Error("3ds: FIDO credential store", "err", err)
+			creds = nil
+		}
+	}
+	anySPC := slices.ContainsFunc(creds, func(c FIDOCredential) bool { return c.SPC }) && q.MessageCategory == "01"
+	if len(creds) > 0 && q.MessageVersion == "2.3.1" {
+		res.ACSInfoInd = []string{ACSInfoWebAuthn}
+		if anySPC {
+			res.ACSInfoInd = append(res.ACSInfoInd, ACSInfoSPC)
+		}
+	}
 	switch {
 	case q.DecReqInd == "Y" && hasApp:
 		// decoupled: the cardholder approves in the DIFME app; the ACS sends the RReq when done or at DecMaxTime
@@ -358,6 +442,23 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 		}
 		res.TransStatus, res.ACSDecConInd, res.AuthenticationType = "D", "Y", AuthDecoupled
 		res.CardholderInfo = "Approve this purchase in your DIFME app"
+	case anySPC && q.SPCSupport == "Y" && q.MessageVersion == "2.3.1":
+		// merchant-initiated SPC [EMVCO-SPC]: ARes S with the credential list and SPC transaction data; the requestor
+		// calls SPC and sends the assertion in AReq #2 (spcSecondAReq)
+		ch.Step, ch.FIDO, ch.Expires = "spc", newFIDOPending(q, creds, true), a.cfg.Now().Add(a.fidoTimeout()+time.Minute)
+		res.TransStatus, res.AuthenticationMethod = StatusSPC, []string{MethodSPC}
+		res.SPCTransData, res.WebAuthnCredList = a.spcTransData(ch)
+	case len(creds) > 0:
+		// issuer-initiated: the ACS's HTML challenge page calls SPC (payment) or WebAuthn [EMVCO-SPC]
+		ch.Step, ch.FIDO = "fido", newFIDOPending(q, creds, false)
+		res.TransStatus, res.AuthenticationType = "C", AuthOTP // authenticationType has no FIDO value: 02 dynamic
+		res.ACSRenderingType = &Rend{Interface: "02", Template: "05"}
+		if q.MessageVersion == "2.3.1" {
+			res.AuthenticationMethod = []string{MethodWebAuthn}
+			if ch.FIDO.SPC {
+				res.AuthenticationMethod = []string{MethodSPC, MethodWebAuthn}
+			}
+		}
 	case hasApp:
 		ch.Step = "oob"
 		if err := a.oob.Notify(ctx, q.AcctNumber, ch.ACSTransID, q.MerchantName, amount, currencyAlpha(q.PurchaseCurrency)); err != nil {
@@ -445,7 +546,7 @@ func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 	if err != nil && !errors.Is(err, ErrNoChallenge) {
 		return CRes{}, err
 	}
-	if err != nil || ch.AReq.ThreeDSServerTransID != q.ThreeDSServerTransID || ch.Step == "decoupled" {
+	if err != nil || ch.AReq.ThreeDSServerTransID != q.ThreeDSServerTransID || ch.Step == "decoupled" || ch.Step == "spc" {
 		return CRes{}, fmt.Errorf("%w: unknown challenge", ErrBadRequest)
 	}
 	res := CRes{MessageType: "CRes", MessageVersion: ch.Version, ThreeDSServerTransID: q.ThreeDSServerTransID, ACSTransID: q.ACSTransID,
@@ -476,6 +577,30 @@ func (a *ACS) Challenge(ctx context.Context, q CReq) (CRes, error) {
 		return finish("N", ReasonTimedOut, 0, 0)
 	}
 	switch ch.Step {
+	case "fido":
+		switch {
+		case q.FIDOFallback == "Y":
+			return a.fidoFallbackLocked(ctx, ch, res)
+		case q.FIDOAssertion != "":
+			_, err := a.verifyAssertion(ctx, ch, []byte(q.FIDOAssertion))
+			switch {
+			case err == nil:
+				return finish("Y", "", threeds.ResultChallenge, SecondFactorFIDO)
+			case errors.Is(err, errFIDOFallback):
+				return a.fidoFallbackLocked(ctx, ch, res)
+			case errors.Is(err, errFIDOCounter):
+				return finish("N", ReasonSecurity, 0, 0)
+			case errors.Is(err, errFIDOVerify):
+				slog.Info("3ds FIDO assertion rejected", "acsTransID", ch.ACSTransID, "err", err)
+				ch.Attempts++
+				return finish("N", ReasonAuthFailed, 0, 0)
+			default:
+				return CRes{}, err
+			}
+		}
+		res.ACSUIType, res.ChallengeInfoHeader = "05", "Verify your purchase"
+		res.ChallengeInfoText, res.FIDO = "Confirm with your passkey (fingerprint, face or screen lock).", a.fidoRequest(ch)
+		return res, nil
 	case "select":
 		chs := otpChannels(ch.Card)
 		if !slices.Contains(chs, q.ChallengeDataEntry) {
@@ -624,6 +749,9 @@ func (a *ACS) finishLocked(ctx context.Context, ch *ChallengeState, status, reas
 	rr := RReq{MessageType: "RReq", MessageVersion: ch.Version, MessageCategory: ch.AReq.MessageCategory, ThreeDSServerTransID: ch.AReq.ThreeDSServerTransID,
 		DSTransID: ch.AReq.DSTransID, ACSTransID: ch.ACSTransID, TransStatus: status, TransStatusReason: reason,
 		InteractionCounter: fmt.Sprintf("%02d", ch.Attempts), AuthenticationType: authType, ChallengeCancel: cancel}
+	if ch.FIDO != nil && ch.FIDO.Used != "" && ch.Version == "2.3.1" {
+		rr.AuthenticationMethod = []string{ch.FIDO.Used}
+	}
 	if status == "Y" {
 		v, _, err := threeds.Build(ctx, a.hsm, ch.AReq.AcctNumber, result, factor)
 		if err != nil {

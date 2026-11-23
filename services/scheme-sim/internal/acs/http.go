@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -107,7 +108,16 @@ func (LogOOB) Notify(_ context.Context, pan, acsTransID, merchant string, amount
 func mask(pan string) string { return pan[:6] + "******" + pan[len(pan)-4:] }
 
 // Handler serves POST /3ds/areq, POST /3ds/creq (app, JSON), POST /3ds/challenge (browser, HTML),
-// POST /3ds/oob/{acsTransID} (DIFME app's answer: {"approved":true}) and GET /healthz.
+// POST /3ds/oob/{acsTransID} (DIFME app's answer: {"approved":true}), GET /healthz, and the issuer app's FIDO
+// credential registration (fido.go):
+//
+//	POST   /3ds/fido/registration/options  {"acctNumber"}  → {"registrationToken", "publicKey": creation options}
+//	POST   /3ds/fido/registration          {"acctNumber", "registrationToken", "credential": PublicKeyCredential JSON}
+//	                                       → {"credentialId"}
+//	DELETE /3ds/fido/credentials/{id}      {"acctNumber"}
+//
+// The out-of-band and FIDO registration endpoints are issuer/cardholder endpoints: Config.IssuerAuth (when set) and
+// the mesh policy guard them alike.
 func (a *ACS) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
@@ -140,7 +150,7 @@ func (a *ACS) Handler() http.Handler {
 		res, err := a.Challenge(r.Context(), q)
 		reply(w, res, err)
 	})
-	mux.HandleFunc("POST /3ds/oob/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /3ds/oob/{id}", a.issuer(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Approved bool `json:"approved"`
 		}
@@ -149,9 +159,59 @@ func (a *ACS) Handler() http.Handler {
 			return
 		}
 		reply(w, map[string]string{"status": "recorded"}, a.OOBResult(r.Context(), r.PathValue("id"), in.Approved))
-	})
+	}))
+	type fidoIn struct {
+		AcctNumber        string          `json:"acctNumber"`
+		RegistrationToken string          `json:"registrationToken"`
+		Credential        json.RawMessage `json:"credential"`
+	}
+	readFIDO := func(w http.ResponseWriter, r *http.Request) (fidoIn, bool) {
+		var in fidoIn
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil || in.AcctNumber == "" {
+			writeJSON(w, 400, map[string]string{"error": "JSON with acctNumber required"})
+			return in, false
+		}
+		return in, true
+	}
+	mux.HandleFunc("POST /3ds/fido/registration/options", a.issuer(func(w http.ResponseWriter, r *http.Request) {
+		if in, ok := readFIDO(w, r); ok {
+			res, err := a.FIDORegistrationOptions(r.Context(), in.AcctNumber)
+			reply(w, res, err)
+		}
+	}))
+	mux.HandleFunc("POST /3ds/fido/registration", a.issuer(func(w http.ResponseWriter, r *http.Request) {
+		if in, ok := readFIDO(w, r); ok {
+			id, err := a.FIDORegister(r.Context(), in.AcctNumber, in.RegistrationToken, in.Credential)
+			reply(w, map[string]string{"credentialId": id}, err)
+		}
+	}))
+	mux.HandleFunc("DELETE /3ds/fido/credentials/{id}", a.issuer(func(w http.ResponseWriter, r *http.Request) {
+		if in, ok := readFIDO(w, r); ok {
+			reply(w, map[string]string{"status": "deleted"}, a.FIDODeregister(r.Context(), in.AcctNumber, r.PathValue("id")))
+		}
+	}))
 	mux.HandleFunc("POST /3ds/challenge", a.browserChallenge)
 	return mux
+}
+
+// issuer guards an issuer/cardholder endpoint with Config.IssuerAuth (nil: mesh policy only).
+func (a *ACS) issuer(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.cfg.IssuerAuth != nil && !a.cfg.IssuerAuth(r) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorised"})
+			return
+		}
+		h(w, r)
+	}
+}
+
+// BearerAuth accepts requests carrying "Authorization: Bearer <token>" (constant-time compare); for Config.IssuerAuth
+// (ACS_ISSUER_TOKEN) in addition to the mesh's mTLS identity.
+func BearerAuth(token string) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		got, ok := strings.CutPrefix(r.Header.Get("authorization"), "Bearer ")
+		return ok && token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+	}
 }
 
 func reply(w http.ResponseWriter, res any, err error) {

@@ -590,8 +590,28 @@ with x5c, CReq/CRes as `dir` JWE (A128CBC-HS256, A128GCM with per-direction halv
 SDK stand-in (jwcrypto + pyca/cryptography, `internal/acs/testdata/sdk.py`). Card management gained enrolled
 `channels` (sms, email, app).
 
+**WebAuthn / SPC (2026-11-23):** `internal/acs/fido.go`. Codes from public sources (EMVCo text is not
+redistributable; each field's source is cited in the code): authenticationMethod 13 WebAuthn / 14 SPC (2.3.1; Ravelin
+API reference, EMVCo "WebAuthn and SPC" article); authenticationType has no FIDO value (01–04 only), so 02 dynamic is
+sent; acsInfoInd 06/07 (nsoftware 2.3.1 notes); transStatus S, threeDSReqAuthMethod 09, prior method 05 (EMVCo
+article); threeDSReqAuthMethod 06/07 FIDO Authentication Data (FIDO Alliance technical note 2020); SPC client data
+`payment.get` and its checks (W3C SPC §9.1). Flows: issuer-initiated, where the browser challenge page (acsUiType 05)
+calls SPC or `navigator.credentials.get`, and the ACS checks challenge, origin, rpIdHash, UV, ES256/EdDSA/RS256
+signature and the signature counter (compare-and-set), and for SPC the amount, currency, payee and instrument in
+clientDataJSON; merchant-initiated, where ARes S carries webAuthnCredList + spcTransData and AReq #2 (method 09,
+prior ref = acsTransID) is checked against AReq #1, after which the challenge is consumed. Both give Y with a CAVV
+from the security module (second factor 03), ECI 05. An unknown credential, a browser decline or a card without a
+credential falls back to OTP. Requestor 06/07 data is validated and logged as risk input only. The issuer app
+registers credentials at
+`/3ds/fido/registration/options` + `/3ds/fido/registration` (WebAuthn attestation verified, SPC payment extension;
+optional `ACS_ISSUER_TOKEN` bearer, shared with `/3ds/oob`). Credentials store only id, COSE public key and counter,
+filed under the HMAC card reference: in memory, or in Postgres `acs_fido_credential` sealed with the card-vault key.
+Library: go-webauthn v0.18.2 (BSD-3); govulncheck shows no reachable third-party vulnerabilities (x/crypto bumped to
+v0.59.0); the stdlib findings need the image built with Go ≥ 1.26.9. Unverified: the JSON keys inside spcTransData and
+webAuthnCredList entries, and the encoding of the assertion in threeDSReqAuthData (WebAuthn JSON here). Not yet
+tested in a real browser.
 **Still open:** scheme-issued ACS signing certificate from OpenBao (dev self-signed today); multi-select and
-information-only templates are modelled, not used by policy; FIDO/SPC (WebAuthn) authentication data; 3DS Method
+information-only templates are modelled, not used by policy; FIDO/SPC in a real browser and with a real 3DS Server; 3DS Method
 (device fingerprint iframe) and browser data in risk; DS simulator and a 3DS Server; durable challenge store; real
 SMS/email/app-push delivery; attempts CAVV; image and manifests.
 **Earlier "not yet" list (superseded where done above):** HTML browser challenge page and app-channel JWE (CReq/CRes are JSON today);
