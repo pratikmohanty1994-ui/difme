@@ -32,9 +32,14 @@ spec:
             - { name: FINERACT_ADMIN_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: fineract-admin } } }
             - { name: CARD_ISSUER_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: card-issuer } } }
             - { name: LOAN_ORIGINATION_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: loan-origination } } }
-            - { name: JAVA_OPTS_KC_HEAP, value: "-Xms128m -Xmx512m" }
-            # Identity provider for back-office logins, not a hot path: Tier 2 low-footprint JVM flags.
-            - { name: JAVA_OPTS_APPEND, value: "-XX:+UseSerialGC -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=64m -Xss256k" }
+            # Identity provider for back-office logins, not a hot path: Tier 2 low-footprint JVM flags. JAVA_OPTS replaces
+            # kc.sh's defaults (which select G1: appending SerialGC made the JVM refuse to start, "Multiple garbage
+            # collectors selected", cluster-verify 2026-11-23), so it carries the heap and kc.sh's other default flags too.
+            - name: JAVA_OPTS
+              value: >-
+                -Xms128m -Xmx512m -XX:+UseSerialGC -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=64m -Xss256k
+                -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.err.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+                -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/urandom -Djdk.tls.rejectClientInitiatedRenegotiation=true
             - { name: MALLOC_ARENA_MAX, value: "2" }
           ports: [{ name: http, containerPort: 8080 }, { name: mgmt, containerPort: 9000 }]
           readinessProbe: { httpGet: { path: /health/ready, port: 9000 }, initialDelaySeconds: 30 }
