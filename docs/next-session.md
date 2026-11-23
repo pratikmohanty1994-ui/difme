@@ -43,21 +43,21 @@ Read this, then `docs/status.md`.
 (OSI; no BSL/SSPL/ELv2); `[skip ci]` unless a run is wanted; one cluster-verify at a time; push to `main` and mirror to
 the session branch; nothing runs on the owner's PC.
 
-## 0b. Master pending list (2026-11-22, late night): owner = who is on it
+## 0b. Master pending list (updated 2026-11-23 00:55 UTC; parallelism cut to ≤2 agents, owner flagged token use): owner = who is on it
 | # | Item | State / owner |
 |---|---|---|
-| 1 | Images run 19, then images hsm+scheme, then cluster-verify run 4 (core,streaming,security,rails,fraud; fail-fast) | main session, check-in 19:13 UTC |
+| 1 | Cluster-verify run 4 (core,streaming,security,rails,fraud; fail-fast) on images run 21 (1bba03d2) | main session; dispatched 2026-11-23 00:53 UTC, verdicts check 02:03 |
 | 2 | PH-EE: B5 images, C2/C3/D1 manifests (pushed), D2 Spring Boot 3 / Camel 4 | agent (PH-EE) |
 | 3 | D3 switch the exchange to PH-EE, retire the interim Temporal hub; D4 known gaps; D5 exchange rails wiring | after 2 |
-| 4 | ACS FIDO/WebAuthn + SPC (3DS 2.3.1) | agent (ACS WebAuthn) |
+| 4 | ACS FIDO/WebAuthn + SPC (3DS 2.3.1) | **Done** (8ad871cf) |
 | 5 | ACS: real OTP delivery (email via Mailpit, SMS/push stand-ins through the notification service), 3DS Method (device fingerprint iframe) and browser data in risk, scheme-issued ACS signing cert from OpenBao | after 4 (same files) |
-| 6 | Crypto/CMS remainders: MAC verify, app PIN reveal, TC/AAC at clearing, card renewal/reissue, LMK rotation drill, issuer RSA key + perso file | agent (card crypto) |
+| 6 | Crypto/CMS remainders: MAC verify, app PIN reveal, TC/AAC at clearing, card renewal/reissue, LMK rotation drill, issuer RSA key + perso file | **Done** (8020c451…1bba03d2; 64 hsm tests). Follow-ups: scheme-sim field 55 at clearing, chip ATC replay tracking, drop appPinBlock from /pin/generate, rotation round trip with live Trustee |
 | 7 | Blocked (no public spec/reference): Mastercard AAV/SPA2, Amex AEVV, AES chip cryptograms, Interac | blocked |
-| 8 | Edge app §5.1 (Tauri 2, Rust core, automerge, Wasmtime, simulated TEE, HCE/WorkManager stubs) | agent (edge) |
-| 9 | §5.2 hub remainder: session manager, telemetry/dashboard relays, tonic gRPC bridge | next agent slot |
-| 10 | §13 deployment scenarios A–D: Kustomize overlays, OpenTofu modules, QUIC proxy-chain relay | main session (overlays/OpenTofu), relay with 9 |
+| 8 | Edge app §5.1 (Tauri 2, Rust core, automerge, Wasmtime, simulated TEE, HCE/WorkManager stubs) | Rust core **done** (08e80adc); Tauri/Vue app unfinished, local `edge/app/` only; agent **paused** (token use) |
+| 9 | §5.2 hub remainder: session manager, telemetry/dashboard relays, tonic gRPC bridge | **Done** (30f11af7, with the scenario D QUIC relay) |
+| 10 | §13 deployment scenarios A–D: Kustomize overlays (incl. Fleet region-a/b/c), OpenTofu modules | **Paused** (token use); design notes: Cilium 1.17 has no MCS-API, so hybrid uses ClusterMesh global services; stateful tiers on-prem |
 | 11 | Hyperswitch: B4 admin API check; live network-token tokenise → fetch (TAVV) on the cluster | cluster run after 1 |
-| 12 | Fraud: D02 end to end on the cluster; local Tazama e2e with pain.001 (running) | main session |
+| 12 | Fraud: D02 end to end on the cluster (image present); local Tazama e2e with pain.001: npm "Exit handler never called" during the local build, retry when the machine is quiet | main session |
 | 13 | Actions: run 5 all profiles; ml + fraud scorer FAIL path; dbt lineage; dev memory halving; scale-to-zero decision | after 1 |
 | 14 | Docs: status.md / component-reuse.md / README matrix status column (F1) | main session, ongoing |
 | 15 | Owner: A5 archive old repo, A6 revoke token, C4 interopUser, E1–E3, Codespaces idle timeout, arm64 VM, Hyperswitch key path, jPOS switch migration (later) | owner |
