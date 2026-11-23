@@ -88,6 +88,12 @@ func (h *HSMClient) VerifyPVV(ctx context.Context, pan, block, pvv string) (bool
 	return v == "true", err
 }
 
+func (h *HSMClient) VerifyAC(ctx context.Context, c chipAC) (bool, error) {
+	v, err := h.call(ctx, "/v1/arqc/verify", map[string]string{"cvn": c.CVN, "pan": c.PAN, "psn": c.PSN, "arqc": c.AC, "atc": c.ATC,
+		"upn": c.UN, "txnData": c.TxnData, "arc": c.ARC}, "valid")
+	return v == "true", err
+}
+
 func (h *HSMClient) RevealPIN(ctx context.Context, pan, iso4Hex, appKeyHex string) (string, error) {
 	v, err := h.call(ctx, "/v1/pin/reveal", map[string]string{"pan": pan, "pinBlock": iso4Hex, "appKey": appKeyHex}, "jwe")
 	if err != nil && strings.Contains(err.Error(), "HTTP 400") {

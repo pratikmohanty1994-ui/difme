@@ -88,6 +88,8 @@ func (fakeHSM) RevealPIN(_ context.Context, _, iso4, appKey string) (string, err
 	return "jwe(" + iso4 + ")", nil
 }
 
+func (fakeHSM) VerifyAC(context.Context, chipAC) (bool, error) { return true, nil }
+
 func setup(t *testing.T) (*Issuer, *fakeLedger) {
 	l := newLedger()
 	return New("437551", l, fakeHSM{}, NewMemStore()), l

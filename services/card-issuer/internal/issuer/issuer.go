@@ -55,6 +55,7 @@ type Auth struct {
 	State       string    `json:"state"` // HELD, CLEARED, REVERSED, DECLINED
 	Code        string    `json:"responseCode"`
 	HoldRef     int64     `json:"holdRef,omitempty"` // Fineract hold transaction (debit)
+	Chip        string    `json:"chip,omitempty"`    // card-present clearing: TC, ARQC (verified), AAC or INVALID
 	At          time.Time `json:"at"`
 }
 
@@ -82,6 +83,8 @@ type HSM interface {
 	// block under the app's AES key (shown once in the app).
 	GeneratePIN(ctx context.Context, pan string) (zpkBlock, appBlock string, err error)
 	PVV(ctx context.Context, pan, pinBlockZPK string) (string, error)
+	// VerifyAC checks a chip application cryptogram (ARQC, TC or AAC) with the module's ARQC function.
+	VerifyAC(ctx context.Context, c chipAC) (bool, error)
 	// RevealPIN re-encrypts a pending PIN (ISO 4 block under the module's PIN key) inside the module to the app's
 	// public key (X.509 SubjectPublicKeyInfo, hex): a JWE only the app can open. ErrInvalid for an unusable app key.
 	RevealPIN(ctx context.Context, pan, iso4Hex, appKeyHex string) (string, error)
@@ -348,6 +351,13 @@ func (i *Issuer) OpenToBuy(ctx context.Context, id string) (int64, error) {
 
 // Clear posts a held authorisation to the ledger (presentment / capture), for its amount or less.
 func (i *Issuer) Clear(ctx context.Context, authID string, amountMinor int64) (Auth, error) {
+	return i.ClearPresentment(ctx, authID, amountMinor, "")
+}
+
+// ClearPresentment is Clear with the presentment's chip data (field 55, hex; empty for card-not-present). With chip
+// data the card's cryptogram is verified first: a TC or ARQC that verifies is posted; an AAC (the card declined) or a
+// cryptogram that does not verify is not posted, the authorisation stays held and is marked for review (Chip).
+func (i *Issuer) ClearPresentment(ctx context.Context, authID string, amountMinor int64, field55 string) (Auth, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	a, err := i.store.Auth(ctx, authID)
@@ -360,6 +370,20 @@ func (i *Issuer) Clear(ctx context.Context, authID string, amountMinor int64) (A
 	c, err := i.store.Card(ctx, a.CardID)
 	if err != nil {
 		return a, err
+	}
+	if field55 != "" {
+		kind, err := i.verifyChip(ctx, c.PAN, field55)
+		if err != nil {
+			return a, err
+		}
+		a.Chip = kind
+		if kind == "INVALID" || kind == "AAC" {
+			if err := i.store.PutAuth(ctx, a); err != nil {
+				return a, err
+			}
+			slog.Warn("clearing: chip cryptogram refused", "auth", a.ID, "card", c.ID, "chip", kind)
+			return a, fmt.Errorf("%w: chip cryptogram %s: not posted, held for review", ErrInvalid, map[string]string{"INVALID": "does not verify", "AAC": "is an AAC (declined by the card)"}[kind])
+		}
 	}
 	switch c.Product {
 	case Debit:

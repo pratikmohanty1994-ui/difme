@@ -21,7 +21,7 @@ import (
 //	POST /v1/cards/{id}/statements       close the billing cycle (credit): {"cycleDays":30}
 //	POST /v1/cards/{id}/statements/latest/grace  at the due date: waive the interest when paid in full
 //	POST /v1/authorisations              the switch's issuer authorisation
-//	POST /v1/authorisations/{id}/clear   {"amountMinor":…}
+//	POST /v1/authorisations/{id}/clear   {"amountMinor":…, "icc":"<field 55 hex, card-present>"}
 //	POST /v1/authorisations/{id}/reverse
 func Handler(i *Issuer) http.Handler {
 	mux := http.NewServeMux()
@@ -107,12 +107,13 @@ func Handler(i *Issuer) http.Handler {
 	})
 	mux.HandleFunc("POST /v1/authorisations/{id}/clear", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
-			AmountMinor int64 `json:"amountMinor"`
+			AmountMinor int64  `json:"amountMinor"`
+			ICC         string `json:"icc"`
 		}
 		if !decode(w, r, &q) {
 			return
 		}
-		a, err := i.Clear(r.Context(), r.PathValue("id"), q.AmountMinor)
+		a, err := i.ClearPresentment(r.Context(), r.PathValue("id"), q.AmountMinor, q.ICC)
 		reply(w, 200, a, err)
 	})
 	mux.HandleFunc("POST /v1/authorisations/{id}/reverse", func(w http.ResponseWriter, r *http.Request) {
