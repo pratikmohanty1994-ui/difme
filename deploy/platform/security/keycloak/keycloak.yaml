@@ -6,7 +6,10 @@ spec:
   replicas: 1
   selector: { matchLabels: { app: keycloak } }
   template:
-    metadata: { labels: { app: keycloak } }
+    # Pod-level ambient enrolment (the security namespace is outside the mesh): its database, postgres-docdb in the
+    # meshed database-tier, requires mTLS (PeerAuthentication STRICT); plaintext from outside the mesh was reset at
+    # connect ("The connection attempt failed", EOFException; cluster-verify 2026-11-23).
+    metadata: { labels: { app: keycloak, istio.io/dataplane-mode: ambient } }
     spec:
       containers:
         - name: keycloak
@@ -51,3 +54,12 @@ apiVersion: v1
 kind: Service
 metadata: { name: keycloak }
 spec: { selector: { app: keycloak }, ports: [{ name: http, port: 8080 }, { name: mgmt, port: 9000 }] }
+---
+# Enrolled in the mesh, Keycloak would inherit STRICT mTLS for its own inbound traffic too; its callers include
+# workloads outside the mesh (Envoy Gateway in ingress-system for logins, metrics scrapes), so it accepts both.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata: { name: keycloak-permissive }
+spec:
+  selector: { matchLabels: { app: keycloak } }
+  mtls: { mode: PERMISSIVE }
