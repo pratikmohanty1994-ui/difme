@@ -1,0 +1,1965 @@
+DIFME D2 modernisation (2026-11-23): Spring Boot 4.1 / Spring 7 / Camel 4.22 need Jakarta EE: javax.servlet, javax.validation,
+javax.annotation.* -> jakarta.*; Spring Boot 4 package moves (RestTemplateBuilder -> org.springframework.boot.restclient,
+LettuceClientConfigurationBuilderCustomizer -> org.springframework.boot.data.redis.autoconfigure); new ResponseEntity<>(null,
+status) is ambiguous in Spring 7; springfox import dropped (springdoc serves the docs); Jackson 2.21 removed
+DeserializationContext.mappingException(String): JsonMappingException.from instead. Versions and Java 21 are set in deploy/images/mifos-ph-ee/vendored-common.gradle (no build file edited).
+
+--- a/src/main/java/org/mifos/connector/ChannelConnectorApplication.java
++++ b/src/main/java/org/mifos/connector/ChannelConnectorApplication.java
+@@ -16,7 +16,7 @@
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
+-import org.springframework.boot.web.client.RestTemplateBuilder;
++import org.springframework.boot.restclient.RestTemplateBuilder;
+ import org.springframework.boot.web.servlet.FilterRegistrationBean;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+--- a/src/main/java/org/mifos/connector/channel/api/definition/IndexApi.java
++++ b/src/main/java/org/mifos/connector/channel/api/definition/IndexApi.java
+@@ -1,6 +1,6 @@
+ package org.mifos.connector.channel.api.definition;
+ 
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.springframework.web.bind.annotation.GetMapping;
+ 
+ public interface IndexApi {
+--- a/src/main/java/org/mifos/connector/channel/api/implementation/IndexApiController.java
++++ b/src/main/java/org/mifos/connector/channel/api/implementation/IndexApiController.java
+@@ -1,6 +1,6 @@
+ package org.mifos.connector.channel.api.implementation;
+ 
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.apache.camel.Exchange;
+ import org.apache.camel.ProducerTemplate;
+ import org.mifos.connector.channel.api.definition.IndexApi;
+--- a/src/main/java/org/mifos/connector/channel/gsma_api/ChannelGSMAAPIController.java
++++ b/src/main/java/org/mifos/connector/channel/gsma_api/ChannelGSMAAPIController.java
+@@ -1,6 +1,6 @@
+ package org.mifos.connector.channel.gsma_api;
+ 
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.apache.camel.Exchange;
+ import org.apache.camel.ProducerTemplate;
+ import org.mifos.connector.channel.utils.Headers;
+--- a/src/main/java/org/mifos/connector/channel/gsma_api/GSMAAPI.java
++++ b/src/main/java/org/mifos/connector/channel/gsma_api/GSMAAPI.java
+@@ -1,6 +1,6 @@
+ package org.mifos.connector.channel.gsma_api;
+ 
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.springframework.web.bind.annotation.GetMapping;
+ 
+ public interface GSMAAPI {
+--- a/src/main/java/org/mifos/connector/channel/gsma_api/GSMATransferAPIController.java
++++ b/src/main/java/org/mifos/connector/channel/gsma_api/GSMATransferAPIController.java
+@@ -37,7 +37,7 @@
+             }
+             return new ResponseEntity<>(objectMapper.readValue(body, GsmaP2PResponseDto.class), HttpStatus.OK);
+         } catch (Exception e) {
+-            return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
++            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+         }
+     }
+ }
+--- a/src/main/java/org/mifos/connector/channel/interceptor/IdInterceptor.java
++++ b/src/main/java/org/mifos/connector/channel/interceptor/IdInterceptor.java
+@@ -13,8 +13,8 @@
+ import java.util.List;
+ import java.util.Set;
+ import java.util.concurrent.TimeUnit;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.apache.commons.lang3.StringUtils;
+ import org.mifos.connector.channel.camel.routes.ChannelRouteBuilder;
+ import org.mifos.connector.common.channel.dto.PhErrorDTO;
+--- a/src/main/java/org/mifos/connector/channel/interceptor/config/SpringConfig.java
++++ b/src/main/java/org/mifos/connector/channel/interceptor/config/SpringConfig.java
+@@ -2,7 +2,7 @@
+ 
+ import io.lettuce.core.ClientOptions;
+ import io.lettuce.core.protocol.ProtocolVersion;
+-import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurationBuilderCustomizer;
++import org.springframework.boot.data.redis.autoconfigure.LettuceClientConfigurationBuilderCustomizer;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
+ 
+--- a/src/main/java/org/mifos/connector/channel/utils/AMSUtils.java
++++ b/src/main/java/org/mifos/connector/channel/utils/AMSUtils.java
+@@ -5,7 +5,7 @@
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+-import javax.annotation.PostConstruct;
++import jakarta.annotation.PostConstruct;
+ import org.json.JSONObject;
+ import org.mifos.connector.common.gsma.dto.CustomData;
+ import org.slf4j.Logger;
+--- a/src/main/java/org/mifos/connector/channel/zeebe/ZeebeWorkers.java
++++ b/src/main/java/org/mifos/connector/channel/zeebe/ZeebeWorkers.java
+@@ -21,7 +21,7 @@
+ import java.util.Map;
+ import java.util.UUID;
+ import java.util.stream.Collectors;
+-import javax.annotation.PostConstruct;
++import jakarta.annotation.PostConstruct;
+ import org.apache.camel.CamelContext;
+ import org.apache.camel.Exchange;
+ import org.apache.camel.ProducerTemplate;
+--- a/src/main/java/org/mifos/connector/gsmastub/api/AccountsApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/AccountsApi.java
+@@ -20,13 +20,13 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ @Hidden
+ public interface AccountsApi extends BaseGsmaApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/AccountsApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/AccountsApiController.java
+@@ -12,17 +12,16 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ import org.mifos.connector.gsmastub.model.*;
+-import springfox.documentation.annotations.*;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class AccountsApiController implements AccountsApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/ApiException.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/ApiException.java
+@@ -1,6 +1,6 @@
+ package org.mifos.connector.gsmastub.api;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ public class ApiException extends Exception {
+     private int code;
+     public ApiException (int code, String msg) {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/ApiOriginFilter.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/ApiOriginFilter.java
+@@ -5,15 +5,15 @@
+ import org.springframework.stereotype.Component;
+ import org.springframework.web.filter.GenericFilterBean;
+ 
+-import javax.servlet.*;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.*;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
+ import java.io.IOException;
+ import java.util.Optional;
+ 
+ import static org.mifos.connector.channel.camel.config.CamelProperties.PLATFORM_TENANT_ID;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ public class ApiOriginFilter extends GenericFilterBean {
+     private Logger logger = LoggerFactory.getLogger(this.getClass());
+--- a/src/main/java/org/mifos/connector/gsmastub/api/ApiResponseMessage.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/ApiResponseMessage.java
+@@ -1,9 +1,9 @@
+ package org.mifos.connector.gsmastub.api;
+ 
+-import javax.xml.bind.annotation.XmlTransient;
++import jakarta.xml.bind.annotation.XmlTransient;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+-@javax.xml.bind.annotation.XmlRootElement
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.xml.bind.annotation.XmlRootElement
+ public class ApiResponseMessage {
+     public static final int ERROR = 1;
+     public static final int WARNING = 2;
+--- a/src/main/java/org/mifos/connector/gsmastub/api/BatchtransactionsApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/BatchtransactionsApi.java
+@@ -19,11 +19,11 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface BatchtransactionsApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/BatchtransactionsApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/BatchtransactionsApiController.java
+@@ -13,13 +13,13 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class BatchtransactionsApiController implements BatchtransactionsApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/BillcompaniesApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/BillcompaniesApi.java
+@@ -20,11 +20,11 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface BillcompaniesApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/BillcompaniesApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/BillcompaniesApiController.java
+@@ -16,13 +16,13 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class BillcompaniesApiController implements BillcompaniesApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/BillsApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/BillsApi.java
+@@ -21,10 +21,10 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface BillsApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/BillsApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/BillsApiController.java
+@@ -14,12 +14,12 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class BillsApiController implements BillsApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/HeartbeatApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/HeartbeatApi.java
+@@ -21,7 +21,7 @@
+ import org.springframework.web.bind.annotation.RequestMethod;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface HeartbeatApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/HeartbeatApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/HeartbeatApiController.java
+@@ -14,10 +14,10 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletRequest;
+ import java.io.IOException;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class HeartbeatApiController implements HeartbeatApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/NotFoundException.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/NotFoundException.java
+@@ -1,6 +1,6 @@
+ package org.mifos.connector.gsmastub.api;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ public class NotFoundException extends ApiException {
+     private int code;
+     public NotFoundException (int code, String msg) {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/QuotationsApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/QuotationsApi.java
+@@ -21,10 +21,10 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface QuotationsApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/QuotationsApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/QuotationsApiController.java
+@@ -17,12 +17,12 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class QuotationsApiController implements QuotationsApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/RequeststatesApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/RequeststatesApi.java
+@@ -20,11 +20,11 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Pattern;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Pattern;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface RequeststatesApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/RequeststatesApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/RequeststatesApiController.java
+@@ -17,13 +17,13 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.Pattern;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Pattern;
+ import java.io.IOException;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class RequeststatesApiController implements RequeststatesApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/ResponsesApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/ResponsesApi.java
+@@ -22,9 +22,9 @@
+ import org.springframework.web.bind.annotation.RequestMethod;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.constraints.Pattern;
++import jakarta.validation.constraints.Pattern;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface ResponsesApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/ResponsesApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/ResponsesApiController.java
+@@ -15,11 +15,11 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.constraints.Pattern;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.constraints.Pattern;
+ import java.io.IOException;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class ResponsesApiController implements ResponsesApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/StatemententriesApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/StatemententriesApi.java
+@@ -22,9 +22,9 @@
+ import org.springframework.web.bind.annotation.RequestMethod;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.Size;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface StatemententriesApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/StatemententriesApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/StatemententriesApiController.java
+@@ -15,11 +15,11 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class StatemententriesApiController implements StatemententriesApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/api/TransactionsApi.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/TransactionsApi.java
+@@ -18,11 +18,11 @@
+ import org.springframework.web.bind.annotation.*;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @Validated
+ public interface TransactionsApi extends BaseGsmaApi  {
+ 
+--- a/src/main/java/org/mifos/connector/gsmastub/api/TransactionsApiController.java
++++ b/src/main/java/org/mifos/connector/gsmastub/api/TransactionsApiController.java
+@@ -16,13 +16,13 @@
+ import org.springframework.web.bind.annotation.RestController;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.io.IOException;
+ import java.util.List;
+ 
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ @RestController
+ @Hidden
+ public class TransactionsApiController implements TransactionsApi {
+--- a/src/main/java/org/mifos/connector/gsmastub/configuration/CustomInstantDeserializer.java
++++ b/src/main/java/org/mifos/connector/gsmastub/configuration/CustomInstantDeserializer.java
+@@ -212,7 +212,7 @@
+         return value;
+       }
+     }
+-    throw context.mappingException("Expected type float, integer, or string.");
++    throw com.fasterxml.jackson.databind.JsonMappingException.from(context, "Expected type float, integer, or string.");
+   }
+ 
+   private ZoneId getZone(DeserializationContext context) {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/AccountIdentifiersArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/AccountIdentifiersArray.java
+@@ -8,7 +8,7 @@
+  * A collection of key/value pairs that enable the account to be identified. Keys include MSISDN and Wallet Identifier.
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class AccountIdentifiersArray extends ArrayList<Party>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/CommissionEarned.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/CommissionEarned.java
+@@ -4,17 +4,17 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * CommissionEarned
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class CommissionEarned   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/CommissionEarnedArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/CommissionEarnedArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "Returns all commission earned by the registering entity for the creation of the account.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class CommissionEarnedArray extends ArrayList<CommissionEarned>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/CreditPartyArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/CreditPartyArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of key/value pairs that enable the party to be identified. Keys include MSISDN and Wallet Identifier.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class CreditPartyArray extends ArrayList<Party>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/CustomData.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/CustomData.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * CustomData
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class CustomData   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/CustomDataArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/CustomDataArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of key/value pairs. These can be used to populate provider specific fields.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class CustomDataArray extends ArrayList<CustomData>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/DebitPartyArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/DebitPartyArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of key/value pairs that enable the party to be identified. Keys include MSISDN and Wallet Identifier.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class DebitPartyArray extends ArrayList<Party>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ErrorObject.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ErrorObject.java
+@@ -7,16 +7,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ErrorObject
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ErrorObject   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/Fees.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/Fees.java
+@@ -4,17 +4,17 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * Fees
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class Fees   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/FeesArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/FeesArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "Returns all fees that are applicable to the object.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class FeesArray extends ArrayList<Fees>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/GenericUpdateSuccess.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/GenericUpdateSuccess.java
+@@ -6,14 +6,14 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotNull;
+ import java.util.Objects;
+ 
+ /**
+  * GenericUpdateSuccess
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class GenericUpdateSuccess   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/IdDocument.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/IdDocument.java
+@@ -7,16 +7,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.LocalDate;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * IdDocument
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class IdDocument   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/IdDocumentArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/IdDocumentArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "An array of properties containing the forms of identification that are associated with the subject.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class IdDocumentArray extends ArrayList<IdDocument>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/IdentityRequest.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/IdentityRequest.java
+@@ -4,16 +4,16 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * IdentityRequest
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class IdentityRequest   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/IdentityRequestArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/IdentityRequestArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "An array containing the details of each identity associated with an account.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class IdentityRequestArray extends ArrayList<IdentityRequest>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/IdentityResponse.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/IdentityResponse.java
+@@ -4,16 +4,16 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * IdentityResponse
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class IdentityResponse   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/IdentityResponseArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/IdentityResponseArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "An array containing the details of each identity associated with an account.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class IdentityResponseArray extends ArrayList<IdentityResponse>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/InternationalTransferInformation.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/InternationalTransferInformation.java
+@@ -4,9 +4,9 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+@@ -14,7 +14,7 @@
+  */
+ @Schema(description = "A collection of properties detailing information specifically used for international transfers.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class InternationalTransferInformation   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/InternationalTransferInformationResponse.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/InternationalTransferInformationResponse.java
+@@ -4,16 +4,16 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * InternationalTransferInformationResponse
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class InternationalTransferInformationResponse   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/Kyc.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/Kyc.java
+@@ -5,15 +5,15 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.LocalDate;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * Kyc
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class Kyc   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/Metadata.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/Metadata.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * Metadata
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class Metadata   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/MetadataArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/MetadataArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of key/value pairs. These can be used to populate additional properties that describe administrative information regarding the resource.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class MetadataArray extends ArrayList<Metadata>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/Party.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/Party.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * Party
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class Party   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/Payee.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/Payee.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of key/value pairs that enable the payee to be identified. Keys include MSISDN and Wallet Identifier.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class Payee extends ArrayList<Party>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/PostalAddress.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/PostalAddress.java
+@@ -4,16 +4,16 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * PostalAddress
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class PostalAddress   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/QuoteArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/QuoteArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of quotes. A quote can be received from a single financial service provider or from multiple providers.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class QuoteArray extends ArrayList<Quotes>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/Quotes.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/Quotes.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * Quotes
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class Quotes   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RedemptionAccountIdentifiers.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RedemptionAccountIdentifiers.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "A collection of key/value pairs that enable the redemption account to be identified. Keys include MSISDN and Wallet Identifier.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RedemptionAccountIdentifiers extends ArrayList<Party>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RedemptionChannels.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RedemptionChannels.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "Indicates the channel(s) that the code can be redeemed against, e.g. ATM, Merchant, etc.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RedemptionChannels extends ArrayList<RedemptionChannelsInner>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RedemptionChannelsInner.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RedemptionChannelsInner.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RedemptionChannelsInner
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RedemptionChannelsInner   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RedemptionTransactionTypes.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RedemptionTransactionTypes.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "Indicates the Transaction Types(s) that the code can be redeemed against.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RedemptionTransactionTypes extends ArrayList<RedemptionTransactionTypesInner>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RedemptionTransactionTypesInner.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RedemptionTransactionTypesInner.java
+@@ -4,16 +4,16 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RedemptionTransactionTypesInner
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RedemptionTransactionTypesInner   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestAccount.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestAccount.java
+@@ -5,16 +5,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestAccount
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestAccount   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestAuthorisationCode.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestAuthorisationCode.java
+@@ -5,10 +5,10 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.DecimalMin;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -16,7 +16,7 @@
+  * RequestAuthorisationCode
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestAuthorisationCode   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestBatchTransaction.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestBatchTransaction.java
+@@ -5,9 +5,9 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Objects;
+@@ -16,7 +16,7 @@
+  * RequestBatchTransaction
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestBatchTransaction   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestBillPayment.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestBillPayment.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestBillPayment
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestBillPayment   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestBillPayment2.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestBillPayment2.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestBillPayment2
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestBillPayment2   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestDebitMandate.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestDebitMandate.java
+@@ -6,9 +6,9 @@
+ import org.threeten.bp.LocalDate;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.DecimalMin;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -16,7 +16,7 @@
+  * RequestDebitMandate
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestDebitMandate   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestGenericPatch.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestGenericPatch.java
+@@ -6,15 +6,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestGenericPatch
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestGenericPatch   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestGenericPatchArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestGenericPatchArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "Collection of updates that are to be processed.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestGenericPatchArray extends ArrayList<RequestGenericPatch>  {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestLink.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestLink.java
+@@ -5,15 +5,15 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
+ import java.util.Objects;
+ 
+ /**
+  * RequestLink
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestLink   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestQuotation.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestQuotation.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestQuotation
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestQuotation   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestReversal.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestReversal.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestReversal
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestReversal   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestStateObject.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestStateObject.java
+@@ -7,11 +7,11 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.DecimalMin;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -19,7 +19,7 @@
+  * RequestStateObject
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestStateObject   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestTransaction.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestTransaction.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * RequestTransaction
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestTransaction   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestTransactionType.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestTransactionType.java
+@@ -8,7 +8,7 @@
+  * RequestTransactionType
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestTransactionType   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/RequestingOrganisation.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/RequestingOrganisation.java
+@@ -6,8 +6,8 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+@@ -15,7 +15,7 @@
+  */
+ @Schema(description = "An object that details the originating organisation of the request.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class RequestingOrganisation   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccount.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccount.java
+@@ -5,16 +5,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseAccount
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseAccount   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccountBalance.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccountBalance.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseAccountBalance
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseAccountBalance   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccountName.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccountName.java
+@@ -4,16 +4,16 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseAccountName
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseAccountName   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccountStatus.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseAccountStatus.java
+@@ -4,17 +4,17 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseAccountStatus
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseAccountStatus   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseAuthorisationCode.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseAuthorisationCode.java
+@@ -5,11 +5,11 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.DecimalMin;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -17,7 +17,7 @@
+  * ResponseAuthorisationCode
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseAuthorisationCode   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBatchTransaction.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBatchTransaction.java
+@@ -5,10 +5,10 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.DecimalMin;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -16,7 +16,7 @@
+  * ResponseBatchTransaction
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBatchTransaction   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBatchTransactionCompletion.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBatchTransactionCompletion.java
+@@ -5,16 +5,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseBatchTransactionCompletion
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBatchTransactionCompletion   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBatchTransactionRejection.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBatchTransactionRejection.java
+@@ -5,16 +5,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseBatchTransactionRejection
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBatchTransactionRejection   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBillCompanies.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBillCompanies.java
+@@ -4,9 +4,9 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Objects;
+@@ -15,7 +15,7 @@
+  * ResponseBillCompanies
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBillCompanies   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBillPayment.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBillPayment.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseBillPayment
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBillPayment   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBillPayment2.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBillPayment2.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseBillPayment2
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBillPayment2   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseBills.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseBills.java
+@@ -6,16 +6,16 @@
+ import org.threeten.bp.LocalDate;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseBills
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseBills   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseDebitMandate.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseDebitMandate.java
+@@ -6,11 +6,11 @@
+ import org.threeten.bp.LocalDate;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.DecimalMin;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -18,7 +18,7 @@
+  * ResponseDebitMandate
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseDebitMandate   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseHeartbeat.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseHeartbeat.java
+@@ -5,8 +5,8 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+ 
+@@ -14,7 +14,7 @@
+  * ResponseHeartbeat
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseHeartbeat   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseLink.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseLink.java
+@@ -5,16 +5,16 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseLink
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseLink   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseQuotation.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseQuotation.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseQuotation
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseQuotation   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseResponse.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseResponse.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseResponse
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseResponse   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseReversal.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseReversal.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseReversal
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseReversal   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseStatementEntries.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseStatementEntries.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseStatementEntries
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseStatementEntries   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseTransaction.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseTransaction.java
+@@ -5,17 +5,17 @@
+ import org.springframework.validation.annotation.Validated;
+ import org.threeten.bp.OffsetDateTime;
+ 
+-import javax.validation.Valid;
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Pattern;
+-import javax.validation.constraints.Size;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * ResponseTransaction
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseTransaction   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/ResponseTransactionType.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/ResponseTransactionType.java
+@@ -8,7 +8,7 @@
+  * ResponseTransactionType
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class ResponseTransactionType   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/SubjectName.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/SubjectName.java
+@@ -4,14 +4,14 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * SubjectName
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class SubjectName   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/SupplementaryBillReferenceDetails.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/SupplementaryBillReferenceDetails.java
+@@ -4,15 +4,15 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import org.springframework.validation.annotation.Validated;
+ 
+-import javax.validation.constraints.NotNull;
+-import javax.validation.constraints.Size;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.util.Objects;
+ 
+ /**
+  * SupplementaryBillReferenceDetails
+  */
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class SupplementaryBillReferenceDetails   {
+--- a/src/main/java/org/mifos/connector/gsmastub/model/SupplementaryBillReferenceDetailsArray.java
++++ b/src/main/java/org/mifos/connector/gsmastub/model/SupplementaryBillReferenceDetailsArray.java
+@@ -11,7 +11,7 @@
+  */
+ @Schema(description = "In some cases, a single reference is not sufficient to identify a bill. This key-value collection enables further reference information to be supplied.")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2022-09-27T11:46:46.417Z[GMT]")
+ 
+ 
+ public class SupplementaryBillReferenceDetailsArray extends ArrayList<SupplementaryBillReferenceDetails>  {

@@ -41,7 +41,10 @@ public class SSLConfig {
             @Value("${ams.local.keystore-password}") String keystorePassword,
             @Value("${ams.local.server-cert-check}") boolean checkServerCert) {
         this.keystorePassword = keystorePassword;
-        keyStoreFile = new FileSystemResource(keystorePath).getFile();
+        // DIFME: no client keystore is shipped (upstream's dev keystore holds a private key and is not vendored), and
+        // DIFME calls Fineract over plain HTTP inside the mesh: a missing file means no client certificate.
+        File file = new FileSystemResource(keystorePath).getFile();
+        keyStoreFile = file.isFile() ? file : null;
         this.checkServerCert = checkServerCert;
     }
 

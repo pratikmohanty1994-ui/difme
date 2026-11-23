@@ -326,8 +326,8 @@ public class OnboardDfsps {
 
         try {
             ResponseEntity<String> exchange = template.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
-            if (exchange.getStatusCodeValue() < 200 || exchange.getStatusCodeValue() > 299) {
-                logger.error("Invalid code {} response {}", exchange.getStatusCodeValue(), exchange.getBody());
+            if (exchange.getStatusCode().value() < 200 || exchange.getStatusCode().value() > 299) {
+                logger.error("Invalid code {} response {}", exchange.getStatusCode().value(), exchange.getBody());
                 throw new RuntimeException("Invalid response!");
             } else {
                 logger.info("Succes: {} status: {}", exchange.getBody(), exchange.getStatusCode());

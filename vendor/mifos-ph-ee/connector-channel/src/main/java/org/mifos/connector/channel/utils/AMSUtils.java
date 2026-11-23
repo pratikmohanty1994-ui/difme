@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import org.json.JSONObject;
 import org.mifos.connector.common.gsma.dto.CustomData;
 import org.slf4j.Logger;

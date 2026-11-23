@@ -189,7 +189,7 @@ public class CustomInstantDeserializer<T extends Temporal> extends ThreeTenDateT
                 return value;
             }
         }
-        throw context.mappingException("Expected type float, integer, or string.");
+        throw com.fasterxml.jackson.databind.JsonMappingException.from(context, "Expected type float, integer, or string.");
     }
 
     private ZoneId getZone(DeserializationContext context) {

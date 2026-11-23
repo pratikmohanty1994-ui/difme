@@ -1,0 +1,227 @@
+DIFME D2 modernisation (2026-11-23): Spring Boot 4.1 / Spring 7 / Camel 4.22 need Jakarta EE: javax.servlet, javax.validation,
+javax.annotation.PostConstruct/Generated -> jakarta.*; Spring Boot 4 package moves (RestTemplateBuilder, Lettuce customizer)
+and ResponseEntity.getStatusCodeValue() removed (test code). Versions and Java 21 are set in deploy/images/mifos-ph-ee/vendored-common.gradle (no build file edited).
+
+--- a/src/main/java/org/mifos/connector/common/channel/dto/EnumNamePattern.java
++++ b/src/main/java/org/mifos/connector/common/channel/dto/EnumNamePattern.java
+@@ -7,7 +7,7 @@
+ import java.lang.annotation.Documented;
+ import java.lang.annotation.Retention;
+ import java.lang.annotation.Target;
+-import javax.validation.Constraint;
++import jakarta.validation.Constraint;
+ 
+ @Target({ FIELD, TYPE_USE })
+ @Retention(RUNTIME)
+--- a/src/main/java/org/mifos/connector/common/channel/dto/EnumNamePatternValidator.java
++++ b/src/main/java/org/mifos/connector/common/channel/dto/EnumNamePatternValidator.java
+@@ -1,8 +1,8 @@
+ package org.mifos.connector.common.channel.dto;
+ 
+ import java.util.stream.Stream;
+-import javax.validation.ConstraintValidator;
+-import javax.validation.ConstraintValidatorContext;
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
+ 
+ public class EnumNamePatternValidator implements ConstraintValidator<EnumNamePattern, Enum<?>> {
+ 
+--- a/src/main/java/org/mifos/connector/common/channel/dto/PhErrorDTO.java
++++ b/src/main/java/org/mifos/connector/common/channel/dto/PhErrorDTO.java
+@@ -2,7 +2,7 @@
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotNull;
+ import lombok.Getter;
+ import lombok.NoArgsConstructor;
+ import lombok.Setter;
+--- a/src/main/java/org/mifos/connector/common/channel/dto/RegisterAliasRequestDTO.java
++++ b/src/main/java/org/mifos/connector/common/channel/dto/RegisterAliasRequestDTO.java
+@@ -7,8 +7,8 @@
+  */
+ package org.mifos.connector.common.channel.dto;
+ 
+-import javax.validation.constraints.NotEmpty;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotNull;
+ import org.mifos.connector.common.mojaloop.type.IdentifierType;
+ 
+ public class RegisterAliasRequestDTO {
+--- a/src/main/java/org/mifos/connector/common/channel/dto/TransactionChannelRequestDTO.java
++++ b/src/main/java/org/mifos/connector/common/channel/dto/TransactionChannelRequestDTO.java
+@@ -8,7 +8,7 @@
+ package org.mifos.connector.common.channel.dto;
+ 
+ import java.util.List;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotNull;
+ import org.mifos.connector.common.gsma.dto.CustomData;
+ import org.mifos.connector.common.mojaloop.dto.ExtensionList;
+ import org.mifos.connector.common.mojaloop.dto.GeoCode;
+--- a/src/main/java/org/mifos/connector/common/interceptor/JWSFilterStrategy.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/JWSFilterStrategy.java
+@@ -2,11 +2,11 @@
+ 
+ import java.io.IOException;
+ import java.util.List;
+-import javax.servlet.FilterChain;
+-import javax.servlet.ServletException;
+-import javax.servlet.ServletRequest;
+-import javax.servlet.ServletResponse;
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.ServletRequest;
++import jakarta.servlet.ServletResponse;
++import jakarta.servlet.http.HttpServletResponse;
+ import lombok.extern.slf4j.Slf4j;
+ import org.mifos.connector.common.interceptor.service.JsonWebSignatureService;
+ import org.mifos.connector.common.util.Constant;
+--- a/src/main/java/org/mifos/connector/common/interceptor/JWSUtil.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/JWSUtil.java
+@@ -15,8 +15,8 @@
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
+ import lombok.extern.slf4j.Slf4j;
+ import org.apache.commons.io.IOUtils;
+ import org.mifos.connector.common.channel.dto.PhErrorDTO;
+--- a/src/main/java/org/mifos/connector/common/interceptor/MultiReadFilter.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/MultiReadFilter.java
+@@ -4,11 +4,11 @@
+ import org.mifos.connector.common.interceptor.helper.MultiReadHttpServletRequest;
+ import org.springframework.web.filter.GenericFilterBean;
+ 
+-import javax.servlet.FilterChain;
+-import javax.servlet.ServletException;
+-import javax.servlet.ServletRequest;
+-import javax.servlet.ServletResponse;
+-import javax.servlet.http.HttpServletRequest;
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.ServletRequest;
++import jakarta.servlet.ServletResponse;
++import jakarta.servlet.http.HttpServletRequest;
+ import java.io.IOException;
+ 
+ @Slf4j
+--- a/src/main/java/org/mifos/connector/common/interceptor/WebMvcConfig.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/WebMvcConfig.java
+@@ -11,7 +11,7 @@
+ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+ import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
+ 
+-import javax.servlet.annotation.MultipartConfig;
++import jakarta.servlet.annotation.MultipartConfig;
+ 
+ @Component("JWSMvcConfig")
+ @Slf4j
+--- a/src/main/java/org/mifos/connector/common/interceptor/WebSignatureInterceptor.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/WebSignatureInterceptor.java
+@@ -2,8 +2,8 @@
+ 
+ import java.util.List;
+ import java.util.Set;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
+ import lombok.Getter;
+ import lombok.extern.slf4j.Slf4j;
+ import org.mifos.connector.common.channel.dto.PhErrorDTO;
+--- a/src/main/java/org/mifos/connector/common/interceptor/helper/ByteArrayServletInputStream.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/helper/ByteArrayServletInputStream.java
+@@ -1,7 +1,7 @@
+ package org.mifos.connector.common.interceptor.helper;
+ 
+-import javax.servlet.ReadListener;
+-import javax.servlet.ServletInputStream;
++import jakarta.servlet.ReadListener;
++import jakarta.servlet.ServletInputStream;
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+ 
+--- a/src/main/java/org/mifos/connector/common/interceptor/helper/MultiReadHttpServletRequest.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/helper/MultiReadHttpServletRequest.java
+@@ -4,11 +4,11 @@
+ import lombok.Setter;
+ import org.springframework.util.StreamUtils;
+ 
+-import javax.servlet.ServletException;
+-import javax.servlet.ServletInputStream;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.servlet.http.HttpServletRequestWrapper;
+-import javax.servlet.http.Part;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.ServletInputStream;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletRequestWrapper;
++import jakarta.servlet.http.Part;
+ import java.io.BufferedReader;
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+--- a/src/main/java/org/mifos/connector/common/mojaloop/dto/MoneyData.java
++++ b/src/main/java/org/mifos/connector/common/mojaloop/dto/MoneyData.java
+@@ -9,7 +9,7 @@
+ 
+ import java.beans.Transient;
+ import java.math.BigDecimal;
+-import javax.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotEmpty;
+ import org.hibernate.validator.constraints.Length;
+ import org.mifos.connector.common.util.ContextUtil;
+ 
+--- a/src/main/java/org/mifos/connector/common/mojaloop/dto/Party.java
++++ b/src/main/java/org/mifos/connector/common/mojaloop/dto/Party.java
+@@ -7,7 +7,7 @@
+  */
+ package org.mifos.connector.common.mojaloop.dto;
+ 
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotNull;
+ 
+ public class Party {
+ 
+--- a/src/main/java/org/mifos/connector/common/mojaloop/dto/PartyIdInfo.java
++++ b/src/main/java/org/mifos/connector/common/mojaloop/dto/PartyIdInfo.java
+@@ -7,8 +7,8 @@
+  */
+ package org.mifos.connector.common.mojaloop.dto;
+ 
+-import javax.validation.constraints.NotEmpty;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotNull;
+ import org.mifos.connector.common.mojaloop.type.IdentifierType;
+ 
+ public class PartyIdInfo {
+--- a/src/test/java/org/mifos/mojaloop/OnboardDfsps.java
++++ b/src/test/java/org/mifos/mojaloop/OnboardDfsps.java
+@@ -326,8 +326,8 @@
+ 
+         try {
+             ResponseEntity<String> exchange = template.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+-            if (exchange.getStatusCodeValue() < 200 || exchange.getStatusCodeValue() > 299) {
+-                logger.error("Invalid code {} response {}", exchange.getStatusCodeValue(), exchange.getBody());
++            if (exchange.getStatusCode().value() < 200 || exchange.getStatusCode().value() > 299) {
++                logger.error("Invalid code {} response {}", exchange.getStatusCode().value(), exchange.getBody());
+                 throw new RuntimeException("Invalid response!");
+             } else {
+                 logger.info("Succes: {} status: {}", exchange.getBody(), exchange.getStatusCode());
+--- a/src/test/java/org/mifos/mojaloop/TestConfig.java
++++ b/src/test/java/org/mifos/mojaloop/TestConfig.java
+@@ -1,6 +1,6 @@
+ package org.mifos.mojaloop;
+ 
+-import org.springframework.boot.web.client.RestTemplateBuilder;
++import org.springframework.boot.restclient.RestTemplateBuilder;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.web.client.RestTemplate;

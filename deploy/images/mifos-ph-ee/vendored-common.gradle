@@ -1,30 +1,68 @@
-// Builds the Mifos PH-EE connectors against the vendored ph-ee-connector-common (vendor/mifos-ph-ee/connector-common,
-// published to mavenLocal first) instead of the SNAPSHOTs upstream pulls from a third-party Artifactory, and on Fluxnova
-// instead of Zeebe: the Zeebe client is replaced by services/zeebe-on-fluxnova (same API subset, Fluxnova REST).
+// Builds the Mifos PH-EE connectors (vendor/mifos-ph-ee, MPL-2.0) the DIFME way, as a Gradle init script:
+//  - on Fluxnova instead of Zeebe: the Zeebe client is replaced by services/zeebe-on-fluxnova (same API subset);
+//  - against the vendored ph-ee-connector-common (published to mavenLocal first) instead of the SNAPSHOTs upstream
+//    pulls from a third-party Artifactory;
+//  - modernised (D2, 2026-11-23): Spring Boot 4.1 / Spring 7 / Camel 4.22 / Jakarta EE 11 / Java 21 bytecode instead
+//    of the end-of-life Spring Boot 2.6-2.7 / Camel 3 / Java 13-17. Spring Boot 3.5 / Spring 6.2 (Camel 4.14 and 4.18
+//    LTS) was tried first: their open-source support has ended and the image gate (Trivy, CRITICAL) fails on
+//    spring-webmvc/webflux CVEs fixed only in Spring 7.0.9. Versions come from the BOMs below (enforced, so the dozens of
+//    hard-coded versions in upstream's build files don't matter); the source side (javax -> jakarta, Boot 4 package
+//    moves, springfox -> springdoc) is in the vendor/patches/ph-ee-* patches.
+// Run with Gradle 8.14 on JDK 21 (deploy/images/mifos-ph-ee/build.sh); upstream's Gradle 7.3 wrapper is not used.
+def BOOT = '4.1.1'           // Spring Boot 4.1 (Spring Framework 7.0.9), the version Camel 4.22 is built against
+def CAMEL = '4.22.2'
+def JAVA = JavaVersion.VERSION_21
+
+settingsEvaluated { s ->
+    s.pluginManagement.resolutionStrategy.eachPlugin { r ->
+        switch (r.requested.id.id) {
+            case 'org.springframework.boot': r.useVersion(BOOT); break
+            case 'io.spring.dependency-management': r.useVersion('1.1.7'); break
+        }
+    }
+}
+
 // DIFME's dependency rules. Registered twice: now, and again after each project is evaluated, because Spring's
 // dependency-management plugin adds a rule that re-applies declared versions and rules run in registration order.
 def difmeRules = { details ->
-            // Module and version together: Spring's dependency management re-applies Zeebe's version after a plain substitution.
-            if (details.requested.group == 'io.camunda' && details.requested.name == 'zeebe-client-java') {
-                details.useTarget 'dev.difme:zeebe-client-fluxnova:1.0.0'
-                details.because 'Fluxnova replaces Zeebe (DIFME)'
-            }
-            // Not open source ("All Rights Reserved ... use is prohibited without permission"): replaced by DIFME's
-            // FSPIOP models written from the Mojaloop API specification (services/fspiop-ilp-models) + vendored
-            // interledger java-ilp-core (Apache-2.0).
-            if (details.requested.group == 'org.mifos' && details.requested.name == 'interop-ilp-conditions') {
-                details.useTarget 'dev.difme:fspiop-ilp-models:1.0.0'
-                details.because 'licence: interop-ilp-conditions is not open source (DIFME)'
-            }
-            // org.json before 20231013 is under the JSON License ("Good, not Evil"), not OSI; later releases are public domain.
-            if (details.requested.group == 'org.json' && details.requested.name == 'json') {
-                details.useVersion '20240303'
-                details.because 'licence: public-domain release (DIFME)'
-            }
-            if (details.requested.group == 'org.mifos' && details.requested.name == 'ph-ee-connector-common') {
-                details.useVersion '1.9.1-SNAPSHOT'
-                details.because 'vendored connector-common (DIFME)'
-            }
+    def g = details.requested.group, n = details.requested.name
+    // Module and version together: Spring's dependency management re-applies Zeebe's version after a plain substitution.
+    if (g == 'io.camunda' && n == 'zeebe-client-java') {
+        details.useTarget 'dev.difme:zeebe-client-fluxnova:1.0.0'
+        details.because 'Fluxnova replaces Zeebe (DIFME)'
+    }
+    // Not open source ("All Rights Reserved ... use is prohibited without permission"): replaced by DIFME's FSPIOP
+    // models written from the Mojaloop API specification (services/fspiop-ilp-models) + vendored java-ilp-core.
+    if (g == 'org.mifos' && n == 'interop-ilp-conditions') {
+        details.useTarget 'dev.difme:fspiop-ilp-models:1.0.0'
+        details.because 'licence: interop-ilp-conditions is not open source (DIFME)'
+    }
+    // org.json before 20231013 is under the JSON License ("Good, not Evil"), not OSI; later releases are public domain.
+    if (g == 'org.json' && n == 'json') {
+        details.useVersion '20250517'
+        details.because 'licence: public-domain release (DIFME)'
+    }
+    if (g == 'org.mifos' && n == 'ph-ee-connector-common') {
+        details.useVersion '1.9.1-SNAPSHOT'
+        details.because 'vendored connector-common (DIFME)'
+    }
+    // Jakarta EE (Spring 7) in place of Java EE.
+    if (g == 'javax.servlet' && n == 'javax.servlet-api') { details.useTarget 'jakarta.servlet:jakarta.servlet-api:6.0.0'; details.because 'jakarta (D2)' }
+    if (g == 'javax.validation' && n == 'validation-api') { details.useTarget 'jakarta.validation:jakarta.validation-api:3.0.2'; details.because 'jakarta (D2)' }
+    // springfox has no Spring 6/7 release: springdoc (already used by the channel) serves the OpenAPI docs instead.
+    if (g == 'org.springdoc' && n == 'springdoc-openapi-ui') { details.useTarget 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'; details.because 'Spring Boot 4 (D2)' }
+    // Camel components and starters: all on one Camel version (the Spring Boot BOM of Camel manages the starters only).
+    if ((g == 'org.apache.camel' || g == 'org.apache.camel.springboot') && n != 'camel-cxf') { details.useVersion CAMEL; details.because 'Camel 4 (D2)' }
+    // Camel 4 split camel-cxf by API; the connectors use the JAX-RS client only.
+    if (g == 'org.apache.camel' && n == 'camel-cxf') { details.useTarget "org.apache.camel:camel-cxf-spring-rest:${CAMEL}"; details.because 'Camel 4 (D2)' }
+    // Security fixes newer than the Spring Boot BOM (image gate: Trivy CRITICAL), 2026-11-23: Tomcat 11.0.24 -> 11.0.29.
+    // Same for Jackson 2 and 3 (patch releases) and commons-io (HIGH).
+    if (g == 'org.apache.tomcat.embed') { details.useVersion '11.0.29'; details.because 'CVE fixes (D2)' }
+    if (g == 'com.fasterxml.jackson.core' && n in ['jackson-core', 'jackson-databind']) { details.useVersion '2.21.8'; details.because 'CVE fixes (D2)' }
+    if (g == 'tools.jackson.core' && n in ['jackson-core', 'jackson-databind']) { details.useVersion '3.1.8'; details.because 'CVE fixes (D2)' }
+    if (g == 'commons-io' && n == 'commons-io') { details.useVersion '2.22.0'; details.because 'CVE fixes (D2)' }
+    // Lombok that understands Java 21's javac.
+    if (g == 'org.projectlombok' && n == 'lombok') { details.useVersion '1.18.48'; details.because 'Java 21 (D2)' }
 }
 
 allprojects {
@@ -33,45 +71,92 @@ allprojects {
     }
     configurations.configureEach {
         resolutionStrategy.eachDependency difmeRules
+        // springfox (no Spring 6/7 release), and Gradle plugins upstream lists as runtime dependencies by mistake.
+        exclude group: 'io.springfox'
+        exclude group: 'com.diffplug.gradle.spotless'
+        exclude group: 'com.diffplug.spotless'
+        exclude group: 'io.swagger.codegen.v3', module: 'swagger-codegen-maven-plugin'
+        // the JAX-WS (SOAP) reference implementation: declared by connector-ams-mifos, used nowhere (it calls Fineract
+        // over REST with the CXF JAX-RS client); its Java EE 8 jars clash with Jakarta EE
+        exclude group: 'com.sun.xml.ws', module: 'jaxws-ri'
     }
-}
-
-// connector-ams-mifos targets Java 13 but connector-common targets 17; everything runs on 17, so build for 17.
-allprojects {
     afterEvaluate {
         if (plugins.hasPlugin('java')) {
-            java.sourceCompatibility = JavaVersion.VERSION_17
-            java.targetCompatibility = JavaVersion.VERSION_17
+            java.sourceCompatibility = JAVA
+            java.targetCompatibility = JAVA
+            // Every Spring/Camel/Jackson/Micrometer/... version from the two BOMs, whatever the build file says.
+            dependencies {
+                ['implementation', 'annotationProcessor', 'testImplementation', 'compileOnly'].each { c ->
+                    if (configurations.findByName(c)) {
+                        add(c, enforcedPlatform("org.springframework.boot:spring-boot-dependencies:${BOOT}"))
+                        add(c, enforcedPlatform("org.apache.camel.springboot:camel-spring-boot-bom:${CAMEL}"))
+                    }
+                }
+            }
+            // Spring's dependency-management plugin (connector-common, connector-mojaloop) would otherwise put the
+            // declared versions back over the BOMs.
+            if (plugins.hasPlugin('io.spring.dependency-management')) {
+                dependencyManagement {
+                    overriddenByDependencies = false
+                    imports {
+                        mavenBom "org.springframework.boot:spring-boot-dependencies:${BOOT}"
+                        mavenBom "org.apache.camel.springboot:camel-spring-boot-bom:${CAMEL}"
+                    }
+                }
+            }
+            // connector-common goes to mavenLocal: Gradle refuses module metadata with enforced platforms, and the
+            // connectors enforce the same BOMs themselves, so only the POM is published.
+            tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
+            tasks.withType(JavaCompile).configureEach {
+                // upstream's lint (Error Prone 2.20) predates Java 21's javac; it checks style, not the output
+                if (options.hasProperty('errorprone')) options.errorprone.enabled = false
+                options.compilerArgs.removeAll { it == '-Werror' }
+            }
+            // Gradle 8 no longer brings a JUnit Platform launcher; it must match the BOM's JUnit
+            if (configurations.findByName('testRuntimeOnly')) dependencies { testRuntimeOnly 'org.junit.platform:junit-platform-launcher' }
         }
     }
 }
 
 // connector-channel uses Guava (MpesaUtils) without declaring it: it came in through the real Zeebe client's gRPC stack.
+// connector-channel and connector-ams-mifos use Bean Validation without declaring an implementation (Spring Boot 2
+// brought hibernate-validator with the web starter; Spring Boot 3+ doesn't).
 allprojects {
     afterEvaluate {
         if (plugins.hasPlugin('java') && project.name == 'ph-ee-connector-channel') {
-            dependencies { implementation 'com.google.guava:guava:33.4.8-jre' }
+            dependencies { implementation 'com.google.guava:guava:33.7.2-jre' }
+        }
+        // connector-ams-mifos got the OpenAPI annotations (swagger-core) through springfox-oas: springdoc brings them now.
+        if (plugins.hasPlugin('java') && project.name == 'ph-ee-connector-ams-mifos') {
+            dependencies { implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3' }
+        }
+        if (plugins.hasPlugin('org.springframework.boot')) {
+            // Spring Boot 4 moved RestTemplateBuilder (used by channel and ams) into its own module
+            dependencies { implementation 'org.springframework.boot:spring-boot-starter-validation'; implementation 'org.springframework.boot:spring-boot-restclient' }
         }
     }
 }
 
 // Metrics for VictoriaMetrics (component reuse): the connectors carry micrometer-core but no Prometheus registry, so
-// /actuator/prometheus doesn't exist. The registry must match micrometer-core: Spring's dependency management picks
-// it where the project uses it (connector-mojaloop); ams and channel don't, and carry micrometer-core 1.8.1.
+// /actuator/prometheus doesn't exist. The registry's version now comes from the Spring Boot BOM, like micrometer-core
+// (it was pinned to 1.8.1 to match Spring Boot 2.6's micrometer-core; Spring Boot 4.1 brings Micrometer 1.17).
 allprojects {
     afterEvaluate {
         if (plugins.hasPlugin('org.springframework.boot')) {
-            def managed = plugins.hasPlugin('io.spring.dependency-management')
-            dependencies { runtimeOnly(managed ? 'io.micrometer:micrometer-registry-prometheus' : 'io.micrometer:micrometer-registry-prometheus:1.8.1') }
+            dependencies { runtimeOnly 'io.micrometer:micrometer-registry-prometheus' }
         }
     }
 }
 
-// connector-common declares the Zeebe client but never uses it (no references in its code); Spring's dependency
-// management there forces Zeebe's version even onto a retargeted module, so the dependency is simply dropped.
+// connector-common declares the Zeebe client but never uses it (no references in its code): dropped there.
 allprojects {
     if (project.name == 'ph-ee-connector-common') {
         configurations.configureEach { exclude group: 'io.camunda', module: 'zeebe-client-java' }
+        // a library: its plain jar is the published artifact (the POM expects it without the "plain" classifier)
+        afterEvaluate {
+            tasks.matching { it.name == 'bootJar' }.configureEach { enabled = false }
+            tasks.named('jar') { archiveClassifier = '' }
+        }
     }
 }
 

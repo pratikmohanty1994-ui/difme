@@ -1,0 +1,365 @@
+DIFME D2 modernisation (2026-11-23): Spring Boot 4.1 / Spring 7 / Camel 4.22 need Jakarta EE: javax.servlet, javax.validation,
+javax.ws.rs, javax.xml.bind, javax.annotation.* -> jakarta.*; Camel 4's CXF JAX-RS client (camel-cxf-spring-rest) has the
+namespace http://camel.apache.org/schema/cxf/jaxrs (endpoints.xml); springfox removed (the Docket bean and its UI mapping;
+springdoc serves the docs); Jackson 2.21 removed mappingException(String); spring.jackson.serialization
+WRITE_DATES_AS_TIMESTAMPS dropped (Jackson 3 under Spring Boot 4 has no such feature and writes ISO dates by default). Versions and Java 21 are set in deploy/images/mifos-ph-ee/vendored-common.gradle (no build file edited).
+
+--- a/src/main/java/org/mifos/connector/ams/tenant/TenantService.java
++++ b/src/main/java/org/mifos/connector/ams/tenant/TenantService.java
+@@ -10,7 +10,7 @@
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.concurrent.ConcurrentHashMap;
+-import javax.ws.rs.core.HttpHeaders;
++import jakarta.ws.rs.core.HttpHeaders;
+ import org.apache.camel.CamelContext;
+ import org.apache.camel.Exchange;
+ import org.apache.camel.ProducerTemplate;
+--- a/src/main/java/org/mifos/connector/ams/zeebe/ZeebeeWorkers.java
++++ b/src/main/java/org/mifos/connector/ams/zeebe/ZeebeeWorkers.java
+@@ -41,7 +41,7 @@
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+-import javax.annotation.PostConstruct;
++import jakarta.annotation.PostConstruct;
+ import org.apache.camel.CamelContext;
+ import org.apache.camel.Exchange;
+ import org.apache.camel.ProducerTemplate;
+--- a/src/main/java/org/mifos/connector/fineractstub/api/ApiException.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/ApiException.java
+@@ -1,7 +1,7 @@
+ package org.mifos.connector.fineractstub.api;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ public class ApiException extends Exception {
+ 
+     private final int code;
+--- a/src/main/java/org/mifos/connector/fineractstub/api/ApiOriginFilter.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/ApiOriginFilter.java
+@@ -1,16 +1,16 @@
+ package org.mifos.connector.fineractstub.api;
+ 
+ import java.io.IOException;
+-import javax.servlet.Filter;
+-import javax.servlet.FilterChain;
+-import javax.servlet.FilterConfig;
+-import javax.servlet.ServletException;
+-import javax.servlet.ServletRequest;
+-import javax.servlet.ServletResponse;
+-import javax.servlet.http.HttpServletResponse;
++import jakarta.servlet.Filter;
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.FilterConfig;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.ServletRequest;
++import jakarta.servlet.ServletResponse;
++import jakarta.servlet.http.HttpServletResponse;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ public class ApiOriginFilter implements Filter {
+ 
+     @Override
+--- a/src/main/java/org/mifos/connector/fineractstub/api/ApiResponseMessage.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/ApiResponseMessage.java
+@@ -1,10 +1,10 @@
+ package org.mifos.connector.fineractstub.api;
+ 
+-import javax.xml.bind.annotation.XmlTransient;
++import jakarta.xml.bind.annotation.XmlTransient;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+-@javax.xml.bind.annotation.XmlRootElement
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.xml.bind.annotation.XmlRootElement
+ public class ApiResponseMessage {
+ 
+     public static final int ERROR = 1;
+--- a/src/main/java/org/mifos/connector/fineractstub/api/NotFoundException.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/NotFoundException.java
+@@ -1,7 +1,7 @@
+ package org.mifos.connector.fineractstub.api;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ public class NotFoundException extends ApiException {
+ 
+     private final int code;
+--- a/src/main/java/org/mifos/connector/fineractstub/api/SavingsaccountApi.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/SavingsaccountApi.java
+@@ -15,8 +15,8 @@
+ import io.swagger.v3.oas.annotations.responses.ApiResponses;
+ import java.io.IOException;
+ import java.util.Optional;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
+ import org.mifos.connector.fineractstub.model.InteropIdentifier;
+ import org.mifos.connector.fineractstub.model.InteropTransfers;
+ import org.slf4j.Logger;
+@@ -29,7 +29,7 @@
+ import org.springframework.web.bind.annotation.RequestMethod;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ @Validated
+ public interface SavingsaccountApi {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/api/SavingsaccountApiController.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/SavingsaccountApiController.java
+@@ -6,8 +6,8 @@
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import java.io.IOException;
+ import java.util.Optional;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
+ import org.mifos.connector.fineractstub.model.InteropIdentifier;
+ import org.mifos.connector.fineractstub.model.InteropTransfers;
+ import org.slf4j.Logger;
+@@ -18,7 +18,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ @RestController
+ public class SavingsaccountApiController implements SavingsaccountApi {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/api/TransactionsApi.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/TransactionsApi.java
+@@ -13,8 +13,8 @@
+ import io.swagger.v3.oas.annotations.responses.ApiResponse;
+ import io.swagger.v3.oas.annotations.responses.ApiResponses;
+ import java.util.Optional;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
+ import org.mifos.connector.fineractstub.model.LoanRepayment;
+ import org.mifos.connector.fineractstub.model.SavingsDeposit;
+ import org.slf4j.Logger;
+@@ -27,7 +27,7 @@
+ import org.springframework.web.bind.annotation.RequestMethod;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ @Validated
+ public interface TransactionsApi {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/api/TransactionsApiController.java
++++ b/src/main/java/org/mifos/connector/fineractstub/api/TransactionsApiController.java
+@@ -5,8 +5,8 @@
+ import io.swagger.v3.oas.annotations.enums.ParameterIn;
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import java.util.Optional;
+-import javax.servlet.http.HttpServletRequest;
+-import javax.validation.Valid;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.Valid;
+ import org.mifos.connector.fineractstub.model.LoanRepayment;
+ import org.mifos.connector.fineractstub.model.SavingsDeposit;
+ import org.slf4j.Logger;
+@@ -17,7 +17,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ @RestController
+ public class TransactionsApiController implements TransactionsApi {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/configuration/CustomInstantDeserializer.java
++++ b/src/main/java/org/mifos/connector/fineractstub/configuration/CustomInstantDeserializer.java
+@@ -189,7 +189,7 @@
+                 return value;
+             }
+         }
+-        throw context.mappingException("Expected type float, integer, or string.");
++        throw com.fasterxml.jackson.databind.JsonMappingException.from(context, "Expected type float, integer, or string.");
+     }
+ 
+     private ZoneId getZone(DeserializationContext context) {
+--- a/src/main/java/org/mifos/connector/fineractstub/configuration/SwaggerDocumentationConfig.java
++++ b/src/main/java/org/mifos/connector/fineractstub/configuration/SwaggerDocumentationConfig.java
+@@ -5,32 +5,13 @@
+ import io.swagger.v3.oas.models.info.License;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+-import springfox.documentation.builders.ApiInfoBuilder;
+-import springfox.documentation.builders.RequestHandlerSelectors;
+-import springfox.documentation.service.ApiInfo;
+-import springfox.documentation.service.Contact;
+-import springfox.documentation.spi.DocumentationType;
+-import springfox.documentation.spring.web.plugins.Docket;
+ 
+ @SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ @Configuration
+ public class SwaggerDocumentationConfig {
+ 
+     @Bean
+-    public Docket customImplementation() {
+-        return new Docket(DocumentationType.OAS_30).select().apis(RequestHandlerSelectors.basePackage("io.swagger.api")).build()
+-                .directModelSubstitute(org.threeten.bp.LocalDate.class, java.sql.Date.class)
+-                .directModelSubstitute(org.threeten.bp.OffsetDateTime.class, java.util.Date.class).apiInfo(apiInfo());
+-    }
+-
+-    ApiInfo apiInfo() {
+-        return new ApiInfoBuilder().title("Simple Savings Deposit API").description("This is a simple API").license("Apache 2.0")
+-                .licenseUrl("http://www.apache.org/licenses/LICENSE-2.0.html").termsOfServiceUrl("").version("1.0.0")
+-                .contact(new Contact("", "", "you@your-company.com")).build();
+-    }
+-
+-    @Bean
+     public OpenAPI openApi() {
+         return new OpenAPI().info(new Info().title("Simple Savings Deposit API").description("This is a simple API").termsOfService("")
+                 .version("1.0.0").license(new License().name("Apache 2.0").url("http://www.apache.org/licenses/LICENSE-2.0.html"))
+--- a/src/main/java/org/mifos/connector/fineractstub/configuration/SwaggerUiConfiguration.java
++++ /dev/null
+@@ -1,23 +0,0 @@
+-package org.mifos.connector.fineractstub.configuration;
+-
+-import org.springframework.context.annotation.Configuration;
+-import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+-import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
+-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+-
+-@SuppressWarnings("checkstyle:Dynamic")
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+-@Configuration
+-public class SwaggerUiConfiguration implements WebMvcConfigurer {
+-
+-    @Override
+-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+-        registry.addResourceHandler("/swagger-ui/**").addResourceLocations("classpath:/META-INF/resources/webjars/springfox-swagger-ui/")
+-                .resourceChain(false);
+-    }
+-
+-    @Override
+-    public void addViewControllers(ViewControllerRegistry registry) {
+-        registry.addViewController("/swagger-ui/").setViewName("forward:/swagger-ui/index.html");
+-    }
+-}
+--- a/src/main/java/org/mifos/connector/fineractstub/model/InteropIdentifier.java
++++ b/src/main/java/org/mifos/connector/fineractstub/model/InteropIdentifier.java
+@@ -10,7 +10,7 @@
+  */
+ @SuppressWarnings("checkstyle:Dynamic")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ 
+ public class InteropIdentifier {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/model/InteropTransfers.java
++++ b/src/main/java/org/mifos/connector/fineractstub/model/InteropTransfers.java
+@@ -3,7 +3,7 @@
+ import com.fasterxml.jackson.annotation.JsonProperty;
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import java.util.Objects;
+-import javax.validation.Valid;
++import jakarta.validation.Valid;
+ import org.springframework.validation.annotation.Validated;
+ 
+ /**
+@@ -11,7 +11,7 @@
+  */
+ @SuppressWarnings("checkstyle:Dynamic")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ 
+ public class InteropTransfers {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/model/InteropTransfersAmount.java
++++ b/src/main/java/org/mifos/connector/fineractstub/model/InteropTransfersAmount.java
+@@ -10,7 +10,7 @@
+  */
+ @SuppressWarnings("checkstyle:Dynamic")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ 
+ public class InteropTransfersAmount {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/model/LoanRepayment.java
++++ b/src/main/java/org/mifos/connector/fineractstub/model/LoanRepayment.java
+@@ -3,7 +3,7 @@
+ import com.fasterxml.jackson.annotation.JsonProperty;
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import java.util.Objects;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotNull;
+ import org.springframework.validation.annotation.Validated;
+ 
+ /**
+@@ -11,7 +11,7 @@
+  */
+ @SuppressWarnings("checkstyle:Dynamic")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ 
+ public class LoanRepayment {
+ 
+--- a/src/main/java/org/mifos/connector/fineractstub/model/SavingsDeposit.java
++++ b/src/main/java/org/mifos/connector/fineractstub/model/SavingsDeposit.java
+@@ -3,7 +3,7 @@
+ import com.fasterxml.jackson.annotation.JsonProperty;
+ import io.swagger.v3.oas.annotations.media.Schema;
+ import java.util.Objects;
+-import javax.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotNull;
+ import org.springframework.validation.annotation.Validated;
+ 
+ /**
+@@ -11,7 +11,7 @@
+  */
+ @SuppressWarnings("checkstyle:Dynamic")
+ @Validated
+-@javax.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
++@jakarta.annotation.Generated(value = "io.swagger.codegen.v3.generators.java.SpringCodegen", date = "2023-08-10T10:13:07.472376795Z[GMT]")
+ 
+ public class SavingsDeposit {
+ 
+--- a/src/main/resources/application.yml
++++ b/src/main/resources/application.yml
+@@ -36,8 +36,7 @@
+     active: "bb,fin12"
+   jackson:
+     date-format: org.mifos.connector.fineractstub.RFC3339DateFormat
+-    serialization:
+-      WRITE_DATES_AS_TIMESTAMPS: false
++    # Spring Boot 4 / Jackson 3: dates are written as ISO strings by default (WRITE_DATES_AS_TIMESTAMPS is gone)
+ 
+ 
+ springfox:
+--- a/src/main/resources/endpoints.xml
++++ b/src/main/resources/endpoints.xml
+@@ -1,12 +1,12 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <beans xmlns="http://www.springframework.org/schema/beans"
+        xmlns:cxf-core="http://cxf.apache.org/core"
+-       xmlns:cxf="http://camel.apache.org/schema/cxf"
++       xmlns:cxf="http://camel.apache.org/schema/cxf/jaxrs"
+        xmlns:http="http://cxf.apache.org/transports/http/configuration"
+        xmlns:http-conf="http://cxf.apache.org/transports/http/configuration"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+-        http://camel.apache.org/schema/cxf http://camel.apache.org/schema/cxf/camel-cxf.xsd
++        http://camel.apache.org/schema/cxf/jaxrs http://camel.apache.org/schema/cxf/jaxrs/camel-cxf.xsd
+         http://cxf.apache.org/transports/http/configuration http://cxf.apache.org/schemas/configuration/http-conf.xsd
+         http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-2.0.xsd
+         http://cxf.apache.org/core http://cxf.apache.org/schemas/core.xsd">

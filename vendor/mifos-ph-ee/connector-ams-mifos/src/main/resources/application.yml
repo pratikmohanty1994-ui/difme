@@ -36,8 +36,7 @@ spring:
     active: "bb,fin12"
   jackson:
     date-format: org.mifos.connector.fineractstub.RFC3339DateFormat
-    serialization:
-      WRITE_DATES_AS_TIMESTAMPS: false
+    # Spring Boot 4 / Jackson 3: dates are written as ISO strings by default (WRITE_DATES_AS_TIMESTAMPS is gone)
 
 
 springfox:

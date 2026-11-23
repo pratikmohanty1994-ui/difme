@@ -1,0 +1,15 @@
+DIFME: connector-common's JWS response filter had no defaults for its condition, so every connector failed to start
+unless security.jws.enable and security.jws.response.enable were both set (the other JWS beans default to false).
+Same default here: off unless switched on.
+
+--- a/src/main/java/org/mifos/connector/common/interceptor/JWSFilterStrategy.java
++++ b/src/main/java/org/mifos/connector/common/interceptor/JWSFilterStrategy.java
+@@ -18,7 +18,7 @@
+ import org.springframework.web.util.ContentCachingResponseWrapper;
+ 
+ @Component
+-@ConditionalOnExpression("${security.jws.enable} and ${security.jws.response.enable}")
++@ConditionalOnExpression("${security.jws.enable:false} and ${security.jws.response.enable:false}")
+ @Slf4j
+ public class JWSFilterStrategy extends GenericFilterBean {
+ 

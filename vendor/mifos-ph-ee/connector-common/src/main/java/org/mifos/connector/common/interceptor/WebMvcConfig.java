@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
 
-import javax.servlet.annotation.MultipartConfig;
+import jakarta.servlet.annotation.MultipartConfig;
 
 @Component("JWSMvcConfig")
 @Slf4j
