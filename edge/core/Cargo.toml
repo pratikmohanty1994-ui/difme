@@ -1,0 +1,37 @@
+[package]
+name = "difme-edge-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "Edge wallet core: automerge escrow CRDT, Blake3 integrity, simulated TEE (EAT/COSE), Wasmtime WASI P2 rule host, QUIC sync with the hub."
+
+[dependencies]
+automerge = "0.12"
+blake3 = "1"
+sha2 = "0.10"
+p256 = { version = "0.13", features = ["ecdsa"] }
+coset = "0.4"
+getrandom = "0.3"
+uuid = { version = "1", features = ["v7"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+wasmtime = { version = "51", default-features = false, features = ["runtime", "cranelift", "component-model", "std", "addr2line"] }
+wasmtime-wasi = { version = "51", default-features = false, features = ["p2"] }
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+prost = "0.14"
+tokio = { version = "1.54", features = ["rt", "macros", "time", "sync"] }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+# The real services, used unchanged: the attestation verifier appraises the TEE's EATs, the hub carries sync.
+difme-attestation-verifier = { path = "../../services/attestation" }
+difme-quinn-hub = { path = "../../services/hub" }
+tonic = "0.14"
+tokio-stream = { version = "0.1", features = ["net"] }

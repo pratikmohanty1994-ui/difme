@@ -1,0 +1,17 @@
+# DIFME edge app (README row 5.1, ADR-005, ADR-016). One target dir for everything under edge/ (edge/target).
+# rules/offline-limit is a separate workspace: it only builds for wasm32-wasip2 (rules/build.sh).
+[workspace]
+resolver = "3"
+members = ["core"]
+exclude = ["rules/offline-limit"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+rust-version = "1.85"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

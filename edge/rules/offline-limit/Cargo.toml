@@ -1,0 +1,23 @@
+[package]
+name = "difme-rule-offline-limit"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Offline limit check shipped as a WASI Preview 2 component (ADR-016). Built for wasm32-wasip2 by build.sh."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.61", default-features = false, features = ["macros", "realloc"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Its own workspace: it only builds for wasm32-wasip2, so it stays out of edge/Cargo.toml's host workspace.
+[workspace]

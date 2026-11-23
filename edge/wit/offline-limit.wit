@@ -1,0 +1,28 @@
+// Sandboxed offline-limit rule (ADR-016): a WASI Preview 2 component the edge core runs on Wasmtime before it
+// signs an offline payment. The host passes everything the rule may look at; the rule has no other inputs.
+package difme:rules@0.1.0;
+
+interface limit {
+  record payment {
+    /// Amount in minor units (paise for INR).
+    amount-minor: s64,
+    currency: string,
+    /// Offline spend already recorded on this device since the last successful sync, minor units.
+    offline-spent: s64,
+    /// Spending rights this device holds in the escrow CRDT (specs/tla/CrdtMerge.tla), minor units.
+    rights-available: s64,
+  }
+
+  variant decision {
+    allow,
+    deny(string),
+  }
+
+  check: func(p: payment) -> decision;
+  /// Human-readable rule identity, e.g. "offline-limit/0.1.0 per-tx=50000 cumulative=200000".
+  describe: func() -> string;
+}
+
+world offline-rule {
+  export limit;
+}
