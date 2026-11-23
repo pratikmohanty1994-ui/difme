@@ -25,6 +25,8 @@ jobs:
       DIFME_IMAGE_DIR: /mnt/difme/containerd
       DIFME_SWAP_FILE: /mnt/difme/swap
       DIFME_SWAP_SIZE: 12G
+      # Halve memory requests too (ci/dev-sizing-memory.py): hosted runners don't run earlyoom; limits unchanged.
+      DIFME_DEV_MEMORY_SCALING: "1"
     steps:
       - uses: actions/checkout@v4
       # The hosted runner was lost twice on the streaming+lakehouse chain (2026-11-20, log gone with it): under memory

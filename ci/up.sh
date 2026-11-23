@@ -29,8 +29,14 @@ fi
 
 # Codespace-only request scaling (deploy/bootstrap/dev-sizing.yaml). Needs Kyverno's CRDs, which the base profile
 # installs, so it is applied here rather than in `make cluster`. Idempotent.
+# DIFME_DEV_MEMORY_SCALING=1 (cluster-verify on GitHub runners) also halves memory requests: those hosts don't run
+# earlyoom, which is why Codespaces keep memory requests as declared. Limits never change.
 if kubectl get crd clusterpolicies.kyverno.io >/dev/null 2>&1; then
-  kubectl apply -f deploy/bootstrap/dev-sizing.yaml >/dev/null && echo "▶ dev request scaling active"
+  if [ "${DIFME_DEV_MEMORY_SCALING:-0}" = 1 ]; then
+    python3 ci/dev-sizing-memory.py deploy/bootstrap/dev-sizing.yaml | kubectl apply -f - >/dev/null && echo "▶ dev request scaling active (cpu/4, memory/2)"
+  else
+    kubectl apply -f deploy/bootstrap/dev-sizing.yaml >/dev/null && echo "▶ dev request scaling active"
+  fi
 fi
 
 # Apps of this profile grouped by sync wave (ascending).
