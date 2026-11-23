@@ -46,7 +46,7 @@ the session branch; nothing runs on the owner's PC.
 ## 0b. Master pending list (updated 2026-11-23 00:55 UTC; parallelism cut to ≤2 agents, owner flagged token use): owner = who is on it
 | # | Item | State / owner |
 |---|---|---|
-| 1 | Cluster-verify run 4 (core,streaming,security,rails,fraud; fail-fast) on images run 21 (1bba03d2) | main session; dispatched 2026-11-23 00:53 UTC, verdicts check 02:03 |
+| 1 | **Cluster-verify run 10 (45173832405, 2026-11-23): core, streaming, security, rails, fraud all CONVERGED.** Keycloak, Trustee (attested key release), hsm, card-issuer, ACS, Mailpit, Fineract (service users job done), Hyperswitch, PH-EE ams/channel + waypoint, all 8 Tazama pods incl. D02. Fixes on the way (runs 5–9): Keycloak JAVA_OPTS (G1 vs SerialGC), Keycloak pod in the ambient mesh (STRICT mTLS database-tier), curl init uid 100, memory requests from measured use (PH-EE 256Mi, yb-tserver 384Mi, RisingWave 128Mi), verify-profile prints Argo CD conditions. Known: PH-EE flow job needs the **process** profile (Fluxnova); one exchange-svc revision pending on memory (old revision serving); live-buy smoke missed the 50 ms auction window once on an overloaded node; Hyperswitch "network tokenization on" not checked (healthy pods' logs are not captured) | done |
 | 2 | PH-EE: B5 images (9df00081), D1/C2/C3 manifests (d8c7d767), D2 modernised on **Spring Boot 4.1.1 / Spring 7.0.9 / Camel 4.22.2**, Java 25 runtime (544266dd; Boot 3.5 failed the Trivy gate). Trivy 0 HIGH/CRITICAL; unit tests and Fluxnova job pickup verified locally. Secrets added (fd5f322d). Images not built yet; not run on a cluster | **Done**, cluster check pending |
 | 3 | D3 to retire the interim hub: (a) sync ph-ee on a cluster (waypoint JWT allow/deny, scrapes, flow-deploy job); (b) Mojaloop switch manifests and images (Testing Toolkit hub at mojaloop-switch.rails.svc:4040, payee SDK + simulator); (c) exchange-rails PH-EE client (difme-exchange token, POST /channel/transfer, on-us mapping to DifmeOnUsTransfer, status); (d) card checkout home (PH-EE flow with a Hyperswitch worker or a small service) before deleting payment-hub; (e) re-run the 2026-11-21 money tests on the new stack; D4 gaps: fulfilment check at commit, GET /transfers after commit | next |
 | 4 | ACS FIDO/WebAuthn + SPC (3DS 2.3.1) | **Done** (8ad871cf) |
@@ -57,8 +57,8 @@ the session branch; nothing runs on the owner's PC.
 | 9 | §5.2 hub remainder: session manager, telemetry/dashboard relays, tonic gRPC bridge | **Done** (30f11af7, with the scenario D QUIC relay) |
 | 10 | §13 deployment scenarios A–D **built** (dceab319, ADR-028): generated overlays, Fleet root per region, OpenTofu roots B/C + module test, guide docs/deployment-scenarios.md. Not brought up on a real site | done (CI-validated) |
 | 11 | Hyperswitch: B4 admin API check; live network-token tokenise → fetch (TAVV) on the cluster | cluster run after 1 |
-| 12 | Fraud: D02 end to end on the cluster (run 4). Local Tazama e2e cannot build here (npm "Exit handler never called" behind this machine's proxy, twice); CI builds the images | cluster run |
-| 13 | Actions: run 5 all profiles; ml + fraud scorer FAIL path; dbt lineage; dev memory halving; scale-to-zero decision | after 1 |
+| 12 | Fraud: D02 deployed and running on the cluster (run 10). Local Tazama e2e cannot build here (npm crash behind this proxy); CI builds the images | done on cluster |
+| 13 | Actions: run with all profiles (needs more memory than one 16 GB node gives with production requests: size requests from report.txt "requested minus used" first; include process for PH-EE); ml + fraud scorer FAIL path; dbt lineage; dev memory halving; scale-to-zero decision | next |
 | 14 | Docs: status.md / component-reuse.md / README matrix status column (F1) | main session, ongoing |
 | 15 | Owner: A5 archive old repo, A6 revoke token, C4 interopUser, E1–E3, Codespaces idle timeout, arm64 VM, Hyperswitch key path, jPOS switch migration (later) | owner |
 

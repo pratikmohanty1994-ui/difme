@@ -18,7 +18,8 @@ ADR-026); all non-Hyperswitch images built and signed under the new owner.
 tokens, card-issuer with debit/prepaid first (ADR-024); loan origination, plus interest/delinquency/chargeback in the credit gate (ADR-025; spend/repay/re-spend gate passed 2026-11-22, limit enforced by card-issuer);
 3DS ACS image/manifests, browser challenge page and app-channel JWE (ADR-027; ACS → CMS/FRM/hsm → switch CAVV check verified live 2026-11-22); security module service and callers, then PIN, ARQC/ARPC, issuer scripts (ADR-026; `services/hsm` CVV2/CVV/CAVV on jPOS verified 2026-11-22; full plan in docs/architecture/card-cryptography-plan.md); PH-EE modernisation and rails
 manifests (PH-EE, Mojaloop); retire the interim Temporal hub.
-**Needs Actions runs:** rails profile on a cluster; all profiles at once (run 5); ml + fraud scorer and the FAIL path
+**Cluster (2026-11-23, run 45173832405):** core, streaming, security, rails and fraud converge together: card security on attested keys (Trustee, hsm), Keycloak, Fineract, Hyperswitch, PH-EE, Tazama incl. D02.
+**Needs Actions runs:** all profiles at once (with process for PH-EE's flows); ml + fraud scorer and the FAIL path
 on a cluster; dbt lineage; dev memory halving; scale-to-zero decision after run 5.
 **PDF gaps:** §5.1 edge app, §13 deployment scenarios, the rest of the §5.2 QUIC hub; README coverage matrix paths and
 a status column.
