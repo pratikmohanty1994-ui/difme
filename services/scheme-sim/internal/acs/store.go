@@ -30,6 +30,7 @@ type ChallengeState struct {
 	Owner      string       `json:"owner,omitempty"`   // ACS instance that holds the app-channel session key
 	CardRef    string       `json:"cardRef,omitempty"` // HMAC card reference (FIDO credentials are filed under it)
 	FIDO       *FIDOPending `json:"fido,omitempty"`    // steps "fido" (browser WebAuthn/SPC) and "spc" (merchant-initiated SPC)
+	Device     string       `json:"device,omitempty"`  // 3DS Method device hash, remembered for the card when the challenge succeeds
 	// Rev is the store revision (optimistic concurrency between ACS replicas); kept outside the document.
 	Rev int64 `json:"-"`
 }

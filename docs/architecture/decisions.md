@@ -652,12 +652,14 @@ webAuthnCredList entries, and the encoding of the assertion in threeDSReqAuthDat
 tested in a real browser.
 **Still open (updated 2026-11-23):** scheme-issued ACS signing certificate from OpenBao (ACS_SIGNING_CERT_CHAIN
 takes the chain; the cluster still uses the module's own certificate); multi-select and information-only templates
-are modelled, not used by policy; FIDO/SPC in a real browser and with a real 3DS Server; 3DS Method (device
-fingerprint iframe) and browser data in risk; a 3DS Server for merchant-initiated flows; real app push (OOB is logged
+are modelled, not used by policy; FIDO/SPC in a real browser and with a real 3DS Server; device data in Tazama's
+model (the ACS uses it locally only); a 3DS Server for merchant-initiated flows; real app push (OOB is logged
 in development). **Done since:** FIDO/WebAuthn and SPC (unit-tested with a software authenticator); DS simulator with
 attempts CAVV stand-in; durable challenge store, sealed with the module's card-vault key; image and manifests;
 passcode delivery by email and email-to-SMS (SMTPSender; Mailpit on the development cluster, the card's email/mobile
-from card-issuer).
+from card-issuer); 3DS Method (POST /3ds/method iframe page and /3ds/method/collect) with browser data in risk: when
+the method ran, an AReq whose browser data does not match the collected device, or a device that has not passed a
+challenge for the card, is challenged instead of frictionless (method.go; device data in process memory).
 **Earlier "not yet" list (superseded where done above):** HTML browser challenge page and app-channel JWE (CReq/CRes are JSON today);
 other challenge methods (app push / biometric via the DIFME app, out-of-band); 3RI and non-payment categories;
 attempts CAVV by a scheme stand-in; directory-server simulator and a 3DS Server (Hyperswitch has 3DS connectors) for

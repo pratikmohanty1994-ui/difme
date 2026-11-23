@@ -224,6 +224,8 @@ func (a *ACS) Handler() http.Handler {
 		}
 	}))
 	mux.HandleFunc("POST /3ds/challenge", a.browserChallenge)
+	mux.HandleFunc("POST /3ds/method", a.methodHandler)
+	mux.HandleFunc("POST /3ds/method/collect", a.methodCollect)
 	return mux
 }
 

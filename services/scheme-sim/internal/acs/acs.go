@@ -93,6 +93,12 @@ type AReq struct {
 	// FIDO data from the requestor: 06/07 FIDO Authentication Data, 09 SPC assertion (AReq #2) (fido.go)
 	ReqAuthInfo   *ReqAuthInfo   `json:"threeDSRequestorAuthenticationInfo,omitempty"`
 	PriorAuthInfo *PriorAuthInfo `json:"threeDSRequestorPriorAuthenticationInfo,omitempty"`
+	// Browser channel: 3DS Method completion and browser data (method.go)
+	ThreeDSCompInd   string `json:"threeDSCompInd,omitempty"` // Y method completed, N not completed, U unavailable
+	BrowserUserAgent string `json:"browserUserAgent,omitempty"`
+	BrowserLanguage  string `json:"browserLanguage,omitempty"`
+	BrowserTZ        string `json:"browserTZ,omitempty"`
+	BrowserIP        string `json:"browserIP,omitempty"`
 }
 
 type ARes struct {
@@ -240,6 +246,7 @@ type ACS struct {
 	store   ChallengeStore
 	creds   CredentialStore
 	apps    map[string]*AppSession // app-channel session keys by acsTransID: process memory only, never stored
+	devices *deviceRisk            // 3DS Method data and known devices (method.go)
 }
 
 func New(cfg Config, cards Cards, frm FRM, hsm threeds.HSM, otp OTPSender, oob OOBNotifier, results Results) *ACS {
@@ -259,7 +266,7 @@ func New(cfg Config, cards Cards, frm FRM, hsm threeds.HSM, otp OTPSender, oob O
 		cfg.Credentials = NewMemoryCredentials()
 	}
 	return &ACS{cfg: cfg, cards: cards, frm: frm, hsm: hsm, otp: otp, oob: oob, results: results, store: cfg.Store, creds: cfg.Credentials,
-		apps: map[string]*AppSession{}}
+		apps: map[string]*AppSession{}, devices: newDeviceRisk()}
 }
 
 var ErrBadRequest = errors.New("bad request")
@@ -393,7 +400,11 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 			}
 		}
 	}
-	frictionless := verdict == NoAlert && amount <= a.cfg.FrictionlessLimitMinor && q.ChallengeIndicator != "04" && !spcFallback
+	device, deviceOK, deviceWhy := a.assessDevice(q, ref)
+	if !deviceOK {
+		slog.Info("3ds device risk: challenge", "acsTransID", res.ACSTransID, "why", deviceWhy)
+	}
+	frictionless := verdict == NoAlert && amount <= a.cfg.FrictionlessLimitMinor && q.ChallengeIndicator != "04" && !spcFallback && deviceOK
 	// 3RI: no cardholder to challenge. Non-payment (card verification, recurring set-up) only, on a clear risk verdict.
 	if q.DeviceChannel == "03" {
 		if q.MessageCategory != "02" {
@@ -411,10 +422,11 @@ func (a *ACS) Authenticate(ctx context.Context, q AReq) (ARes, error) {
 			return no("U", ReasonSecurity)
 		}
 		res.TransStatus, res.AuthenticationValue, res.ECI = "Y", v, "05"
+		a.devices.remember(ref, device, a.cfg.Now())
 		slog.Info("3ds authentication", "acsTransID", res.ACSTransID, "version", q.MessageVersion, "status", "Y", "flow", "frictionless")
 		return res, nil
 	}
-	ch := &ChallengeState{AReq: q, Card: c, Version: q.MessageVersion, ACSTransID: res.ACSTransID, Expires: a.cfg.Now().Add(a.cfg.OTPTTL), CardRef: ref}
+	ch := &ChallengeState{AReq: q, Card: c, Version: q.MessageVersion, ACSTransID: res.ACSTransID, Expires: a.cfg.Now().Add(a.cfg.OTPTTL), CardRef: ref, Device: device}
 	hasApp := slices.Contains(c.Channels, "app")
 	// WebAuthn / SPC (fido.go): browser channel, card with registered credentials; else the methods below (OTP).
 	var creds []FIDOCredential
@@ -761,6 +773,7 @@ func (a *ACS) finishLocked(ctx context.Context, ch *ChallengeState, status, reas
 			rr.TransStatus, rr.TransStatusReason = "U", ReasonSecurity
 		} else {
 			rr.AuthenticationValue, rr.ECI = v, "05"
+			a.devices.remember(ch.CardRef, ch.Device, a.cfg.Now()) // this device passed a challenge for the card
 		}
 	}
 	if err := a.results.Send(ctx, rr); err != nil {
