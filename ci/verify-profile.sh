@@ -159,6 +159,15 @@ if [ "$rc" -eq 0 ] && kubectl -n core-platform get svc pwa-shopbot >/dev/null 2>
   echo "== live buy through the PWA"
   python3 ci/live-buy.py || true
 fi
+# Rails checks (informational): settings that only show in healthy pods' logs, which the failing-pod report never sees.
+if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; then
+  echo "== rails: network tokenization, PH-EE flows, security module"
+  kubectl -n rails logs deploy/hyperswitch -c nts-public-key --tail=3 2>&1 | sed 's/^/  hyperswitch init: /' | cut -c1-200
+  kubectl -n rails logs deploy/hyperswitch -c router --tail=2000 2>/dev/null | grep -m1 "network tokenization on" | sed 's/^/  hyperswitch: /' \
+    || echo "  hyperswitch: network tokenization NOT on"
+  kubectl -n rails logs job/ph-ee-deploy-flows -c deploy --tail=2 2>&1 | sed 's/^/  ph-ee flows: /' | cut -c1-240
+  kubectl -n rails logs deploy/hsm --tail=400 2>/dev/null | grep -iE "key release|attest|bootstrap|listening" | tail -4 | sed 's/^/  hsm: /' | cut -c1-200
+fi
 # Exchange restart smoke (informational): a mandate registered before the pod is replaced must still be there after
 # (StateStore in YugabyteDB). Runs only where exchange-svc has its store configured.
 if [ "$rc" -eq 0 ] && kubectl -n core-platform get deploy exchange-svc -o yaml 2>/dev/null | grep -q DIFME_EXCHANGE_STORE_URL; then
