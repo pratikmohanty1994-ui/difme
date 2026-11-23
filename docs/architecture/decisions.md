@@ -650,10 +650,14 @@ Library: go-webauthn v0.18.2 (BSD-3); govulncheck shows no reachable third-party
 v0.59.0); the stdlib findings need the image built with Go ≥ 1.26.9. Unverified: the JSON keys inside spcTransData and
 webAuthnCredList entries, and the encoding of the assertion in threeDSReqAuthData (WebAuthn JSON here). Not yet
 tested in a real browser.
-**Still open:** scheme-issued ACS signing certificate from OpenBao (dev self-signed today); multi-select and
-information-only templates are modelled, not used by policy; FIDO/SPC in a real browser and with a real 3DS Server; 3DS Method
-(device fingerprint iframe) and browser data in risk; DS simulator and a 3DS Server; durable challenge store; real
-SMS/email/app-push delivery; attempts CAVV; image and manifests.
+**Still open (updated 2026-11-23):** scheme-issued ACS signing certificate from OpenBao (ACS_SIGNING_CERT_CHAIN
+takes the chain; the cluster still uses the module's own certificate); multi-select and information-only templates
+are modelled, not used by policy; FIDO/SPC in a real browser and with a real 3DS Server; 3DS Method (device
+fingerprint iframe) and browser data in risk; a 3DS Server for merchant-initiated flows; real app push (OOB is logged
+in development). **Done since:** FIDO/WebAuthn and SPC (unit-tested with a software authenticator); DS simulator with
+attempts CAVV stand-in; durable challenge store, sealed with the module's card-vault key; image and manifests;
+passcode delivery by email and email-to-SMS (SMTPSender; Mailpit on the development cluster, the card's email/mobile
+from card-issuer).
 **Earlier "not yet" list (superseded where done above):** HTML browser challenge page and app-channel JWE (CReq/CRes are JSON today);
 other challenge methods (app push / biometric via the DIFME app, out-of-band); 3RI and non-payment categories;
 attempts CAVV by a scheme stand-in; directory-server simulator and a 3DS Server (Hyperswitch has 3DS connectors) for
