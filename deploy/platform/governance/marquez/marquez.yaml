@@ -30,7 +30,7 @@ spec:
   replicas: 1
   selector: { matchLabels: { app: marquez } }
   template:
-    metadata: { labels: { app: marquez, difme/team: platform, business.metric: data-lineage } }
+    metadata: { labels: { app: marquez, difme/team: platform, business.metric: data-lineage, istio.io/dataplane-mode: ambient } }   # mTLS to database-tier
     spec:
       containers:
         - name: api

@@ -12,3 +12,25 @@ spec:
   action: ALLOW
   rules:
     - from: [{ source: { principals: ["difme.local/ns/quinn-hub/sa/grpc-bridge", "difme.local/ns/core-platform/sa/saga-orchestrator", "difme.local/ns/core-platform/sa/rehydration-svc"] } }]
+---
+# lakehouse is outside the mesh, but its pods that use database-tier/cache-tier join it at pod level for mTLS; they keep
+# accepting plaintext from the rest of lakehouse and from ingress (cluster-verify 2026-11-23).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata: { name: pod-level-mesh-permissive, namespace: lakehouse }
+spec: { mtls: { mode: PERMISSIVE } }
+---
+# governance is outside the mesh, but its pods that use database-tier/cache-tier join it at pod level for mTLS; they keep
+# accepting plaintext from the rest of governance and from ingress (cluster-verify 2026-11-23).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata: { name: pod-level-mesh-permissive, namespace: governance }
+spec: { mtls: { mode: PERMISSIVE } }
+---
+# harbor is outside the mesh, but its pods that use database-tier/cache-tier join it at pod level for mTLS; they keep
+# accepting plaintext from the rest of harbor and from ingress (cluster-verify 2026-11-23).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata: { name: pod-level-mesh-permissive, namespace: harbor }
+spec: { mtls: { mode: PERMISSIVE } }
+

@@ -2,7 +2,7 @@
 expose: { type: clusterIP, tls: { enabled: false } }
 persistence:
   imageChartStorage: { type: s3, s3: { regionendpoint: http://seaweedfs-s3.lakehouse.svc:8333, bucket: harbor, secure: false, v4auth: true } }
-trivy: { enabled: true }
+trivy: { enabled: true, podLabels: { istio.io/dataplane-mode: ambient } }   # valkey (cache-tier)
 # Shared platform Postgres (ADR-019): Harbor supports PostgreSQL only (its migrations failed on YugabyteDB, 2026-11-20).
 database: { type: external, external: { host: postgres-docdb.database-tier.svc, port: "5432", username: harbor, coreDatabase: harbor, sslmode: disable, existingSecret: harbor-db } }
 redis: { type: external, external: { addr: valkey.cache-tier.svc:6379 } }
@@ -13,12 +13,14 @@ redis: { type: external, external: { addr: valkey.cache-tier.svc:6379 } }
 existingSecretSecretKey: harbor-dev-secretkey          # key: secretKey (16 chars)
 existingSecretAdminPassword: harbor-dev-admin          # key: HARBOR_ADMIN_PASSWORD (else the public default)
 core:
+  podLabels: { istio.io/dataplane-mode: ambient }   # postgres-docdb + valkey (STRICT meshed tiers)
   resources: { requests: { cpu: 50m, memory: 128Mi } }
   existingSecret: harbor-dev-core                      # key: secret (16 chars)
   secretName: harbor-dev-token                         # tls.key / tls.crt for token signing (else a new CA per render)
   existingXsrfSecret: harbor-dev-core                  # key: CSRF_KEY (32 chars)
-jobservice: { existingSecret: harbor-dev-jobservice }  # key: JOBSERVICE_SECRET (16 chars)
+jobservice: { existingSecret: harbor-dev-jobservice, podLabels: { istio.io/dataplane-mode: ambient } }  # key: JOBSERVICE_SECRET (16 chars)
 registry:
+  podLabels: { istio.io/dataplane-mode: ambient }
   existingSecret: harbor-dev-registry                  # key: REGISTRY_HTTP_SECRET (16 chars)
   credentials: { existingSecret: harbor-dev-registry-credentials }   # keys: REGISTRY_PASSWD, REGISTRY_HTPASSWD (bcrypt)
-
+exporter: { podLabels: { istio.io/dataplane-mode: ambient } }

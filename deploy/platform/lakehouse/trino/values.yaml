@@ -12,6 +12,7 @@ env:
   - { name: YB_TRINO_USER, value: trino }
   - { name: YB_TRINO_PASSWORD, value: dev-ysql-auth-off }
 coordinator:
+  labels: { istio.io/dataplane-mode: ambient }   # mTLS to yb-tservers (catalog settlements), STRICT meshed tier
   resources: { requests: { cpu: 200m, memory: 768Mi }, limits: { memory: 1280Mi } }   # used 668 Mi at start (run 44724409966)
   jvm: { maxHeapSize: 768M }
   config: { nodeScheduler: { includeCoordinator: true }, query: { maxMemoryPerNode: "256MB" } }   # must fit the 768M heap
@@ -48,3 +49,4 @@ eventListenerProperties:
   - openlineage-event-listener.transport.url=http://marquez.governance.svc:5000
   - openlineage-event-listener.trino.uri=http://trino.lakehouse.svc:8080
   - openlineage-event-listener.namespace=difme
+worker: { labels: { istio.io/dataplane-mode: ambient } }

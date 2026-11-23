@@ -9,7 +9,7 @@ spec:
   replicas: 1
   selector: { matchLabels: { app: polaris } }
   template:
-    metadata: { labels: { app: polaris } }
+    metadata: { labels: { app: polaris, istio.io/dataplane-mode: ambient } }   # mTLS to postgres-docdb (database-tier STRICT)
     spec:
       containers:
         - name: polaris
