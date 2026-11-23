@@ -1,0 +1,22 @@
+[package]
+name = "difme-edge-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "Tauri 2 shell of the DIFME edge wallet: the Vue UI (edge/app) over the Rust core (edge/core)."
+
+[lib]
+name = "difme_edge_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"] # staticlib/cdylib: Tauri mobile (Android/iOS) links the app as a library
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.54", features = ["sync"] }
+difme-edge-core = { path = "../../core" }
