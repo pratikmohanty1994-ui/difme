@@ -3,7 +3,9 @@
 replicas: { master: 1, tserver: 1 }
 resource:
   master: { requests: { cpu: 200m, memory: 192Mi }, limits: { memory: 1Gi } }   # used 95 Mi (44731237973); YB sizes from the limit
-  tserver: { requests: { cpu: 300m, memory: 1Gi }, limits: { memory: 2Gi } }
+  # request from measured use (116 Mi with core, streaming, security, rails up; cluster-verify 2026-11-23 run 9), limit unchanged:
+  # the 1 Gi request kept fraud's pods unschedulable on the single dev node
+  tserver: { requests: { cpu: 300m, memory: 384Mi }, limits: { memory: 2Gi } }
 storage: { master: { size: 4Gi }, tserver: { size: 8Gi } }
 enableLoadBalancer: false
 gflags:

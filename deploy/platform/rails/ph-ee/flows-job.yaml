@@ -33,8 +33,12 @@ spec:
               set -e
               args=""
               for f in /work/out/*.bpmn; do args="$args -F $(basename $f)=@$f"; done
-              curl -sf -u "$AUTH" http://fluxnova.process.svc:8080/engine-rest/deployment/create \
-                -F deployment-name=ph-ee-flows -F deploy-changed-only=true -F deployment-source=gitops $args >/dev/null
+              # Fluxnova is in the process profile: PH-EE needs it deployed. Say why when it isn't reachable or refuses the
+              # flows (a silent curl -sf hid both, cluster-verify 2026-11-23).
+              code=$(curl -sS -o /work/resp -w '%{http_code}' -u "$AUTH" http://fluxnova.process.svc:8080/engine-rest/deployment/create \
+                -F deployment-name=ph-ee-flows -F deploy-changed-only=true -F deployment-source=gitops $args) \
+                || { echo "Fluxnova not reachable at fluxnova.process.svc:8080 (is the process profile deployed?)"; exit 1; }
+              [ "$code" = 200 ] || { echo "Fluxnova refused the flows: HTTP $code $(head -c 800 /work/resp)"; exit 1; }
               echo "deployed: $(ls /work/out/*.bpmn | xargs -n1 basename | tr '\n' ' ')"
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: work, mountPath: /work }]
