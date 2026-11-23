@@ -63,6 +63,15 @@ if [ $rc -ne 0 ]; then
   done
   # Apps can stay Progressing while every pod is Ready (a FlinkDeployment whose job keeps failing, a Rollout, a Job).
   # Print the resources Argo CD itself marks unhealthy, with their status and events (found 2026-11-20: flink-jobs).
+  # Sync status Unknown/OutOfSync for a long time: Argo CD could not compare or generate the manifests (repo server
+  # error, Helm/Kustomize failure, timeout); the reason is only in the app's conditions (run 8, 2026-11-23:
+  # core-services stayed "Unknown" for 30 minutes with no failing pod).
+  echo "== apps not Synced: Argo CD conditions"
+  for a in $(kubectl -n argocd get applications -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status}{"\n"}{end}' \
+             | awk '$2 != "Synced" {print $1}' | grep -v '^fleet-bundles'); do
+    kubectl -n argocd get application "$a" -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}' 2>/dev/null \
+      | sed "s|^|--- $a: |" | cut -c1-600
+  done
   echo "== unhealthy resources (Argo CD view)"
   for a in $(apps | awk '$4 != "Healthy" {print $1}' | grep -v '^fleet-bundles'); do
     kubectl -n argocd get application "$a" -o jsonpath='{range .status.resources[?(@.health.status)]}{.kind} {.namespace} {.name} {.health.status} {.health.message}{"\n"}{end}' \
