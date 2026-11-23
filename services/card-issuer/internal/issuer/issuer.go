@@ -94,6 +94,8 @@ type HSM interface {
 	PVV(ctx context.Context, pan, pinBlockZPK string) (string, error)
 	// VerifyAC checks a chip application cryptogram (ARQC, TC or AAC) with the module's ARQC function.
 	VerifyAC(ctx context.Context, c chipAC) (bool, error)
+	// PersoBatch makes a DIFME-PERSO/1 bureau file for cards ("PAN:PSN:YYMM") in the module.
+	PersoBatch(ctx context.Context, bin string, cards []string, ic IssuerCert) (string, error)
 	// RevealPIN re-encrypts a pending PIN (ISO 4 block under the module's PIN key) inside the module to the app's
 	// public key (X.509 SubjectPublicKeyInfo, hex): a JWE only the app can open. ErrInvalid for an unusable app key.
 	RevealPIN(ctx context.Context, pan, iso4Hex, appKeyHex string) (string, error)
@@ -129,6 +131,8 @@ type Issuer struct {
 	NewPANOnRenewal map[string]bool
 	// GraceDays the old card stays valid after renewal (0: DefaultGraceDays).
 	GraceDays int
+	// PersoIssuerCert: the scheme CA's issuer public key certificate for bureau files (perso.go).
+	PersoIssuerCert *IssuerCert
 }
 
 func New(bin string, l Ledger, h HSM, s Store) *Issuer {

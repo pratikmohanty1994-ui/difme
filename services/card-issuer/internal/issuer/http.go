@@ -21,6 +21,7 @@ import (
 //	GET  /v1/cards/{pan}  (card management lookup for the ACS: expiry, status, channels; the path segment is a PAN)
 //	POST /v1/cards/{id}/statements       close the billing cycle (credit): {"cycleDays":30}
 //	POST /v1/cards/{id}/statements/latest/grace  at the due date: waive the interest when paid in full
+//	POST /v1/perso                       {"cardIds":[…]}: DIFME-PERSO/1 file for the card bureau (text/plain)
 //	POST /v1/authorisations              the switch's issuer authorisation
 //	POST /v1/authorisations/{id}/clear   {"amountMinor":…, "icc":"<field 55 hex, card-present>"}
 //	POST /v1/authorisations/{id}/reverse
@@ -106,6 +107,23 @@ func Handler(i *Issuer) http.Handler {
 	mux.HandleFunc("POST /v1/cards/{id}/statements/latest/grace", func(w http.ResponseWriter, r *http.Request) {
 		st, err := i.SettleGrace(r.Context(), r.PathValue("id"))
 		reply(w, 200, st, err)
+	})
+	mux.HandleFunc("POST /v1/perso", func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			CardIDs []string `json:"cardIds"`
+		}
+		if !decode(w, r, &q) {
+			return
+		}
+		f, err := i.Perso(r.Context(), q.CardIDs)
+		if err != nil {
+			reply(w, 0, nil, err)
+			return
+		}
+		w.Header().Set("content-type", "text/plain; charset=us-ascii")
+		w.Header().Set("content-disposition", `attachment; filename="difme-perso.txt"`)
+		w.Header().Set("cache-control", "no-store")
+		_, _ = w.Write([]byte(f))
 	})
 	mux.HandleFunc("POST /v1/authorisations", func(w http.ResponseWriter, r *http.Request) {
 		var q AuthRequest

@@ -195,6 +195,23 @@ public final class SecurityModule {
 
     public byte[] aesCmac(String macKey, byte[] data) throws SMException { return ext().aesCmac(macKey, data); }
 
+    // ---- issuer RSA key and personalisation (DIFME extension) ---------------------------------------------------
+
+    public String[] generateIssuerRsaKey(int bits) throws SMException { return ext().generateIssuerRsaKey(bits); }
+
+    public PersoFile.Record persoRecord(int seq, String pan, String psn, String expiryYymm, String serviceCode, SecureDESKey imkAc, SecureDESKey imkSmi,
+            SecureDESKey imkSmc, SecureDESKey cvk, String issuerKeyBlock, SecureDESKey kek, int iccBits, byte[] sad) throws SMException {
+        return ext().persoRecord(seq, pan, psn, expiryYymm, serviceCode, imkAc, imkSmi, imkSmc, cvk, issuerKeyBlock, kek, iccBits, sad);
+    }
+
+    /** Static application data the ICC certificate binds: 5A (PAN), 5F24 (expiry, last day of the month), 5F34 (PSN). */
+    public static byte[] staticApplicationData(String pan, String psn, String expiryYymm) {
+        String p = pan.length() % 2 == 0 ? pan : pan + "F";
+        java.time.YearMonth ym = java.time.YearMonth.of(2000 + Integer.parseInt(expiryYymm.substring(0, 2)), Integer.parseInt(expiryYymm.substring(2)));
+        return org.jpos.iso.ISOUtil.hex2byte("5A" + String.format("%02X", p.length() / 2) + p + "5F2403" + expiryYymm + String.format("%02d", ym.lengthOfMonth())
+                + "5F3401" + psn);
+    }
+
     // ---- LMK rotation -------------------------------------------------------------------------------------------
 
     /** Loads the previous LMK and KBPK into the module for a rotation (attested release only, ADR-026). */

@@ -3,6 +3,7 @@
 //	DATABASE_URL (Postgres; without it cards live in memory), ADDR (":8080"), BIN ("437551"), HSM_URL, FINERACT_URL (…/fineract-provider), FINERACT_TENANT ("default"),
 //	FINERACT_PAYMENT_TYPE (Fineract payment type id for card withdrawals),
 //	CARD_RENEWAL_NEW_PAN (products renewed with a new PAN, e.g. "CREDIT,DEBIT"; default keep the PAN), CARD_RENEWAL_GRACE_DAYS (45),
+//	CARD_PERSO_ISSUER_CERT (scheme CA's issuer certificate for bureau files, "8F:90:92:9F32" hex; public data),
 //	FINERACT_TOKEN_URL + FINERACT_CLIENT_ID + FINERACT_CLIENT_SECRET (Keycloak, cluster) or FINERACT_USER + FINERACT_PASSWORD (local)
 package main
 
@@ -57,6 +58,13 @@ func main() {
 		if p = strings.TrimSpace(strings.ToUpper(p)); p != "" {
 			i.NewPANOnRenewal[p] = true
 		}
+	}
+	if v := os.Getenv("CARD_PERSO_ISSUER_CERT"); v != "" {
+		ic, err := issuer.ParseIssuerCert(v)
+		if err != nil {
+			log.Fatalf("CARD_PERSO_ISSUER_CERT: %v", err)
+		}
+		i.PersoIssuerCert = ic
 	}
 	if g, err := strconv.Atoi(os.Getenv("CARD_RENEWAL_GRACE_DAYS")); err == nil {
 		i.GraceDays = g

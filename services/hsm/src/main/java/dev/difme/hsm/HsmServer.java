@@ -220,6 +220,7 @@ public final class HsmServer {
             case "/v1/mac/retail" -> out.put("mac", ISOUtil.hexString(hsm.retailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"))));
             case "/v1/mac/retail/verify" -> valid(out, hsm.verifyRetailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"), h(in, "mac")));
             case "/v1/mac/cmac/verify" -> valid(out, hsm.verifyAesCmac(keys.aes(in.getOrDefault("aesKey", "aes-mac")), h(in, "data"), h(in, "mac")));
+            case "/v1/perso/batch" -> out.put("file", java.util.Base64.getEncoder().encodeToString(persoBatch(in).getBytes(StandardCharsets.UTF_8)));
             case "/v1/sign/ps256" -> out.put("signature", ISOUtil.hexString(hsm.signPs256(keys.rsa(in.getOrDefault("key", "acs-sign")), h(in, "data"))));
             case "/v1/data/encrypt" -> out.put("ciphertext", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), true,
                     h(in, "data"), in.containsKey("aad") ? h(in, "aad") : null)));
@@ -231,6 +232,36 @@ public final class HsmServer {
             default -> { return null; }
         }
         return out;
+    }
+
+    private static final Pattern PERSO_CARD = Pattern.compile("([0-9]{12,19}):([0-9]{2}):([0-9]{4})");
+
+    /**
+     * A DIFME-PERSO/1 file ({@link PersoFile}) for {@code cards} ("PAN:PSN:YYMM;…", at most 500), with the issuer
+     * public key certificate from the scheme CA (caIndex, issuerCert, issuerRemainder, issuerExponent; public data).
+     */
+    private String persoBatch(Map<String, String> in) throws SMException {
+        String[] cards = in.getOrDefault("cards", "").split(";");
+        if (cards.length == 0 || cards.length > 500 || cards[0].isEmpty()) throw new IllegalArgumentException("cards: PAN:PSN:YYMM;… (1-500)");
+        String svc = in.getOrDefault("serviceCode", "201");
+        if (!svc.matches("[0-9]{3}")) throw new IllegalArgumentException("serviceCode: 3 digits");
+        int bits = Integer.parseInt(in.getOrDefault("iccBits", "1024"));
+        if (bits < 768 || bits > 1984 || bits % 8 != 0) throw new IllegalArgumentException("iccBits: 768-1984, a multiple of 8");
+        SecureDESKey ac = key(in, "imkAc", "imk-ac", SMAdapter.TYPE_MK_AC), smi = key(in, "imkSmi", "imk-smi", SMAdapter.TYPE_MK_SMI),
+                smc = key(in, "imkSmc", "imk-smc", SMAdapter.TYPE_MK_SMC), cvk = key(in, "cvk", "cvk", SMAdapter.TYPE_CVK),
+                kek = key(in, "kek", "perso-kek", SMAdapter.TYPE_ZMK);
+        String issuer = keys.rsa(in.getOrDefault("issuerKey", "issuer-rsa"));
+        PersoFile.Record hdr = PersoFile.record("HDR", "FORMAT", PersoFile.FORMAT, "ISSUER", d(in, "issuer"), "CREATED", Instant.now().toString(),
+                "KEK_KCV", hsm.checkValue(kek), "CA_INDEX", hx(in, "caIndex"), "ISSUER_CERT", hx(in, "issuerCert"),
+                "ISSUER_REM", in.getOrDefault("issuerRemainder", "").isEmpty() ? "" : hx(in, "issuerRemainder"), "ISSUER_EXP", hx(in, "issuerExponent"));
+        java.util.List<PersoFile.Record> recs = new java.util.ArrayList<>();
+        for (String c : cards) {
+            Matcher m = PERSO_CARD.matcher(c);
+            if (!m.matches()) throw new IllegalArgumentException("card entry: PAN:PSN:YYMM");
+            recs.add(hsm.persoRecord(recs.size() + 1, m.group(1), m.group(2), m.group(3), svc, ac, smi, smc, cvk, issuer, kek, bits,
+                    SecurityModule.staticApplicationData(m.group(1), m.group(2), m.group(3))));
+        }
+        return PersoFile.write(hdr, recs);
     }
 
     private static long step() { return Instant.now().getEpochSecond() / DCVV2_STEP_SECONDS; }

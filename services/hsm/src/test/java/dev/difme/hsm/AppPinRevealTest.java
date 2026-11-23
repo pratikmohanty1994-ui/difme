@@ -89,7 +89,7 @@ class AppPinRevealTest {
         assertEquals("PIN 3917 RSA-OAEP-256 A256GCM 0001", jwcrypto(app, jwe));
         assertTrue(jwcrypto(rsa(2048), jwe).startsWith("REFUSED"), "another app's key");
         String[] p = jwe.split("\\.");
-        p[3] = p[3].substring(0, p[3].length() - 1) + (p[3].endsWith("A") ? "B" : "A");
+        p[3] = (p[3].startsWith("A") ? "B" : "A") + p[3].substring(1); // first char: always data bits (the last may be padding bits)
         assertTrue(jwcrypto(app, String.join(".", p)).startsWith("REFUSED"), "tampered ciphertext");
     }
 

@@ -328,6 +328,81 @@ public class DifmeSecurityModule extends JCESecurityModule {
         }
     }
 
+    // ---- issuer RSA key and card personalisation (DIFME-PERSO/1, PersoFile) ----------------------------------------
+
+    /**
+     * A new EMV issuer RSA key (exponent 65537, {@code bits} 1024-1984, a multiple of 8) as a TR-31 D block ("S0", PKCS#8
+     * inside) under the KBPK, plus its public key (X.509 SubjectPublicKeyInfo, base64) to send to the scheme CA for
+     * the issuer public key certificate. The private key never leaves the module in clear.
+     */
+    public String[] generateIssuerRsaKey(int bits) throws SMException {
+        if (bits < 1024 || bits > 1984 || bits % 8 != 0) throw new IllegalArgumentException("issuer key: 1024-1984 bits, a multiple of 8");
+        try {
+            java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("RSA");
+            g.initialize(new java.security.spec.RSAKeyGenParameterSpec(bits, java.security.spec.RSAKeyGenParameterSpec.F4));
+            java.security.KeyPair kp = g.generateKeyPair();
+            return new String[] {Tr31.wrap(kbpk(), "D0000S0RN00E0000", kp.getPrivate().getEncoded()),
+                    java.util.Base64.getEncoder().encodeToString(kp.getPublic().getEncoded())};
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        }
+    }
+
+    /** The clear 16-byte (two-key) TDES value of a DES key under the LMK, for wrapping under a transport key. */
+    private byte[] clear16(SecureDESKey k) throws SMException {
+        byte[] b = decryptFromLMK(k).getEncoded();
+        return java.util.Arrays.copyOf(b, 16);
+    }
+
+    /**
+     * One card's DIFME-PERSO/1 record ({@link PersoFile}): ICC master keys (option A) from the issuer master keys and
+     * an ICC RSA key pair, all under the bureau transport key {@code kek} (a ZMK) as TR-31 B blocks; the ICC
+     * certificate signed with the issuer key block; the iCVV. Clear keys exist only inside this call.
+     */
+    public PersoFile.Record persoRecord(int seq, String pan, String psn, String expiryYymm, String serviceCode, SecureDESKey imkAc,
+            SecureDESKey imkSmi, SecureDESKey imkSmc, SecureDESKey cvk, String issuerKeyBlock, SecureDESKey kek, int iccBits, byte[] sad)
+            throws SMException {
+        if (!psn.matches("[0-9]{2}") || !expiryYymm.matches("[0-9]{4}") || !serviceCode.matches("[0-9]{3}")) throw new IllegalArgumentException("psn, expiry, service code");
+        if (!kek.getKeyType().equals(TYPE_ZMK)) throw new SMException("transport key must be a ZMK");
+        Tr31.Unwrapped issuer;
+        try {
+            issuer = Tr31.unwrap(kbpk(), issuerKeyBlock);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        }
+        if (!issuer.header().substring(5, 8).equals("S0R")) throw new SMException("not an RSA signing key");
+        byte[] t = clear16(kek), ac = null, smi = null, smc = null;
+        try {
+            String panpsn = pan + psn;
+            byte[] pp = ISOUtil.hex2byte(panpsn.substring(panpsn.length() - 16));
+            ac = java.util.Arrays.copyOf(deriveICCMasterKey(decryptFromLMK(imkAc), pp).getEncoded(), 16);
+            smi = java.util.Arrays.copyOf(deriveICCMasterKey(decryptFromLMK(imkSmi), pp).getEncoded(), 16);
+            smc = java.util.Arrays.copyOf(deriveICCMasterKey(decryptFromLMK(imkSmc), pp).getEncoded(), 16);
+            java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("RSA");
+            g.initialize(new java.security.spec.RSAKeyGenParameterSpec(iccBits, java.security.spec.RSAKeyGenParameterSpec.F4));
+            java.security.KeyPair icc = g.generateKeyPair();
+            java.security.interfaces.RSAPrivateKey issuerKey = (java.security.interfaces.RSAPrivateKey) java.security.KeyFactory.getInstance("RSA")
+                    .generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(issuer.key()));
+            if (iccBits > issuerKey.getModulus().bitLength()) throw new IllegalArgumentException("ICC key longer than the issuer key");
+            byte[] serial = new byte[3];
+            new java.security.SecureRandom().nextBytes(serial);
+            byte[] mmyy = ISOUtil.hex2byte(expiryYymm.substring(2) + expiryYymm.substring(0, 2));
+            EmvPerso.Certificate cert = EmvPerso.iccCertificate(issuerKey, (java.security.interfaces.RSAPublicKey) icc.getPublic(), pan, mmyy, serial, sad);
+            String icvv = calculateCVD(pan, cvk, null, expiryYymm, "999");
+            return PersoFile.record("CARD", "SEQ", Integer.toString(seq), "PAN", pan, "PSN", psn, "EXP", expiryYymm, "SVC", serviceCode, "ICVV", icvv,
+                    "MK_AC", Tr31.wrap(t, "B0000E0TN00N0000", ac), "MK_SMI", Tr31.wrap(t, "B0000E2TN00N0000", smi),
+                    "MK_SMC", Tr31.wrap(t, "B0000E1TN00N0000", smc), "ICC_KEY", Tr31.wrap(t, "B0000S0RN00N0000", icc.getPrivate().getEncoded()),
+                    "ICC_CERT", ISOUtil.hexString(cert.certificate()), "ICC_EXP", ISOUtil.hexString(cert.exponent()),
+                    "ICC_REM", ISOUtil.hexString(cert.remainder()), "SAD", ISOUtil.hexString(sad));
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        } finally {
+            java.util.Arrays.fill(t, (byte) 0);
+            java.util.Arrays.fill(issuer.key(), (byte) 0);
+            for (byte[] k : new byte[][] {ac, smi, smc}) if (k != null) java.util.Arrays.fill(k, (byte) 0);
+        }
+    }
+
     // ---- LMK / KBPK rotation (jPOS's software module declares translateKeyFromOldLMK but does not implement it) ----
 
     private DifmeSecurityModule oldLmk; // the previous LMK, loaded only for a rotation drill

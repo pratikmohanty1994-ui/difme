@@ -140,3 +140,27 @@ func iso0UnderDevZPK(t *testing.T, pin, pan string) string {
 }
 
 func newTDES(k []byte) (cipher.Block, error) { return des.NewTripleDESCipher(k) }
+
+// The bureau file from the real module through card-issuer: header, one record per card, trailer.
+func TestLivePersoFile(t *testing.T) {
+	h := liveHSM(t)
+	ctx := context.Background()
+	i := New("437551", newLedger(), h, NewMemStore())
+	i.Audit = func(context.Context, string, ...any) {}
+	i.PersoIssuerCert = &IssuerCert{CAIndex: "92", Cert: strings.Repeat("AB", 176), Exponent: "010001"}
+	a, _ := i.Issue(ctx, IssueRequest{Product: Debit, Account: 1, Holder: "x"})
+	b, _ := i.Issue(ctx, IssueRequest{Product: Debit, Account: 1, Holder: "y"})
+	f, err := i.Perso(ctx, []string{a.ID, b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := strings.Split(strings.TrimSuffix(f, "\n"), "\n")
+	if len(l) != 4 || !strings.HasPrefix(l[0], "HDR|FORMAT=DIFME-PERSO/1|ISSUER=437551") || !strings.Contains(l[1], "|PAN="+a.PANFull+"|") ||
+		!strings.Contains(l[2], "|MK_AC=B") || !strings.HasPrefix(l[3], "TRL|COUNT=2|SHA256=") {
+		t.Fatalf("file:\n%s", f)
+	}
+	sum := sha256.Sum256([]byte(l[0] + "\n" + l[1] + "\n" + l[2] + "\n"))
+	if !strings.HasSuffix(l[3], strings.ToUpper(hex.EncodeToString(sum[:]))) {
+		t.Fatal("trailer digest")
+	}
+}

@@ -90,6 +90,10 @@ func (fakeHSM) RevealPIN(_ context.Context, _, iso4, appKey string) (string, err
 
 func (fakeHSM) VerifyAC(context.Context, chipAC) (bool, error) { return true, nil }
 
+func (fakeHSM) PersoBatch(_ context.Context, bin string, cards []string, ic IssuerCert) (string, error) {
+	return "HDR|ISSUER=" + bin + "|ISSUER_CERT=" + ic.Cert + "\n" + strings.Join(cards, "\n") + "\n", nil
+}
+
 func setup(t *testing.T) (*Issuer, *fakeLedger) {
 	l := newLedger()
 	return New("437551", l, fakeHSM{}, NewMemStore()), l
