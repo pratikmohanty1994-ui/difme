@@ -151,6 +151,9 @@ func (i *Issuer) RunBilling(ctx context.Context) (made, settled int, err error) 
 		return 0, 0, err
 	}
 	for _, id := range ids {
+		if c, err := i.store.Card(ctx, id); err == nil && c.ReplacedBy != "" {
+			continue // the line is billed on the card that replaced this one (its statements were carried over)
+		}
 		last, lerr := i.store.LastStatement(ctx, id)
 		if lerr == nil && last.Grace == "" && !i.now().Before(last.DueDate) {
 			if _, err := i.SettleGrace(ctx, id); err == nil {

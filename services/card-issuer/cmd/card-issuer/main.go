@@ -2,6 +2,7 @@
 //
 //	DATABASE_URL (Postgres; without it cards live in memory), ADDR (":8080"), BIN ("437551"), HSM_URL, FINERACT_URL (…/fineract-provider), FINERACT_TENANT ("default"),
 //	FINERACT_PAYMENT_TYPE (Fineract payment type id for card withdrawals),
+//	CARD_RENEWAL_NEW_PAN (products renewed with a new PAN, e.g. "CREDIT,DEBIT"; default keep the PAN), CARD_RENEWAL_GRACE_DAYS (45),
 //	FINERACT_TOKEN_URL + FINERACT_CLIENT_ID + FINERACT_CLIENT_SECRET (Keycloak, cluster) or FINERACT_USER + FINERACT_PASSWORD (local)
 package main
 
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 	_ "time/tzdata" // distroless image has no zoneinfo
 
@@ -50,6 +52,15 @@ func main() {
 		}
 	}
 	i := issuer.New(env("BIN", "437551"), f, h, store)
+	i.NewPANOnRenewal = map[string]bool{}
+	for _, p := range strings.Split(os.Getenv("CARD_RENEWAL_NEW_PAN"), ",") {
+		if p = strings.TrimSpace(strings.ToUpper(p)); p != "" {
+			i.NewPANOnRenewal[p] = true
+		}
+	}
+	if g, err := strconv.Atoi(os.Getenv("CARD_RENEWAL_GRACE_DAYS")); err == nil {
+		i.GraceDays = g
+	}
 	go func() { // daily billing: statements and interest-free grace (ADR-025)
 		for ; ; time.Sleep(24 * time.Hour) {
 			if m, g, err := i.RunBilling(context.Background()); err != nil {

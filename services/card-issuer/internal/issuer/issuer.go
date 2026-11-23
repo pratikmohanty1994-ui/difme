@@ -43,6 +43,15 @@ type Card struct {
 	PVV        string    `json:"-"`                  // PIN verification value (from the security module), when a PIN is set
 	PendingPIN string    `json:"-"`                  // a generated PIN awaiting its one-time reveal: ISO 4 block under the module's PIN key
 	CreatedAt  time.Time `json:"createdAt"`
+	// Renewal / reissue (renewal.go). Same PAN: the previous expiry stays valid until PrevValidUntil or the first use
+	// of the new expiry. New PAN: Replaces / ReplacedBy link the cards; the old one stays valid until ValidUntil or the
+	// new card's first use.
+	PrevExpiry     string     `json:"prevExpiry,omitempty"`
+	PrevValidUntil *time.Time `json:"prevValidUntil,omitempty"`
+	Replaces       string     `json:"replaces,omitempty"`
+	ReplacedBy     string     `json:"replacedBy,omitempty"`
+	ValidUntil     *time.Time `json:"validUntil,omitempty"`
+	FirstUsedAt    *time.Time `json:"firstUsedAt,omitempty"`
 }
 
 // Auth is an open or finished authorisation.
@@ -116,6 +125,10 @@ type Issuer struct {
 	// Audit records security-relevant events (PIN reveal); never PINs, PANs in clear or key material.
 	Audit  func(ctx context.Context, event string, attrs ...any)
 	reveal *limiter
+	// NewPANOnRenewal: products whose renewal / replacement gets a new PAN (default: keep the PAN).
+	NewPANOnRenewal map[string]bool
+	// GraceDays the old card stays valid after renewal (0: DefaultGraceDays).
+	GraceDays int
 }
 
 func New(bin string, l Ledger, h HSM, s Store) *Issuer {
@@ -146,16 +159,8 @@ func (i *Issuer) Issue(ctx context.Context, r IssueRequest) (Issued, error) {
 	if (r.Product != Debit && r.Product != Credit) || r.Account <= 0 || r.Holder == "" || (r.Product == Credit && r.LimitMinor <= 0) {
 		return Issued{}, fmt.Errorf("%w: product DEBIT|CREDIT, account, holder and (credit) limitMinor required", ErrInvalid)
 	}
-	i.mu.Lock()
-	var pan string
-	for {
-		pan = luhn(i.BIN + randomDigits(15-len(i.BIN)))
-		if _, err := i.store.CardByPAN(ctx, pan); errors.Is(err, ErrNotFound) {
-			break
-		}
-	}
-	i.mu.Unlock()
-	expiry := i.now().AddDate(5, 0, 0).Format("0601")
+	pan := i.newPAN(ctx)
+	expiry := i.newExpiry()
 	cvv2, err := i.hsm.CVV2(ctx, pan, expiry)
 	if err != nil {
 		return Issued{}, fmt.Errorf("security module: %w", err)
@@ -168,6 +173,21 @@ func (i *Issuer) Issue(ctx context.Context, r IssueRequest) (Issued, error) {
 	return Issued{Card: c, PANFull: pan, CVV2: cvv2}, nil
 }
 
+// newPAN draws an unused PAN in the issuer's BIN (Luhn check digit).
+func (i *Issuer) newPAN(ctx context.Context) string {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	for {
+		pan := luhn(i.BIN + randomDigits(15-len(i.BIN)))
+		if _, err := i.store.CardByPAN(ctx, pan); errors.Is(err, ErrNotFound) {
+			return pan
+		}
+	}
+}
+
+// newExpiry: five years from now (YYMM).
+func (i *Issuer) newExpiry() string { return i.now().AddDate(5, 0, 0).Format("0601") }
+
 var ErrInvalid = errors.New("invalid request")
 
 // ErrWeakPIN: the chosen PIN is one a guesser tries first (repeated digits, a run, a common PIN).
@@ -175,7 +195,7 @@ var ErrWeakPIN = fmt.Errorf("%w: weak PIN, choose another", ErrInvalid)
 
 // SetStatus blocks, restricts or reactivates a card.
 func (i *Issuer) SetStatus(ctx context.Context, id, status string) (Card, error) {
-	if status != "ACTIVE" && status != "BLOCKED" && status != "RESTRICTED" {
+	if status != "ACTIVE" && status != "BLOCKED" && status != "RESTRICTED" { // REPLACED is set by renewal only
 		return Card{}, fmt.Errorf("%w: status ACTIVE|BLOCKED|RESTRICTED", ErrInvalid)
 	}
 	c, err := i.store.Card(ctx, id)
@@ -261,18 +281,34 @@ func (i *Issuer) Authorise(ctx context.Context, r AuthRequest) (Auth, error) {
 		return a, err
 	}
 	a.CardID = c.ID
+	expiry, viaPrev := c.Expiry, false // which of the card's expiries this request presents (renewal.go)
+	if r.Expiry != "" && r.Expiry == c.PrevExpiry && r.Expiry != c.Expiry {
+		if c.PrevValidUntil == nil || i.now().After(*c.PrevValidUntil) {
+			return decline(Expired)
+		}
+		expiry, viaPrev = c.PrevExpiry, true
+	}
 	switch {
 	case r.AmountMinor <= 0:
 		return decline("13")
-	case c.Status == "BLOCKED":
+	case c.Status == "BLOCKED" || c.Status == "REPLACED":
 		return decline(DoNotHonour)
 	case c.Status == "RESTRICTED":
 		return decline(Restricted)
-	case c.Expiry < i.now().Format("0601") || (r.Expiry != "" && r.Expiry != c.Expiry):
+	case c.ReplacedBy != "" && c.ValidUntil != nil && i.now().After(*c.ValidUntil):
+		return decline(Expired) // replaced card past its grace date
+	case expiry < i.now().Format("0601") || (r.Expiry != "" && r.Expiry != expiry):
 		return decline(Expired)
 	}
+	newUsed := !viaPrev && r.Expiry != "" // presented the current expiry
 	if r.CVV2 != "" {
-		ok, err := i.hsm.VerifyCVV2(ctx, c.PAN, c.Expiry, r.CVV2)
+		ok, err := i.hsm.VerifyCVV2(ctx, c.PAN, expiry, r.CVV2)
+		if err == nil && ok && !viaPrev {
+			newUsed = true
+		}
+		if err == nil && !ok && r.Expiry == "" && c.PrevExpiry != "" && c.PrevValidUntil != nil && !i.now().After(*c.PrevValidUntil) {
+			ok, err = i.hsm.VerifyCVV2(ctx, c.PAN, c.PrevExpiry, r.CVV2) // the previous card's CVV2 within its grace
+		}
 		if err == nil && !ok {
 			ok, err = i.hsm.VerifyDCVV2(ctx, c.PAN, r.CVV2)
 		}
@@ -321,7 +357,13 @@ func (i *Issuer) Authorise(ctx context.Context, r AuthRequest) (Auth, error) {
 		}
 	}
 	a.State, a.Code = "HELD", Approved
-	return a, i.store.PutAuth(ctx, a)
+	if err := i.store.PutAuth(ctx, a); err != nil {
+		return a, err
+	}
+	if c.FirstUsedAt == nil || (newUsed && c.PrevExpiry != "") {
+		i.firstUse(ctx, c.ID, newUsed)
+	}
+	return a, nil
 }
 
 // OpenToBuy for a credit card: limit − principal outstanding in Fineract − open authorisations.
@@ -330,9 +372,16 @@ func (i *Issuer) openToBuy(ctx context.Context, c Card) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	held, err := i.store.HeldTotal(ctx, c.ID)
-	if err != nil {
-		return 0, err
+	var held int64
+	for _, id := range []string{c.ID, c.Replaces, c.ReplacedBy} { // a reissued card shares the line with the card it replaces
+		if id == "" {
+			continue
+		}
+		h, err := i.store.HeldTotal(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+		held += h
 	}
 	return c.LimitMinor - out - held, nil
 }

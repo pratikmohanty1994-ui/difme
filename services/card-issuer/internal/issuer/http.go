@@ -11,6 +11,7 @@ import (
 //
 //	POST /v1/cards                       issue (returns PAN and CVV2 once)
 //	GET  /v1/cards/{id}                  card (masked)
+//	POST /v1/cards/{id}/renew            {"reason":"RENEWAL|REPLACEMENT|LOST_STOLEN","graceDays":45}: new card / expiry, PAN and CVV2 once
 //	PUT  /v1/cards/{id}/status           {"status":"BLOCKED"}
 //	POST /v1/cards/{id}/pin              {"pinBlock":"<ISO 9564 format 4, hex>"} (app PIN set)
 //	POST /v1/cards/{id}/pin/generate     random PIN (issuance / reset): {"appPinBlock": ISO 4 under the app key}
@@ -44,6 +45,15 @@ func Handler(i *Issuer) http.Handler {
 			c, err = i.Card(r.Context(), id)
 		}
 		reply(w, 200, c, err)
+	})
+	mux.HandleFunc("POST /v1/cards/{id}/renew", func(w http.ResponseWriter, r *http.Request) {
+		var q RenewRequest
+		if !decode(w, r, &q) {
+			return
+		}
+		c, err := i.Renew(r.Context(), r.PathValue("id"), q)
+		w.Header().Set("cache-control", "no-store")
+		reply(w, 201, c, err)
 	})
 	mux.HandleFunc("PUT /v1/cards/{id}/status", func(w http.ResponseWriter, r *http.Request) {
 		var q struct{ Status string }
