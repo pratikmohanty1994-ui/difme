@@ -1,4 +1,14 @@
-> **Status 2026-11-22:** most rows are built and verified; see ADR-026 "Progress (2026-11-22, later)" and docs/next-session.md §3b for done/open per area.
+> **Status 2026-11-23:** most rows are built and verified; see ADR-026 "Progress (2026-11-22, later)" and
+> "Progress (2026-11-23)". Newly done:
+>
+> - MAC verify endpoints;
+> - app PIN reveal (JWE to the app's key);
+> - TC/AAC verification at clearing (card-issuer);
+> - LMK rotation drill with runbook;
+> - issuer RSA key under the module, and the DIFME-PERSO/1 bureau file;
+> - card renewal/reissue in card-issuer.
+>
+> **Blocked** (no public spec or reference): Mastercard AAV/SPA2, Amex AEVV, AES chip cryptograms.
 
 # Card cryptography plan (ADR-026)
 
@@ -21,7 +31,7 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 
 | Function | Source | Reference test | Caller |
 |---|---|---|---|
-| LMK from attested key release (file on tmpfs in the TEE), LMK rotation (`translateKeyFromOldLMK`) | jPOS | reload/rotate round trip | hsm startup |
+| LMK from attested key release (file on tmpfs in the TEE), LMK rotation (`translateKeyFromOldLMK`) | jPOS (declared) + ext (implemented: the software module lacks it) | **done**: `LmkRotationTest`, whole key store, same psec/pyemv/NIST results after rotation; runbook `docs/knowledge-base/ops-hsm-lmk-rotation.md` | hsm startup (`HSM_KEY_GENERATION` + `HSM_ROTATE`) |
 | Key ceremony: key from clear components, key check value (KCV) | jPOS | published KCVs | ops runbook |
 | Generate keys by type: CVK, PVK, ZPK, TPK/TMK, ZMK, BDK, IMK-AC/SMI/SMC/CVC3/DCVV, MAC, HMAC | jPOS | KCV + use in later phases | card-issuer, scheme-sim |
 | Export/import under a ZMK (key exchange with networks, acquirers) | jPOS | round trip, KCV | ops |
@@ -38,8 +48,8 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 | **CAVV full lifecycle (3-D Secure 2.x, DIFME as issuer):** the ACS builds the 20-byte CAVV (usage code, authentication result, second-factor result, CAVV key indicator, CVV output, unpredictable number, ATN, ECI) after a frictionless or challenge authentication; card-issuer verifies it at authorisation (CAVV from the ISO 8583 authentication data field): cryptographic check, ATN not reused, ECI matches the result code, CAVV not older than the allowed window, key indicator selects the CVK (so CAVV keys rotate without breaking in-flight authentications); verification result code returned to the network | jPOS (core) + ext (layout, ATN, rules) | psec for the core value; own vectors for the layout; replay, wrong-ECI, expired, wrong-key negatives | ACS (ADR-027: built, live-verified), card-issuer, scheme-sim |
 | **Attempts CAVV** (stand-in when the issuer's ACS is unavailable: generated with the network's key, verified by the network) | jPOS + ext | as above, network key | scheme-sim |
 | Network token cryptogram (TAVV, CAVV format) replacing the HMAC cryptogram | jPOS | psec + existing scheme-sim token tests | scheme-sim TSP (ADR-024) |
-| Mastercard AAV/UCAF (SPA2, HMAC-SHA-256) | ext | spec examples | card-issuer |
-| Amex AEVV, Discover/Diners CAVV, RuPay equivalents (scheme-specific layouts on the same CVV/HMAC cores) | ext | scheme test vectors where available, else own vectors | card-issuer (when DIFME issues on those schemes) |
+| Mastercard AAV/UCAF (SPA2, HMAC-SHA-256) | ext | **blocked**: specification and examples not public | card-issuer |
+| Amex AEVV, Discover/Diners CAVV, RuPay equivalents (scheme-specific layouts on the same CVV/HMAC cores) | ext | **blocked** (Amex AEVV: specification not public); others when DIFME issues on those schemes | card-issuer (when DIFME issues on those schemes) |
 | **dCVV2** (dynamic CVV2 for card-not-present: a 3-digit code that changes every N minutes, shown in the app or on a virtual/display card). Per-card key derived from an IMK-DCVV2 (EMV option A), CVV algorithm with the time-step counter (or an app counter) in place of expiry/service code; verify accepts the current and previous step, rejects reuse, and falls back to static CVV2 per card setting. Scheme dCVV2 profiles are not public, so the DIFME profile is documented here and swappable | ext (on jPOS key derivation) | independent Python implementation on psec/pyemv primitives; time-window, replay and wrong-key negatives | card-issuer (authorise), app (display) |
 
 ## Phase 2 — PIN
@@ -52,7 +62,7 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 | Visa PVV generate + verify (`calculatePVV`/`verifyPVV`) | jPOS | psec `generate_visa_pvv` | card-issuer online PIN |
 | IBM 3624 PIN + offset generate + verify | ext | psec `generate_ibm3624_pin/offset` | card-issuer (alternative method) |
 | PIN generation, PIN set/change from the app (PIN under a session key from the app, ISO 4), weak-PIN exclusion | jPOS + ext | psec | card-issuer, app |
-| PIN mailer / app reveal (PIN encrypted to the app's key, never clear outside the module) | ext | round trip | card-issuer |
+| PIN mailer / app reveal (PIN encrypted to the app's key, never clear outside the module) | ext | **done**: JWE RSA-OAEP-256 / ECDH-ES + A256GCM decrypted by jwcrypto (other key, tampering refused); Go ECDH live test | card-issuer `POST /v1/cards/{id}/pin/reveal` (one time, audited, rate limited) |
 | DUKPT 3DES (ANSI X9.24-1) PIN decryption from terminals | jPOS | X9.24-1 published vectors | acquirer / POS |
 | DUKPT AES (X9.24-3-2017) | ext | X9.24-3 published vectors | acquirer / newer POS |
 
@@ -63,8 +73,8 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 | ICC master key derivation option A/B (`deriveICCMasterKey`) | jPOS | pyemv `kd.derive_icc_mk_a/b` | card-issuer |
 | Session keys: common session key (EMV CSK), EMV2000 tree, Visa VSDC/UKIS, M/Chip | jPOS | pyemv `kd.derive_common_sk`, `derive_emv2000_tree_sk` | card-issuer |
 | ARQC verify + ARPC generate, method 1 and 2 (`verifyARQCGenerateARPC`) | jPOS | pyemv `cvn`: Visa CVN 10/18, Mastercard CVN 16/17/20/21 | card-issuer authorisation |
-| AES cryptograms (Visa CVN 22 and later AES chip profiles) | ext | pyemv `cvn.VisaCVN22` | card-issuer |
-| TC/AAC verification at clearing | jPOS | pyemv `ac.generate_ac` | card-issuer clearing |
+| AES cryptograms (Visa CVN 22 and later AES chip profiles) | ext | CVN 22 done (pyemv, TDES); AES chip profiles **blocked** (no public reference) | card-issuer |
+| TC/AAC verification at clearing | jPOS | **done**: pyemv TC/AAC vectors (Visa CVN 10/18, Mastercard 16/21) in `ChipClearingTest` and card-issuer `chip_test.go` | card-issuer clearing (`icc` = field 55 on `/clear`) |
 | **dCVV** (Visa contactless MSD, and track-2-equivalent data from MSD wallets): per-card key from IMK-DCVV, CVV algorithm over PAN, expiry, service code and the card's ATC (`calculatedCVV`/`verifydCVV`); issuer checks the ATC is newer than the last one seen and within a configured window | jPOS | independent Python implementation on psec/pyemv primitives; jPOS's own test vectors; ATC replay negatives | card-issuer (authorise MSD), scheme-sim (contactless test cards) |
 | Mastercard CVC3 (contactless magstripe mode) | jPOS | pyemv `cvv.generate_cvc3` | card-issuer |
 | Mobile wallet / tokenised chip (DSRP, cloud cryptograms) on network tokens | jPOS + ext | pyemv `cvn` | scheme-sim TSP |
@@ -78,13 +88,13 @@ TR-31 key blocks, no RSA signing for chip personalisation (recovery/verification
 | Script MAC (ISO 9797-1 alg 3), command data encryption | jPOS | pyemv `sm.generate_command_mac`, `encrypt_command_data` | card-issuer |
 | Offline PIN change / unblock script (PIN encrypted for the card, `encryptSecureMessagingPIN`) | jPOS | pyemv `sm.format_vis_pin_block`, `format_iso9564_2_pin_block` | card-issuer |
 | Block/unblock application, update limits (PUT DATA) scripts | jPOS | pyemv MAC vectors | card-issuer |
-| Data preparation: ICC keys (IMK → MK per card), iCVV, issuer RSA key pair, ICC RSA key pair + certificate signed by the issuer key | jPOS (derivation) + ext (RSA sign) | EMV Book 2 certificate format, round trip with jPOS's recovery | card-issuer (perso file for a card bureau) |
+| Data preparation: ICC keys (IMK → MK per card), iCVV, issuer RSA key pair, ICC RSA key pair + certificate signed by the issuer key | jPOS (derivation) + ext (RSA sign) | **done**: issuer key only as a TR-31 block; DIFME-PERSO/1 file (`PersoFile`) round trip: pyemv MKs, psec TR-31 and iCVV, jPOS Book 2 recovery | card-issuer `POST /v1/perso` (perso file for a card bureau) |
 
 ## Phase 5 — message security and terminals
 
 | Function | Source | Reference test | Caller |
 |---|---|---|---|
-| ISO 8583 MAC (ISO 9797-1 alg 1 and 3, CMAC AES) generate + verify | jPOS (DES), ext (CMAC) | pyemv `mac.mac_iso9797_3`; NIST CMAC vectors | scheme-sim links |
+| ISO 8583 MAC (ISO 9797-1 alg 1 and 3, CMAC AES) generate + verify | jPOS (DES), ext (CMAC) | **done** (alg 3 and CMAC; verify in constant time): psec/pyemv retail MAC, NIST CMAC vectors | scheme-sim links |
 | Terminal key loading (TMK → TPK/TAK), ATM remote key load | jPOS + ext (TR-31) | psec tr31 | acquirer / ATM driver |
 | Data encryption for track/PAN (`encryptData`/`decryptData`), P2PE on terminals | jPOS | round trip | acquirer |
 

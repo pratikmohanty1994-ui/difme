@@ -455,6 +455,46 @@ Full scope (all card cryptography: key management, CNP, PIN, chip, issuer script
 with the reference test and caller for each function and jPOS's gaps (no AES, IBM 3624 offset, TR-31, RSA signing):
 [card-cryptography-plan.md](card-cryptography-plan.md).
 
+**Progress (2026-11-23):** 64 tests in `services/hsm`, plus card-issuer callers; every value is checked against an
+independent reference, with negative cases.
+
+- **MAC verify.** `/v1/mac/retail/verify` (ISO 9797-1 alg 3) and `/v1/mac/cmac/verify` compare the MAC in the module
+  in constant time (`MessageDigest.isEqual`, truncated MACs allowed). References: psec/pyemv retail MAC, NIST
+  SP 800-38B.
+- **App PIN reveal.** `/v1/pin/reveal` returns the PIN only as a JWE to the app's key: RSA-OAEP-256 or ECDH-ES (P-256),
+  with A256GCM. Reference: jwcrypto decrypts it, and refuses another key and a tampered token. card-issuer
+  `POST /v1/cards/{id}/pin/reveal` reveals once, keeping a generated PIN as an opaque ISO 4 block until then. It is
+  audited and limited to 5 attempts per card per hour.
+- **TC/AAC at clearing.** card-issuer parses field 55 of a presentment (Visa CVN 10/18/22, Mastercard CVN 16/17/20/21)
+  and verifies the cryptogram with `/v1/arqc/verify`. An AAC, or a cryptogram that does not verify, is not posted: the
+  authorisation stays held and is marked. Reference: pyemv TC/AAC vectors.
+- **Renewal and reissue** in card-issuer:
+  - same or new PAN by product setting, and always a new PAN for lost/stolen;
+  - CVV2 from the module, the vault updated;
+  - the old card or old expiry stays valid until the new card's first use or the grace date;
+  - verified live through ISO adapter → scheme-sim → card-issuer (Postgres vault).
+- **LMK rotation.** jPOS's software module declares `translateKeyFromOldLMK` but does not implement it; DIFME now
+  implements it. `KeyRelease` rotates generation n-1 into n (`difme/hsm/lmk-gn`…). The new LMK/KBPK are created in
+  the module and stored only through the create-only `hsm-bootstrap` role. Test: every key family gives the same
+  psec/pyemv/NIST results after rotation. Runbook: `docs/knowledge-base/ops-hsm-lmk-rotation.md`.
+- **Issuer RSA key and perso file.**
+  - The issuer RSA key exists only as a TR-31 block under the KBPK (bootstrap `issuer-rsa=RSA-EMV/1408`).
+  - The DIFME-PERSO/1 bureau file (`PersoFile`, `/v1/perso/batch`, card-issuer `POST /v1/perso`) holds the ICC
+    master keys and the ICC RSA key as TR-31 B blocks under the bureau KEK, the ICC certificate signed in the module,
+    and the iCVV.
+  - Round trip: pyemv option A keys, psec TR-31 unwrap, psec iCVV, jPOS Book 2 recovery.
+
+**Blocked** (no public specification or reference vectors): Mastercard AAV/SPA2, Amex AEVV and AES chip cryptograms
+(beyond pyemv's TDES CVN 22).
+
+**Still open:**
+
+- the KBS/OpenBao round trip of the rotation (first cluster drill);
+- chip ATC replay tracking at clearing;
+- scheme-sim sending field 55 at clearing;
+- the app moving from `appPinBlock` to the reveal endpoint, after which `appPinBlock` is removed from
+  `/v1/cards/{id}/pin/generate` (still used by `ci/card-issuer-live.sh`).
+
 **Keys only in the (emulated) TEE — enforced on the cluster (2026-11-22, later):** the security module has its own
 KBS client (`KbsClient`: protocol 0.4.0, sample TEE evidence with report data = SHA-384 of the RFC 8785 runtime data,
 RSA-OAEP-256 + A256GCM JWE) and starts only through `KeyRelease`: attest, fetch `difme/hsm/{lmk,kbpk,keys}` into
