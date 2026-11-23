@@ -23,6 +23,7 @@ spec:
             - { name: HUB_ATTESTATION_URL, value: "http://attestation-verifier.security.svc:8443" }   # h2c; mTLS from the mesh
             - { name: SPIFFE_ENDPOINT_SOCKET, value: "unix:///spiffe-workload-api/spire-agent.sock" }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://alloy.observability.svc:4317" }
+            - { name: HUB_TELEMETRY_OTLP_URL, value: "http://alloy.observability.svc:4318/v1/logs" }   # device telemetry relay → Loki
             - { name: PYROSCOPE_URL, value: "http://pyroscope.observability.svc:4040" }
             - { name: HUB_WORKER_THREADS, value: "2" }   # process-level memory: 2 runtime workers, not one per node CPU
           readinessProbe: { httpGet: { path: /healthz, port: 9100 }, periodSeconds: 10 }

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "PDF §5.2 QUIC gateway: edge devices submit payments over QUIC; the hub forwards them to the core over gRPC and relays outcomes to live dashboards (SSE)."
+description = "PDF §5.2 QUIC gateway: edge devices submit payments over QUIC; the hub forwards them to the core over gRPC, relays device telemetry, tracks sessions and feeds live dashboards (SSE)."
 
 [dependencies]
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
@@ -16,10 +16,27 @@ tonic-prost = "0.14"
 prost = "0.14"
 axum = "0.8"
 tokio-stream = { version = "0.1", features = ["sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# OTLP/HTTP client for the telemetry relay; all three are already in the tree through tonic and axum.
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+
+[dev-dependencies]
+tokio = { version = "1.54", features = ["io-util"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 
 [build-dependencies]
 tonic-prost-build = "0.14"
 protoc-bin-vendored = "3"
+
+# The local QUIC relay (scenario D) is a second crate in this workspace: one lock file, one target dir, one image.
+# default-members: a plain `cargo build/test` here (CI, the image build) covers both.
+[workspace]
+members = [".", "quic-relay"]
+default-members = [".", "quic-relay"]
 
 [profile.release]
 lto = "thin"

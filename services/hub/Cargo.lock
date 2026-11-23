@@ -265,15 +265,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 
 [[package]]
+name = "difme-quic-relay"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "difme-quinn-hub",
+ "prost",
+ "quinn",
+ "rustls",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+]
+
+[[package]]
 name = "difme-quinn-hub"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "prost",
  "protoc-bin-vendored",
  "quinn",
  "rcgen",
  "rustls",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tonic",
