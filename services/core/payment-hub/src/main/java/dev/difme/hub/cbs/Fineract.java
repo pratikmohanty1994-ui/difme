@@ -112,9 +112,31 @@ public final class Fineract {
         if (known != null) return known;
         JsonNode a = get("api/v1/savingsaccounts/external-id/" + enc(name));
         if (a == null) a = open(name);
+        interopIdentifier(name);
         Account acc = new Account(a.path("id").asLong(), a.path("clientId").asLong(), officeOf(a), name, 0);
         accounts.put(name, acc);
         return acc;
+    }
+
+    /**
+     * Registers the account's interop identifier ACCOUNT_ID = its DIFME name (the external id) if missing, so Mifos PH-EE,
+     * which resolves every party through Fineract's interoperation API, can address the same account (ADR-022, D3).
+     * Also backfills accounts opened before. Fineract refuses a second registration (403): fine if it now exists.
+     */
+    private void interopIdentifier(String name) {
+        String path = "api/v1/interoperation/parties/ACCOUNT_ID/" + enc(name);
+        if (get(path) != null) return;
+        try {
+            post(path, JSON.createObjectNode().put("accountId", name), null);
+        } catch (Rejected e) {
+            if (get(path) == null) throw e;
+        }
+    }
+
+    /** The account a PH-EE party identifier ACCOUNT_ID resolves to (its external id), or null. */
+    public String interopAccount(String name) {
+        JsonNode n = get("api/v1/interoperation/parties/ACCOUNT_ID/" + enc(name));
+        return n == null ? null : n.path("accountId").asText(null);
     }
 
     /** Current balance in minor units. */
