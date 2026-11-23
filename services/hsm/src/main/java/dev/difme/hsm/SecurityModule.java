@@ -188,6 +188,11 @@ public final class SecurityModule {
         return ext().translateZpkToIso4(pinUnderZpk, pan, zpk, aesPinKey);
     }
 
+    /** One-time PIN reveal: the ISO 4 block under the AES PIN key, re-encrypted inside the module to the app's public key (JWE). */
+    public String revealPinToApp(byte[] iso4, String pan, String aesPinKey, byte[] appSpki) throws SMException {
+        return ext().revealPinToApp(iso4, pan, aesPinKey, appSpki);
+    }
+
     public byte[] aesCmac(String macKey, byte[] data) throws SMException { return ext().aesCmac(macKey, data); }
 
     /** Sets the AES key block protection key (from the attested key release). */

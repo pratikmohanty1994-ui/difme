@@ -59,7 +59,8 @@ func NewPGStore(ctx context.Context, dsn string, v Vault) (*PGStore, error) {
 
 type storedCard struct {
 	Card
-	PVV string `json:"pvv,omitempty"`
+	PVV        string `json:"pvv,omitempty"`
+	PendingPIN string `json:"pendingPin,omitempty"` // ISO 4 block under the security module's PIN key (opaque here)
 }
 
 func (s *PGStore) PutCard(ctx context.Context, c Card) error {
@@ -71,7 +72,7 @@ func (s *PGStore) PutCard(ctx context.Context, c Card) error {
 	if err != nil {
 		return err
 	}
-	doc, _ := json.Marshal(storedCard{Card: c, PVV: c.PVV})
+	doc, _ := json.Marshal(storedCard{Card: c, PVV: c.PVV, PendingPIN: c.PendingPIN})
 	_, err = s.db.Exec(ctx, `INSERT INTO cards (id, pan_index, pan_sealed, doc) VALUES ($1,$2,$3,$4)
 ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc`, c.ID, idx, sealed, doc)
 	return err
@@ -91,7 +92,7 @@ func (s *PGStore) load(ctx context.Context, where string, arg string) (Card, err
 		return Card{}, err
 	}
 	c := sc.Card
-	c.PVV = sc.PVV
+	c.PVV, c.PendingPIN = sc.PVV, sc.PendingPIN
 	if c.PAN, err = s.vault.Open(ctx, id, sealed); err != nil {
 		return Card{}, err
 	}

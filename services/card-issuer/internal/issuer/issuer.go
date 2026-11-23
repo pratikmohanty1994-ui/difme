@@ -41,6 +41,7 @@ type Card struct {
 	Holder     string    `json:"holder"`
 	Channels   []string  `json:"channels,omitempty"` // 3-D Secure channels: sms, email, app
 	PVV        string    `json:"-"`                  // PIN verification value (from the security module), when a PIN is set
+	PendingPIN string    `json:"-"`                  // a generated PIN awaiting its one-time reveal: ISO 4 block under the module's PIN key
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
@@ -81,6 +82,9 @@ type HSM interface {
 	// block under the app's AES key (shown once in the app).
 	GeneratePIN(ctx context.Context, pan string) (zpkBlock, appBlock string, err error)
 	PVV(ctx context.Context, pan, pinBlockZPK string) (string, error)
+	// RevealPIN re-encrypts a pending PIN (ISO 4 block under the module's PIN key) inside the module to the app's
+	// public key (X.509 SubjectPublicKeyInfo, hex): a JWE only the app can open. ErrInvalid for an unusable app key.
+	RevealPIN(ctx context.Context, pan, iso4Hex, appKeyHex string) (string, error)
 	VerifyPVV(ctx context.Context, pan, pinBlockZPK, pvv string) (bool, error)
 }
 
@@ -106,10 +110,16 @@ type Issuer struct {
 	store  Store
 	now    func() time.Time
 	mu     sync.Mutex
+	// Audit records security-relevant events (PIN reveal); never PINs, PANs in clear or key material.
+	Audit  func(ctx context.Context, event string, attrs ...any)
+	reveal *limiter
 }
 
 func New(bin string, l Ledger, h HSM, s Store) *Issuer {
-	return &Issuer{BIN: bin, ledger: l, hsm: h, store: s, now: time.Now}
+	return &Issuer{BIN: bin, ledger: l, hsm: h, store: s, now: time.Now, reveal: newLimiter(revealAttempts, revealWindow),
+		Audit: func(ctx context.Context, event string, attrs ...any) {
+			slog.InfoContext(ctx, "audit", append([]any{"event", event}, attrs...)...)
+		}}
 }
 
 // IssueRequest opens a card on an existing Fineract account.
@@ -189,12 +199,13 @@ func (i *Issuer) SetPIN(ctx context.Context, id, iso4Hex string) error {
 	if err != nil {
 		return err
 	}
-	c.PVV = pvv
+	c.PVV, c.PendingPIN = pvv, "" // a PIN the cardholder chose replaces any generated one not yet revealed
 	return i.store.PutCard(ctx, c)
 }
 
-// GeneratePIN issues a random PIN (card issuance or PIN reset): stores its PVV and returns the PIN as an ISO 9564
-// format 4 block under the app's key, for one-time display in the app.
+// GeneratePIN issues a random PIN (card issuance or PIN reset): stores its PVV and keeps the PIN, as an ISO 9564
+// format 4 block under the security module's PIN key, for one one-time reveal to the app (RevealPIN). The block is
+// also returned for existing callers (opaque outside the module); new app flows use RevealPIN.
 func (i *Issuer) GeneratePIN(ctx context.Context, id string) (string, error) {
 	c, err := i.store.Card(ctx, id)
 	if err != nil {
@@ -207,6 +218,7 @@ func (i *Issuer) GeneratePIN(ctx context.Context, id string) (string, error) {
 	if c.PVV, err = i.hsm.PVV(ctx, c.PAN, zpkBlock); err != nil {
 		return "", err
 	}
+	c.PendingPIN = appBlock
 	return appBlock, i.store.PutCard(ctx, c)
 }
 

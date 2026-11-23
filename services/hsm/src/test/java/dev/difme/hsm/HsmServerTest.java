@@ -136,6 +136,19 @@ class HsmServerTest {
     }
 
     @Test
+    void pinRevealOverHttp() throws Exception {
+        java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("EC");
+        g.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));
+        String app = ISOUtil.hexString(g.generateKeyPair().getPublic().getEncoded());
+        // psec encipher_pinblock_iso_4(AES, "1234", PAN) (as in pinAndChipOverHttp)
+        var r = post("/v1/pin/reveal", Map.of("pan", "4375510000000001", "pinBlock", "BCE34C548E471902740621E5DC1C6101", "appKey", app));
+        assertEquals(200, r.statusCode());
+        org.junit.jupiter.api.Assertions.assertTrue(r.body().matches("\\{\"jwe\":\"[A-Za-z0-9_-]+\\.\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\"}"), r.body());
+        assertEquals(400, post("/v1/pin/reveal", Map.of("pan", "4375510000000001", "pinBlock", "BCE34C548E471902740621E5DC1C6101", "appKey", "3000")).statusCode());
+        assertEquals(500, post("/v1/pin/reveal", Map.of("pan", "4375510000000019", "pinBlock", "BCE34C548E471902740621E5DC1C6101", "appKey", app)).statusCode());
+    }
+
+    @Test
     void rejectsBadInputAndUnknownPaths() throws Exception {
         assertEquals(400, post("/v1/cavv", Map.of("pan", "43755100000000x1", "upn", "1234", "authrc", "0", "sfarc", "00")).statusCode());
         assertEquals(400, post("/v1/cavv", Map.of("pan", "4375510000000001")).statusCode());

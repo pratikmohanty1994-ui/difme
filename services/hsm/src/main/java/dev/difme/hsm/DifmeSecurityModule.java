@@ -143,6 +143,26 @@ public class DifmeSecurityModule extends JCESecurityModule {
         return Iso4.encipher(aes(aesPinKeyBlock, "P0"), pin, pan);
     }
 
+    /**
+     * One-time PIN reveal: a PIN held as an ISO 9564 format 4 block under the AES PIN key (as {@link #generatePin}
+     * returns it) is deciphered here and leaves only as a JWE encrypted to the app's public key ({@link AppPinReveal}).
+     * {@code appSpki}: the app's X.509 SubjectPublicKeyInfo (RSA 2048+ or EC P-256).
+     */
+    public String revealPinToApp(byte[] iso4, String pan, String aesPinKeyBlock, byte[] appSpki) throws SMException {
+        java.security.PublicKey app = AppPinReveal.appKey(appSpki); // IllegalArgumentException: caller's error
+        byte[] k = aes(aesPinKeyBlock, "P0");
+        byte[] pin = null;
+        try {
+            pin = Iso4.decipher(k, iso4, pan).getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            return AppPinReveal.encrypt(app, pin, pan.substring(pan.length() - 4));
+        } catch (IllegalArgumentException | java.security.GeneralSecurityException e) {
+            throw new SMException("PIN reveal failed");
+        } finally {
+            java.util.Arrays.fill(k, (byte) 0);
+            if (pin != null) java.util.Arrays.fill(pin, (byte) 0);
+        }
+    }
+
     /** AES-CMAC (NIST SP 800-38B) with a MAC key block, e.g. for ISO 8583 / ISO 20022 message authentication. */
     public byte[] aesCmac(String macKeyBlock, byte[] data) throws SMException {
         return Tr31.cmac(aes(macKeyBlock, "M7"), data);

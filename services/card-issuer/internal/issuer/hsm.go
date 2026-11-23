@@ -88,6 +88,14 @@ func (h *HSMClient) VerifyPVV(ctx context.Context, pan, block, pvv string) (bool
 	return v == "true", err
 }
 
+func (h *HSMClient) RevealPIN(ctx context.Context, pan, iso4Hex, appKeyHex string) (string, error) {
+	v, err := h.call(ctx, "/v1/pin/reveal", map[string]string{"pan": pan, "pinBlock": iso4Hex, "appKey": appKeyHex}, "jwe")
+	if err != nil && strings.Contains(err.Error(), "HTTP 400") {
+		return "", fmt.Errorf("%w: app key not accepted by the security module", ErrInvalid)
+	}
+	return v, err
+}
+
 // Index, Seal and Open make HSMClient the card vault (keys card-index and card-vault in the security module).
 func (h *HSMClient) Index(ctx context.Context, pan string) (string, error) {
 	return h.call(ctx, "/v1/hmac", map[string]string{"key": "card-index", "data": hex.EncodeToString([]byte("pan|" + pan))}, "mac")

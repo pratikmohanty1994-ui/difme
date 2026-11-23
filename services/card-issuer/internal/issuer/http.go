@@ -14,6 +14,7 @@ import (
 //	PUT  /v1/cards/{id}/status           {"status":"BLOCKED"}
 //	POST /v1/cards/{id}/pin              {"pinBlock":"<ISO 9564 format 4, hex>"} (app PIN set)
 //	POST /v1/cards/{id}/pin/generate     random PIN (issuance / reset): {"appPinBlock": ISO 4 under the app key}
+//	POST /v1/cards/{id}/pin/reveal       {"appPublicKey":"<SPKI, base64>"}: the generated PIN once, as a JWE to the app's key
 //	GET  /v1/cards/{id}/dcvv2            the current dynamic CVV2 (app display)
 //	GET  /v1/cards/{id}/open-to-buy
 //	GET  /v1/cards/{pan}  (card management lookup for the ACS: expiry, status, channels; the path segment is a PAN)
@@ -64,6 +65,17 @@ func Handler(i *Issuer) http.Handler {
 	mux.HandleFunc("POST /v1/cards/{id}/pin/generate", func(w http.ResponseWriter, r *http.Request) {
 		v, err := i.GeneratePIN(r.Context(), r.PathValue("id"))
 		reply(w, 200, map[string]string{"appPinBlock": v}, err)
+	})
+	mux.HandleFunc("POST /v1/cards/{id}/pin/reveal", func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			AppPublicKey string `json:"appPublicKey"`
+		}
+		if !decode(w, r, &q) {
+			return
+		}
+		v, err := i.RevealPIN(r.Context(), r.PathValue("id"), q.AppPublicKey)
+		w.Header().Set("cache-control", "no-store")
+		reply(w, 200, map[string]string{"jwe": v}, err)
 	})
 	mux.HandleFunc("GET /v1/cards/{id}/dcvv2", func(w http.ResponseWriter, r *http.Request) {
 		v, err := i.DynamicCVV2(r.Context(), r.PathValue("id"))
@@ -129,6 +141,10 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 
 func reply(w http.ResponseWriter, ok int, v any, err error) {
 	switch {
+	case errors.Is(err, ErrRateLimited):
+		writeJSON(w, 429, map[string]string{"error": err.Error()})
+	case errors.Is(err, ErrNoPendingPIN):
+		writeJSON(w, 410, map[string]string{"error": err.Error()})
 	case errors.Is(err, ErrNotFound):
 		writeJSON(w, 404, map[string]string{"error": "not found"})
 	case errors.Is(err, ErrInvalid):

@@ -186,6 +186,8 @@ public final class HsmServer {
                 out.put("pinBlock", g[0]);
                 out.put("appPinBlock", g[1]);
             }
+            case "/v1/pin/reveal" -> out.put("jwe", hsm.revealPinToApp(h(in, "pinBlock"), d(in, "pan"), keys.aes(in.getOrDefault("aesKey", "aes-pin")),
+                    h(in, "appKey"))); // the PIN encrypted to the app's public key (SPKI, hex); never clear outside the module
             case "/v1/pin/dukpt-aes-to-zpk" -> { // AES DUKPT terminal PIN block (ISO 4) by its 24-hex KSN, to ISO 0 under a ZPK
                 byte[] ksn = h(in, "ksn");
                 AesDukpt.checkKsn(ksn);

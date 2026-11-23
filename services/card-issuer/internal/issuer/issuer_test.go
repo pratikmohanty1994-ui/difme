@@ -81,6 +81,13 @@ func (fakeHSM) VerifyPVV(_ context.Context, _, block, pvv string) (bool, error) 
 	return "P"+block[len(block)-4:] == pvv, nil
 }
 
+func (fakeHSM) RevealPIN(_ context.Context, _, iso4, appKey string) (string, error) {
+	if !strings.HasPrefix(appKey, "30") || len(appKey) < 40 {
+		return "", ErrInvalid
+	}
+	return "jwe(" + iso4 + ")", nil
+}
+
 func setup(t *testing.T) (*Issuer, *fakeLedger) {
 	l := newLedger()
 	return New("437551", l, fakeHSM{}, NewMemStore()), l
