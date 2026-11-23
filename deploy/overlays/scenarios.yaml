@@ -1,0 +1,55 @@
+# Deployment scenarios A–D (README row 13, ADR-028). deploy/overlays/render.py turns this file and
+# deploy/argocd/catalog.yaml into one Kustomize overlay per scenario (site): the selected Argo CD Applications, extra
+# Helm value files per component (values/), replaced paths (components/), and, for the hybrid scenario, the Services
+# that cross between the two clusters (Cilium ClusterMesh global services). Edit this file, then run render.py.
+#
+# profiles: catalog profiles to include ("all" = every component); include / exclude: single components by name.
+# values: component -> extra value files (appended after the component's own values.yaml).
+# paths: component -> replacement source path (path components).
+# export / import: Services this site provides to / uses from the other site (hybrid): ns/name with selector and ports.
+scenarios:
+  scenario-a-onprem:
+    description: "A: one on-premises cluster (RKE2 CIS on bare metal or VMs, deploy/fleet/rke2-config.yaml), all components, MetalLB in BGP mode, DNS through the site's RFC 2136 server."
+    profiles: all
+    values:
+      cilium: [cilium-full-ebpf.yaml]
+      external-dns: [external-dns-rfc2136.yaml]
+    paths:
+      metallb-config: deploy/overlays/components/metallb-bgp
+  scenario-b-cloud:
+    description: "B: one cluster on cloud VMs (infra/ OpenTofu, RKE2), all components; the cloud's load balancer instead of MetalLB."
+    profiles: all
+    exclude: [metallb, metallb-config]
+    values:
+      cilium: [cilium-full-ebpf.yaml]
+      external-dns: [external-dns-rfc2136.yaml]
+  scenario-c-hybrid/onprem:
+    description: "C, on-premises site: every stateful and regulated tier (ledger, card security and the hsm, CBS, fraud, streaming, lakehouse, identity) stays on premises."
+    profiles: [base, security, core, streaming, streaming-extra, rails, fraud, process, lakehouse, lakehouse-extra, ml, observability, platform-ops]
+    exclude: [discountai-pwa]
+    values:
+      cilium: [cilium-full-ebpf.yaml, cilium-mesh-onprem.yaml]
+      external-dns: [external-dns-rfc2136.yaml]
+    paths:
+      metallb-config: deploy/overlays/components/metallb-bgp
+    export: &crossing
+      - { ns: security, name: keycloak, selector: { app: keycloak }, ports: [{ name: http, port: 8080 }] }
+      - { ns: security, name: attestation-verifier, selector: { app: attestation-verifier }, ports: [{ name: https, port: 8443 }] }
+      - { ns: core-platform, name: quarkus-cmd-svc, selector: { app: quarkus-cmd-svc }, ports: [{ name: http, port: 8080 }, { name: grpc, port: 9000 }] }
+  scenario-c-hybrid/cloud:
+    description: "C, cloud site: the stateless edge tier (QUIC hub for edge devices, back office, DiscountAI PWA, ingress) and its own observability; calls the on-premises services over ClusterMesh."
+    profiles: [base, hub, backoffice, observability]
+    include: [discountai-pwa, istio-base, istiod, istio-cni, ztunnel, istio-config]
+    exclude: [metallb, metallb-config, canary-gates]   # canary gates drive the core services' rollouts (on premises)
+    values:
+      cilium: [cilium-full-ebpf.yaml, cilium-mesh-cloud.yaml]
+      external-dns: [external-dns-rfc2136.yaml]
+    import: *crossing
+  scenario-d-quic-chain:
+    description: "D: QUIC proxy chain. Edge devices reach a local QUIC relay on the branch/site network (services/hub/quic-relay, run as a binary or container there), which forwards to the cluster's QUIC hub; the cluster runs the core, the hub and identity."
+    profiles: [base, security, core, hub, observability]
+    values:
+      cilium: [cilium-full-ebpf.yaml]
+      external-dns: [external-dns-rfc2136.yaml]
+    paths:
+      metallb-config: deploy/overlays/components/metallb-bgp

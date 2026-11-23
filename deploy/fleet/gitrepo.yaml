@@ -4,7 +4,7 @@ metadata: { name: difme, namespace: fleet-default }
 spec:
   repo: https://github.com/pratikmohanty1994-ui/difme
   branch: main
-  paths: [deploy/argocd]
+  paths: [deploy/fleet/bundle]   # one root Application per cluster (bundle/fleet.yaml); Argo CD syncs the overlay
   targets:
     - { name: region-a, clusterSelector: { matchLabels: { difme/region: region-a, difme/role: primary } } }
     - { name: region-b, clusterSelector: { matchLabels: { difme/region: region-b, difme/role: replica } } }

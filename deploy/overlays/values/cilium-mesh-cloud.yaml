@@ -1,0 +1,10 @@
+# Scenario C, cloud site: Cilium ClusterMesh member 2 (see cilium-mesh-onprem.yaml).
+cluster: { name: difme-cloud, id: 2 }
+ipam: { operator: { clusterPoolIPv4PodCIDRList: ["10.48.0.0/12"], clusterPoolIPv4MaskSize: 23 } }
+clustermesh:
+  useAPIServer: true
+  apiserver: { service: { type: LoadBalancer } }
+  config:
+    enabled: true
+    clusters:
+      - { name: difme-onprem, port: 2379, address: clustermesh.difme-onprem.internal }

@@ -667,3 +667,33 @@ merchant-initiated flows; persistence of pending challenges (in memory today: a 
 OTP delivery through the notification service; container image and rails manifests. Known FRM caveat: the
 authentication and the later payment are both reported to Tazama, so velocity rules count the purchase twice; fix
 with a separate network map / transaction type for authentications.
+
+## ADR-028 — Deployment scenarios A–D as generated overlays (2026-11-23)
+
+**Context.** PDF §13 names four deployment scenarios: A on-premises, B cloud, C hybrid, D QUIC proxy chain. Fleet
+already pointed at per-region overlays that did not exist (and from a bundle path that could not reach them).
+
+**Decision.**
+- **Overlays:** each scenario (each site of C) is a Kustomize overlay of the generated Argo CD Applications.
+  `deploy/overlays/render.py` produces it from `scenarios.yaml`: profile/component selection, extra Helm value files,
+  replaced source paths, and the cross-site Services. Verify checks that the overlays are current and that they build.
+- **Fleet:** distributes only a root Application per cluster (`deploy/fleet/bundle`), and Argo CD syncs the overlay
+  from git, so nothing outside the bundle has to be copied into it.
+- **Real-cluster settings:** the full eBPF data path, MetalLB BGP on premises, external-dns through RFC 2136
+  (the site's own DNS, no cloud DNS vendor).
+- **Hybrid (C):**
+  - All state and regulated data stay on premises; the cloud runs the stateless edge tier.
+  - Three Services cross (Keycloak, attestation verifier, command service) as Cilium ClusterMesh global services:
+    a `-x` ClusterIP copy on the providing side; a selector-less global stub plus an ExternalName on the using side.
+  - Cilium 1.17 has no MCS-API and global services can't be headless; this pattern needs neither and leaves the
+    original manifests untouched.
+- **Machines:**
+  - OpenTofu (MPL-2.0; Terraform is BSL): a provider-neutral RKE2 node module (cloud-init from the repo's CIS config,
+    with a `tofu test`), a Hetzner Cloud root for B, and a root for C's cloud site that adds a WireGuard gateway and
+    routes.
+  - The gateway generates its WireGuard key at first boot; no key is in the repo.
+- **D:** the local QUIC relay ships in the hub image (`services/hub/quic-relay`).
+
+**Consequences.** Guide: `docs/deployment-scenarios.md`. Nothing has been brought up on a real site yet: BGP
+peering, the ClusterMesh connection and the WireGuard routes are checked at the first real bring-up. Cross-site
+authorisation relies on Keycloak tokens, because Istio ambient identities are per cluster.

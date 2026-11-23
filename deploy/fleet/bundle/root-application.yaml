@@ -1,0 +1,14 @@
+# The cluster's root: all of its scenario's Applications (the region kustomizations set the path).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: difme-root, namespace: argocd }
+spec:
+  project: difme
+  destination: { server: https://kubernetes.default.svc, namespace: argocd }
+  source:
+    repoURL: https://github.com/pratikmohanty1994-ui/difme.git
+    targetRevision: main
+    path: deploy/overlays/scenario-a-onprem
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    retry: { limit: 5, backoff: { duration: 10s, factor: 2, maxDuration: 3m } }

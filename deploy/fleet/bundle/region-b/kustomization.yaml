@@ -1,0 +1,6 @@
+# region-b (replica: cloud VMs).
+resources: [../root-application.yaml]
+patches:
+  - target: { group: argoproj.io, kind: Application, name: difme-root }
+    patch: |
+      - { op: replace, path: /spec/source/path, value: deploy/overlays/scenario-b-cloud }

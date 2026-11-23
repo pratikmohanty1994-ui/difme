@@ -8,7 +8,8 @@ kind: L2Advertisement
 metadata: { name: codespace-l2, namespace: ingress-system }
 spec: { ipAddressPools: [difme-pool] }
 ---
-# Scenario A (on-prem): BGP mode announcing the VIP to the upstream router. Enabled by overlays/onprem.
+# Codespace: L2. Real on-premises sites (scenarios A, C on-premises, D) replace this component with
+# deploy/overlays/components/metallb-bgp (pool, BGP peer and advertisement for the site's router).
 apiVersion: metallb.io/v1beta1
 kind: BGPAdvertisement
 metadata: { name: onprem-bgp, namespace: ingress-system, labels: { difme/scenario: onprem } }

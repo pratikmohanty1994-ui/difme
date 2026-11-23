@@ -1,0 +1,3 @@
+# Scenarios A, C (on-premises) and D: MetalLB announces service addresses to the site's router over BGP instead of the
+# Codespace's L2 mode. Set the address range, ASNs and peer for the site.
+resources: [bgp.yaml]

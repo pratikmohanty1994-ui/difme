@@ -1,0 +1,10 @@
+# Real clusters (RKE2 on VMs or bare metal, kube-proxy disabled in deploy/fleet/rke2-config.yaml): the full eBPF data
+# path the Codespace values switch off (PDF §4.6, ADR-013). api.difme.internal must resolve to the API server's load
+# balancer (or VIP) on every node.
+kubeProxyReplacement: true
+k8sServiceHost: api.difme.internal
+k8sServicePort: 6443
+bpf:
+  masquerade: true
+  hostLegacyRouting: false
+socketLB: { enabled: true }

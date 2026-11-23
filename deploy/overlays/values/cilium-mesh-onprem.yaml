@@ -1,0 +1,12 @@
+# Scenario C, on-premises site: Cilium ClusterMesh member 1. Pod ranges must not overlap between the two clusters.
+# Both clusters share one Cilium CA (install with the same cilium-ca Secret) so the mesh's mutual TLS verifies; the
+# cloud site's clustermesh-apiserver is reached at clustermesh.difme-cloud.internal (its LoadBalancer address in DNS).
+cluster: { name: difme-onprem, id: 1 }
+ipam: { operator: { clusterPoolIPv4PodCIDRList: ["10.32.0.0/12"], clusterPoolIPv4MaskSize: 23 } }
+clustermesh:
+  useAPIServer: true
+  apiserver: { service: { type: LoadBalancer } }
+  config:
+    enabled: true
+    clusters:
+      - { name: difme-cloud, port: 2379, address: clustermesh.difme-cloud.internal }

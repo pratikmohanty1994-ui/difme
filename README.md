@@ -53,7 +53,7 @@ Strict OSI licensing applies. Where the PDF names a non-OSI or paid component, t
 | 4.5 | Tekton | Tekton pipelines (on-cluster mirror of GitHub Actions) | `deploy/platform/tekton-pipelines/tekton/` | ✅ verified on a cluster |
 | 4.6 | Cilium eBPF kube-proxy replacement, Hubble | Same (k3d with flannel disabled) | `deploy/platform/kube-system/cilium/` | ✅ verified on a cluster |
 | 5.1 | Vue 3 + Rust (uniffi) app → **Tauri 2 mobile** (ADR-005), **Wasmtime** WASI P2 components (ADR-016) + ONNX, automerge-rs CRDT, StrongBox/KeyMint/Blake3, HCE HostApduService, WorkManager | Same | `edge/` | ❌ not started |
-| 5.2 | Quinn hub, session manager, telemetry relay, tonic gRPC bridge, live dashboard relay, rustls+SPIRE, Pyroscope Rust | Same | `services/hub/` | 🟡 partial (hub service; session manager, relays, gRPC bridge to do) |
+| 5.2 | Quinn hub, session manager, telemetry relay, tonic gRPC bridge, live dashboard relay, rustls+SPIRE, Pyroscope Rust | Same | `services/hub/` | 🟡 hub, session manager, telemetry and dashboard relays, gRPC bridge and QUIC relay built and tested; not yet run on a cluster |
 | 5.3 | quarkus-cmd-svc, qry-svc, saga-orchestrator, consistency-router, rate-limiter, rehydration-svc | Same, on **Java 25 LTS** (ADR-005) | `services/core/` | ✅ verified on a cluster |
 | 5.4 | Hibernate 6 + Panache, outbox, MyBatis, Caffeine L1, Redisson JCache L2 | Same (L2 on Valkey) | `services/core/` | ✅ verified on a cluster |
 | 5.5 | Event broker (Kafka API) | **Apache Kafka 4 (KRaft)** via Strimzi — OSI replacement | `deploy/platform/streaming/` | ✅ verified on a cluster |
@@ -85,7 +85,7 @@ Strict OSI licensing applies. Where the PDF names a non-OSI or paid component, t
 | 10 | Hosted load-test execution | **k6-operator** (self-hosted) — free replacement | `tests/perf/`, `deploy/platform/k6/` | ✅ verified on a cluster |
 | 11.1 | RATS RFC 9334 (TEE, EAT, verifier) | **Veraison** verifier + software-simulated TEE in the emulator | `services/attestation/` | 🟡 partial (verifier; TEE belongs to the edge app) |
 | 11.2 | Syft SBOM, Harbor, GUAC | Same | `.github/workflows/`, `deploy/platform/harbor/` | ✅ verified on a cluster |
-| 13 | Scenarios A–D (on-prem, cloud, hybrid, QUIC proxy chain) | Kustomize overlays + OpenTofu modules (planned; Terraform is BSL) + local QUIC relay | `deploy/overlays/`, `infra/` (planned), `services/hub/quic-relay/` | ❌ not started |
+| 13 | Scenarios A–D (on-prem, cloud, hybrid, QUIC proxy chain) | Kustomize overlays + OpenTofu modules (Terraform is BSL) + local QUIC relay | `deploy/overlays/`, `infra/`, `services/hub/quic-relay/`, `docs/deployment-scenarios.md` | 🟡 built and CI-validated (overlays build, OpenTofu validates + module test); no real site brought up yet |
 | 14 | `@ConsistencyProfile` routing matrix | Same | `services/core/consistency-router/` | ✅ verified on a cluster |
 | 16 | OpenCost cost-per-transaction | Same | `deploy/platform/opencost/` | ✅ verified on a cluster |
 | 17 | v2.0 candidates | Tracked, not built | `docs/roadmap.md` | 📋 tracked |
@@ -101,7 +101,7 @@ config/          Feature flags, consistency profiles
 deploy/          Argo CD apps, Helm values, Kustomize overlays, profiles
 docs/            Architecture, decisions, runbooks
 edge/            Mobile app, Rust CRDT core, Wasmtime plug-ins, ONNX fraud model
-infra/           OpenTofu modules for cloud scenarios B/C (planned; Terraform is BSL)
+infra/           OpenTofu: RKE2 node module, roots for cloud scenarios B and C (Terraform is BSL)
 ml/              Fraud model training → ONNX, Feast definitions
 policies/        Kyverno, OPA Rego, Semgrep rules
 services/        core (Quarkus), hub (Rust), attestation

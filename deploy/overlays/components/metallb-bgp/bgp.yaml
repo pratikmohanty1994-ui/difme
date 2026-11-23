@@ -1,0 +1,14 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata: { name: difme-pool, namespace: ingress-system }
+spec: { addresses: ["10.20.0.0/27"] }
+---
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata: { name: site-router, namespace: ingress-system }
+spec: { myASN: 64513, peerASN: 64512, peerAddress: 10.20.1.1 }
+---
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata: { name: difme-bgp, namespace: ingress-system }
+spec: { ipAddressPools: [difme-pool], aggregationLength: 32 }

@@ -1,0 +1,10 @@
+# PDF §4.1 / ADR-028: Fleet distributes one Argo CD root Application per cluster; Argo CD then syncs that cluster's
+# scenario overlay (deploy/overlays/...) straight from git. Fleet only bundles this directory, so the overlays and the
+# generated Applications are never copied into Fleet bundles. Drift correction on the root Application.
+defaultNamespace: argocd
+correctDrift: { enabled: true, force: false }
+kustomize: { dir: region-a }
+targetCustomizations:
+  - { name: region-a, clusterSelector: { matchLabels: { difme/region: region-a } }, kustomize: { dir: region-a } }
+  - { name: region-b, clusterSelector: { matchLabels: { difme/region: region-b } }, kustomize: { dir: region-b } }
+  - { name: region-c, clusterSelector: { matchLabels: { difme/region: region-c } }, kustomize: { dir: region-c } }

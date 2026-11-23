@@ -1,7 +1,0 @@
-# Drift detection + per-region overlays (PDF §4.1).
-defaultNamespace: argocd
-correctDrift: { enabled: true, force: false }
-targetCustomizations:
-  - { name: region-a, clusterSelector: { matchLabels: { difme/region: region-a } }, kustomize: { dir: ../overlays/region-a } }
-  - { name: region-b, clusterSelector: { matchLabels: { difme/region: region-b } }, kustomize: { dir: ../overlays/region-b } }
-  - { name: region-c, clusterSelector: { matchLabels: { difme/region: region-c } }, kustomize: { dir: ../overlays/region-c } }

@@ -1,0 +1,5 @@
+# OpenTofu working directories and state: never committed (state can hold secrets). Lock files are committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars

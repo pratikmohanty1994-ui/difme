@@ -61,6 +61,15 @@ jobs:
         run: python deploy/platform/fraud/tazama/render.py --check
       - name: OpenBao configuration requests are current (F2)
         run: python deploy/platform/security/openbao-config/render.py --check
+      - name: Deployment scenario overlays are current (ADR-028)
+        run: python deploy/overlays/render.py --check
+      - name: OpenTofu roots validate, RKE2 node module test (ADR-028)
+        run: |
+          curl -fsSL -o /tmp/tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+          unzip -oq /tmp/tofu.zip tofu -d /usr/local/bin
+          tofu fmt -check -recursive infra
+          (cd infra/modules/rke2-node && tofu init -input=false >/dev/null && tofu test)
+          for d in infra/scenarios/*/; do (cd "$d" && tofu init -backend=false -input=false >/dev/null && tofu validate); done
       - name: No key material in the deployment tree (ADR-026, keys only through attested key release)
         run: bash ci/no-key-material.sh
       - name: Generated core-service manifests are current
@@ -92,7 +101,7 @@ jobs:
         run: |
           curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.6.0/kustomize_v5.6.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
           fail=0
-          for k in $(find deploy/platform -name kustomization.yaml); do
+          for k in $(find deploy/platform deploy/overlays deploy/fleet -name kustomization.yaml); do
             d=$(dirname "$k"); kustomize build --load-restrictor LoadRestrictionsNone "$d" > /dev/null || { echo "✗ $d"; fail=1; }
           done
           exit $fail
