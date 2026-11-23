@@ -16,6 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class HubCheckout implements MerchantCheckoutPort {
     private record Paid(String paymentId, String merchant, long amountMinor) {}
 
+    /** Card map key for the default card of partners without their own ("*" in the configuration; simulator setups). */
+    public static final long ANY_PARTNER = -1L;
+
     private final SimAgentCredential credentials;
     private final PaymentHub hub;
     private final Map<Long, PaymentHub.CardOnFile> cards;
@@ -41,7 +44,7 @@ public final class HubCheckout implements MerchantCheckoutPort {
     private Response decide(Authorization a, long nowMs) {
         var instruction = credentials.instructionOf(a.token()).orElse(null);
         if (instruction == null) return new Response(a.stan(), Iso8583.DO_NOT_HONOUR, null, null);
-        PaymentHub.CardOnFile card = cards.get(instruction.partnerId());
+        PaymentHub.CardOnFile card = cards.getOrDefault(instruction.partnerId(), cards.get(ANY_PARTNER));
         if (card == null) return new Response(a.stan(), "14", null, null);        // no card on file for this partner
         if (!credentials.redeem(a.token(), a.merchantId(), a.amountMinor(), nowMs)) {
             return new Response(a.stan(), Iso8583.DO_NOT_HONOUR, null, null);

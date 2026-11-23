@@ -1137,11 +1137,14 @@ public class Exchange {
         Map<Long, dev.difme.exchange.rails.PaymentHub.CardOnFile> cards = new LinkedHashMap<>();
         for (String e : entries) {
             String[] f = e.strip().split(":");
-            if (f.length != 3 || !f[0].matches("\\d+") || !f[1].matches("\\d{12,19}") || !f[2].matches("\\d{4}")) {
+            if (f.length != 3 || !f[0].matches("\\d+|\\*") || !f[1].matches("\\d{12,19}") || !f[2].matches("\\d{4}")) {
                 throw new IllegalStateException("difme.exchange.hub.partner-cards: expected partner:PAN:MMYY, got an entry for partner "
                         + (f.length > 0 ? f[0] : "?"));
             }
-            cards.put(Long.parseLong(f[0]), new dev.difme.exchange.rails.PaymentHub.CardOnFile(f[1], f[2].substring(0, 2), "20" + f[2].substring(2), "123"));
+            // "*": the card for partners without their own. Standing mandates bid as partner nodes from 1000001, assigned at
+            // registration, so a fixed node list can't name them (cluster-verify 2026-11-23: every hub-mode buy got 14).
+            long key = f[0].equals("*") ? dev.difme.exchange.rails.hub.HubCheckout.ANY_PARTNER : Long.parseLong(f[0]);
+            cards.put(key, new dev.difme.exchange.rails.PaymentHub.CardOnFile(f[1], f[2].substring(0, 2), "20" + f[2].substring(2), "123"));
         }
         return cards;
     }

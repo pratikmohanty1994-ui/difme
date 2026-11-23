@@ -163,8 +163,13 @@ fi
 if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; then
   echo "== rails: network tokenization, PH-EE flows, security module"
   kubectl -n rails logs deploy/hyperswitch -c nts-public-key --tail=3 2>&1 | sed 's/^/  hyperswitch init: /' | cut -c1-200
-  kubectl -n rails logs deploy/hyperswitch -c router --tail=2000 2>/dev/null | grep -m1 "network tokenization on" | sed 's/^/  hyperswitch: /' \
-    || echo "  hyperswitch: network tokenization NOT on"
+  # The router enables network tokenization only with both halves present (hyperswitch.yaml); ask the container
+  # rather than its log, whose first lines scroll away (run 13: "NOT on" read from a truncated log).
+  if kubectl -n rails exec deploy/hyperswitch -c router -- bash -c 'test -s /nts/public.env && grep -q PRIVATE_KEY /vault/secrets/nts.env' 2>/dev/null; then
+    echo "  hyperswitch: network tokenization on (public key and secrets present)"
+  else
+    echo "  hyperswitch: network tokenization NOT on: public.env $(kubectl -n rails exec deploy/hyperswitch -c router -- bash -c 'test -s /nts/public.env && echo present || echo missing' 2>&1 | tail -1), secrets $(kubectl -n rails exec deploy/hyperswitch -c router -- bash -c 'grep -q PRIVATE_KEY /vault/secrets/nts.env && echo present || echo missing' 2>&1 | tail -1)"
+  fi
   kubectl -n rails logs job/ph-ee-deploy-flows -c deploy --tail=2 2>&1 | sed 's/^/  ph-ee flows: /' | cut -c1-240
   kubectl -n rails logs deploy/hsm --tail=400 2>/dev/null | grep -iE "key release|attest|bootstrap|listening" | tail -4 | sed 's/^/  hsm: /' | cut -c1-200
 fi

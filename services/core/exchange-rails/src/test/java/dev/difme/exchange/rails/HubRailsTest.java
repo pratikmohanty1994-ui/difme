@@ -66,6 +66,17 @@ class HubRailsTest {
     }
 
     @Test
+    void partnersWithoutTheirOwnCardUseTheDefaultCard() {
+        SimRails rails = new SimRails();
+        FakeHub hub = new FakeHub();
+        var other = new PaymentHub.CardOnFile("4375510000000019", "12", "2030", "123");
+        rails.useHub(hub, Map.of(42L, CARD, HubCheckout.ANY_PARTNER, other), m -> {});
+        assertTrue(buy(rails, 1_000_002, "000007", 100).approved());   // a standing mandate's partner node
+        assertTrue(buy(rails, 42, "000008", 100).approved());
+        assertEquals(List.of("pay auc7-p1000002-000007 shop-1 100 4375510000000019", "pay auc8-p42-000008 shop-1 100 4375510000000001"), hub.calls);
+    }
+
+    @Test
     void escrowMovementsAreBookedOnTheCoreBankingSystem() {
         SimRails rails = new SimRails();
         FakeHub hub = new FakeHub();

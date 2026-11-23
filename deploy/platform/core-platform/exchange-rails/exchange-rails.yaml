@@ -7,4 +7,5 @@ kind: ConfigMap
 metadata: { name: exchange-rails }
 data:
   DIFME_EXCHANGE_HUB_URL: "http://payment-hub.rails.svc:8090"
-  DIFME_EXCHANGE_HUB_PARTNER_CARDS: "1:4375510000000001:1230,2:4375510000000019:1230,3:4375510000000027:1230"
+  # "*": the card for partners without their own (standing mandates' partner nodes are assigned at registration).
+  DIFME_EXCHANGE_HUB_PARTNER_CARDS: "1:4375510000000001:1230,2:4375510000000019:1230,3:4375510000000027:1230,*:4375510000000001:1230"

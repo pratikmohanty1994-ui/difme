@@ -84,7 +84,11 @@ jobs:
           bash ci/measure.sh ${{ inputs.measure }} 2>&1 | tee /tmp/measure.txt
       - name: Summary
         if: always()
+        # Never fails the run (all-profiles run 13, 2026-11-23: every profile converged, then a command in the summary block
+        # exited 2 under bash -e, the run turned red and no artifact was copied). Artifacts are copied first.
         run: |
+          set +e
+          mkdir -p /tmp/out && cp /tmp/report.txt /tmp/verdicts.txt /tmp/measure.txt /tmp/up-*.log /tmp/out/ 2>/dev/null
           {
             echo "## cluster-verify: ${{ inputs.profiles }} on ${{ inputs.runner }} (${GITHUB_REF_NAME})"
             echo '```'; cat /tmp/verdicts.txt 2>/dev/null; echo '```'
@@ -93,12 +97,12 @@ jobs:
             # if/fi, not `[ ] && {}`: under bash -e a false test as the group's last command failed the step (2026-11-20).
             if [ -s /tmp/measure.txt ]; then echo '### payment baseline'; echo '```'; cat /tmp/measure.txt; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"
-          mkdir -p /tmp/out && cp /tmp/report.txt /tmp/verdicts.txt /tmp/measure.txt /tmp/up-*.log /tmp/out/ 2>/dev/null || true
           kubectl get pods -A -o wide > /tmp/out/pods.txt 2>&1 || true
           # logs and events of every pod that is not Running/Completed, so a failed run explains itself
           kubectl get pods -A --no-headers 2>/dev/null | awk '$4!="Running" && $4!="Completed" {print $1, $2}' | while read -r ns pod; do
             { echo "== $ns/$pod"; kubectl -n "$ns" describe pod "$pod" | sed -n '/^Events:/,$p'; kubectl -n "$ns" logs "$pod" --all-containers --tail=60 2>&1; kubectl -n "$ns" logs "$pod" --all-containers --previous --tail=60 2>&1; } >> /tmp/out/failing-pods.txt
-          done || true
+          done
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: "cluster-report-${{ inputs.runner }}", path: /tmp/out, retention-days: 14 }
