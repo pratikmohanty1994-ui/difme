@@ -86,7 +86,8 @@ spec:
               done
               echo "token service public key not available: starting without network tokenization"
           volumeMounts: [{ name: nts, mountPath: /nts }]
-          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          # curlimages' user is named (curl_user), so runAsNonRoot needs its numeric id (cluster-verify 2026-11-23).
+          securityContext: { runAsUser: 100, runAsGroup: 101, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
       containers:
         - name: router

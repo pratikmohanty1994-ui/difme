@@ -41,7 +41,7 @@ spec:
           livenessProbe: { httpGet: { path: /fineract/actuator/health/liveness, port: 7070 }, periodSeconds: 30 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: config, mountPath: /config, readOnly: true }, { name: tmp, mountPath: /tmp }]
-          resources: { requests: { cpu: 50m, memory: 384Mi }, limits: { memory: 512Mi } }
+          resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }
       volumes:
         - { name: config, configMap: { name: ph-ee-ams-config } }
         - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
@@ -82,7 +82,7 @@ spec:
           livenessProbe: { httpGet: { path: /actuator/health/liveness, port: 8081 }, periodSeconds: 30 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: config, mountPath: /config, readOnly: true }, { name: tmp, mountPath: /tmp }]
-          resources: { requests: { cpu: 50m, memory: 384Mi }, limits: { memory: 512Mi } }
+          resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }
       volumes:
         - { name: config, configMap: { name: ph-ee-channel-config } }
         - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
@@ -102,7 +102,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: { name: ph-ee-connector-mojaloop, labels: { app: ph-ee-connector-mojaloop } }
 spec:
-  replicas: 1
+  # 0 until the Mojaloop switch has manifests (D3): without its peer the connector only holds memory, and the single-node
+  # dev cluster ran out of schedulable memory with it (cluster-verify 2026-11-23). Set 1 with the switch.
+  replicas: 0
   selector: { matchLabels: { app: ph-ee-connector-mojaloop } }
   template:
     metadata:
@@ -131,7 +133,7 @@ spec:
           livenessProbe: { httpGet: { path: /actuator/health/liveness, port: 8080 }, periodSeconds: 30 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: config, mountPath: /config, readOnly: true }, { name: tmp, mountPath: /tmp }]
-          resources: { requests: { cpu: 50m, memory: 384Mi }, limits: { memory: 512Mi } }
+          resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }
       volumes:
         - { name: config, configMap: { name: ph-ee-mojaloop-config } }
         - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
