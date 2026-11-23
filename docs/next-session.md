@@ -47,8 +47,8 @@ the session branch; nothing runs on the owner's PC.
 | # | Item | State / owner |
 |---|---|---|
 | 1 | Cluster-verify run 4 (core,streaming,security,rails,fraud; fail-fast) on images run 21 (1bba03d2) | main session; dispatched 2026-11-23 00:53 UTC, verdicts check 02:03 |
-| 2 | PH-EE: B5 images, C2/C3/D1 manifests (pushed), D2 Spring Boot 3 / Camel 4 | agent (PH-EE) |
-| 3 | D3 switch the exchange to PH-EE, retire the interim Temporal hub; D4 known gaps; D5 exchange rails wiring | after 2 |
+| 2 | PH-EE: B5 images (9df00081), D1/C2/C3 manifests (d8c7d767), D2 modernised on **Spring Boot 4.1.1 / Spring 7.0.9 / Camel 4.22.2**, Java 25 runtime (544266dd; Boot 3.5 failed the Trivy gate). Trivy 0 HIGH/CRITICAL; unit tests and Fluxnova job pickup verified locally. Secrets added (fd5f322d). Images not built yet; not run on a cluster | **Done**, cluster check pending |
+| 3 | D3 to retire the interim hub: (a) sync ph-ee on a cluster (waypoint JWT allow/deny, scrapes, flow-deploy job); (b) Mojaloop switch manifests and images (Testing Toolkit hub at mojaloop-switch.rails.svc:4040, payee SDK + simulator); (c) exchange-rails PH-EE client (difme-exchange token, POST /channel/transfer, on-us mapping to DifmeOnUsTransfer, status); (d) card checkout home (PH-EE flow with a Hyperswitch worker or a small service) before deleting payment-hub; (e) re-run the 2026-11-21 money tests on the new stack; D4 gaps: fulfilment check at commit, GET /transfers after commit | next |
 | 4 | ACS FIDO/WebAuthn + SPC (3DS 2.3.1) | **Done** (8ad871cf) |
 | 5 | ACS: real OTP delivery (email via Mailpit, SMS/push stand-ins through the notification service), 3DS Method (device fingerprint iframe) and browser data in risk, scheme-issued ACS signing cert from OpenBao | after 4 (same files) |
 | 6 | Crypto/CMS remainders: MAC verify, app PIN reveal, TC/AAC at clearing, card renewal/reissue, LMK rotation drill, issuer RSA key + perso file | **Done** (8020c451…1bba03d2; 64 hsm tests). Follow-ups: scheme-sim field 55 at clearing, chip ATC replay tracking, drop appPinBlock from /pin/generate, rotation round trip with live Trustee |
