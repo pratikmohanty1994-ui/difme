@@ -202,8 +202,19 @@ func TestStandInAttempts(t *testing.T) {
 			t.Fatal(code)
 		}
 		checkAttempts(t, n, ares, "6011000000000004")
-		if _, err := threeds.Verify(context.Background(), n.hsm, pan, s(ares, "authenticationValue")); !errors.Is(err, threeds.ErrCryptogram) {
-			t.Errorf("attempts CAVV verified for another card: %v", err)
+		// The CAVV's cryptographic part is a 3-digit CVV, so another card matches by chance 1 time in 1000. Check
+		// three other cards and fail only if all match (about 1 in 10^9).
+		rejected := 0
+		for _, other := range []string{pan, "4375510000000019", "4375510000000027"} {
+			_, err := threeds.Verify(context.Background(), n.hsm, other, s(ares, "authenticationValue"))
+			if errors.Is(err, threeds.ErrCryptogram) {
+				rejected++
+			} else if err != nil {
+				t.Fatalf("verify for %s: %v", other, err)
+			}
+		}
+		if rejected == 0 {
+			t.Errorf("attempts CAVV verified for three other cards")
 		}
 	})
 	t.Run("ACS unreachable", func(t *testing.T) {
