@@ -43,7 +43,7 @@ func TestPINRevealOnceAuditedAndRateLimited(t *testing.T) {
 	if _, err := i.RevealPIN(ctx, c.ID, key); !errors.Is(err, ErrNoPendingPIN) {
 		t.Fatalf("nothing generated yet: %v", err)
 	}
-	if _, err := i.GeneratePIN(ctx, c.ID); err != nil {
+	if err := i.GeneratePIN(ctx, c.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := i.RevealPIN(ctx, c.ID, "not-a-key"); !errors.Is(err, ErrInvalid) {
@@ -81,13 +81,13 @@ func TestPINRevealOnceAuditedAndRateLimited(t *testing.T) {
 		}
 	}
 	// a PIN the cardholder chooses cancels a pending generated one
-	_, _ = i.GeneratePIN(ctx, c.ID)
+	_ = i.GeneratePIN(ctx, c.ID)
 	_ = i.SetPIN(ctx, c.ID, "41234")
 	if _, err := i.RevealPIN(ctx, c.ID, key); !errors.Is(err, ErrNoPendingPIN) {
 		t.Fatalf("after SetPIN: %v", err)
 	}
 	// a blocked card reveals nothing
-	_, _ = i.GeneratePIN(ctx, c.ID)
+	_ = i.GeneratePIN(ctx, c.ID)
 	_, _ = i.SetStatus(ctx, c.ID, "BLOCKED")
 	if _, err := i.RevealPIN(ctx, c.ID, key); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("blocked card: %v", err)
@@ -101,7 +101,7 @@ func TestPINRevealHTTP(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	c, _ := i.Issue(ctx, IssueRequest{Product: Debit, Account: 1, Holder: "p"})
-	_, _ = i.GeneratePIN(ctx, c.ID)
+	_ = i.GeneratePIN(ctx, c.ID)
 	post := func(body string) (int, string) {
 		r, err := http.Post(srv.URL+"/v1/cards/"+c.ID+"/pin/reveal", "application/json", strings.NewReader(body))
 		if err != nil {

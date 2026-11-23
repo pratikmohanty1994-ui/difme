@@ -183,8 +183,8 @@ func TestDeclinesAndCardSecurity(t *testing.T) {
 	if err := i.SetPIN(ctx, c.ID, "41111"); !errors.Is(err, ErrWeakPIN) {
 		t.Errorf("weak PIN: %v", err)
 	}
-	if app, err := i.GeneratePIN(ctx, c.ID); err != nil || app != "4-app" {
-		t.Fatalf("generate: %v %q", err, app)
+	if err := i.GeneratePIN(ctx, c.ID); err != nil {
+		t.Fatalf("generate: %v", err)
 	}
 	if a, _ := i.Authorise(ctx, AuthRequest{PAN: c.PANFull, AmountMinor: 100, PINBlock: "Z48264"}); a.Code != Approved {
 		t.Fatalf("generated PIN: %+v", a)

@@ -316,9 +316,14 @@ func (n *Network) viaIssuer(t *Txn, key string, req *iso8583.Message, mti, pan s
 	default:
 		t.ResponseCode, t.State, t.AuthCode, t.issuerAuth = Approved, "AUTHORISED", digits(6), id
 		if mti == "0200" {
-			if err := n.Issuer.Clear(ctx, id, amount); err != nil {
+			// Field 55 (card-present chip): card-issuer verifies the TC/ARQC before posting and refuses it otherwise.
+			if err := n.Issuer.Clear(ctx, id, amount, wire.Get(req, 55)); err != nil {
 				_ = n.Issuer.Reverse(ctx, id)
-				t.ResponseCode, t.State, t.AuthCode = IssuerDown, "DECLINED", ""
+				code := IssuerDown
+				if errors.Is(err, ErrIssuerRefused) {
+					code = "05" // refused by the issuer (e.g. chip cryptogram does not verify), not unavailable
+				}
+				t.ResponseCode, t.State, t.AuthCode = code, "DECLINED", ""
 			}
 		}
 		if t.State == "AUTHORISED" && cavv != nil {

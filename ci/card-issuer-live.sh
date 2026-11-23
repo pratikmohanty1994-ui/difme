@@ -70,11 +70,21 @@ blk=$(curl -s -X POST -d "{\"pan\":\"$pan\",\"pinBlock\":\"$bad\"}" localhost:18
 echo "ok: PIN set from the app (ISO-4), right PIN approved, wrong PIN declined 55"
 weak=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),'1111','$pan').hex().upper())")
 ci POST "/v1/cards/$cid/pin" "{\"pinBlock\":\"$weak\"}" | grep -q "weak PIN" || fail "weak PIN accepted"
-app=$(ci POST "/v1/cards/$cid/pin/generate" | j appPinBlock)
-gen=$(python3 -W ignore -c "import psec.pinblock as p; print(p.decipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),bytes.fromhex('$app'),'$pan'))")
+# Generated PIN: nothing comes back from /pin/generate; the app gets it once from /pin/reveal as a JWE to its own key
+# (here an ephemeral P-256 key, as the app would hold in its keystore).
+ci POST "/v1/cards/$cid/pin/generate" | grep -q "PIN generated" || fail "PIN generate"
+spki=$(python3 -W ignore -c "
+from cryptography.hazmat.primitives.asymmetric import ec; from cryptography.hazmat.primitives import serialization as s; import base64
+k=ec.generate_private_key(ec.SECP256R1()); open('$W/app.pem','wb').write(k.private_bytes(s.Encoding.PEM,s.PrivateFormat.PKCS8,s.NoEncryption()))
+print(base64.b64encode(k.public_key().public_bytes(s.Encoding.DER,s.PublicFormat.SubjectPublicKeyInfo)).decode())")
+jwe=$(ci POST "/v1/cards/$cid/pin/reveal" "{\"appPublicKey\":\"$spki\"}" | j jwe)
+gen=$(python3 -W ignore -c "
+from jwcrypto import jwk, jwe; k=jwk.JWK.from_pem(open('$W/app.pem','rb').read()); t=jwe.JWE(); t.deserialize('$jwe', key=k); print(t.payload.decode())")
+[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d "{\"appPublicKey\":\"$spki\"}" "localhost:18085/v1/cards/$cid/pin/reveal")" = 410 ] || fail "second PIN reveal not refused (410)"
+app=$(python3 -W ignore -c "import psec.pinblock as p; print(p.encipher_pinblock_iso_4(bytes.fromhex('$AESPIN'),'$gen','$pan').hex().upper())")
 blk=$(curl -s -X POST -d "{\"pan\":\"$pan\",\"pinBlock\":\"$app\"}" localhost:18702/v1/pin/iso4-to-zpk | j pinBlock)
 [ "$(ci POST /v1/authorisations "{\"pan\":\"$pan\",\"amountMinor\":100,\"pinBlock\":\"$blk\"}" | j responseCode)" = 00 ] || fail "generated PIN"
-echo "ok: weak PIN 1111 refused; PIN generated in the module ($(echo "$gen" | sed 's/./*/g'), shown only in the app) works for a PIN payment"
+echo "ok: weak PIN 1111 refused; PIN generated in the module, revealed once to the app's key ($(echo "$gen" | sed 's/./*/g')), second reveal refused, works for a PIN payment"
 # credit
 cr=$(ci POST /v1/cards "{\"product\":\"CREDIT\",\"account\":$loan,\"limitMinor\":500000,\"holder\":\"partner-2\"}"); crp=$(echo "$cr" | j pan); crid=$(echo "$cr" | j id)
 c1=$(ci POST /v1/authorisations "{\"pan\":\"$crp\",\"amountMinor\":300000}"); [ "$(echo "$c1" | j responseCode)" = 00 ] || fail "credit auth $c1"

@@ -52,6 +52,9 @@ type Card struct {
 	ReplacedBy     string     `json:"replacedBy,omitempty"`
 	ValidUntil     *time.Time `json:"validUntil,omitempty"`
 	FirstUsedAt    *time.Time `json:"firstUsedAt,omitempty"`
+	// LastATC is the highest application transaction counter (tag 9F36) cleared for this chip card: a cryptogram
+	// with the same or a lower ATC is a replay and is not posted.
+	LastATC int `json:"lastAtc,omitempty"`
 }
 
 // Auth is an open or finished authorisation.
@@ -231,22 +234,22 @@ func (i *Issuer) SetPIN(ctx context.Context, id, iso4Hex string) error {
 }
 
 // GeneratePIN issues a random PIN (card issuance or PIN reset): stores its PVV and keeps the PIN, as an ISO 9564
-// format 4 block under the security module's PIN key, for one one-time reveal to the app (RevealPIN). The block is
-// also returned for existing callers (opaque outside the module); new app flows use RevealPIN.
-func (i *Issuer) GeneratePIN(ctx context.Context, id string) (string, error) {
+// format 4 block under the security module's PIN key, for one one-time reveal to the app (RevealPIN). Nothing that
+// carries the PIN is returned here.
+func (i *Issuer) GeneratePIN(ctx context.Context, id string) error {
 	c, err := i.store.Card(ctx, id)
 	if err != nil {
-		return "", err
+		return err
 	}
 	zpkBlock, appBlock, err := i.hsm.GeneratePIN(ctx, c.PAN)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if c.PVV, err = i.hsm.PVV(ctx, c.PAN, zpkBlock); err != nil {
-		return "", err
+		return err
 	}
 	c.PendingPIN = appBlock
-	return appBlock, i.store.PutCard(ctx, c)
+	return i.store.PutCard(ctx, c)
 }
 
 // DynamicCVV2 returns the card's current dCVV2 for the app's display.
@@ -425,17 +428,24 @@ func (i *Issuer) ClearPresentment(ctx context.Context, authID string, amountMino
 		return a, err
 	}
 	if field55 != "" {
-		kind, err := i.verifyChip(ctx, c.PAN, field55)
+		kind, atc, err := i.verifyChip(ctx, c.PAN, field55)
 		if err != nil {
 			return a, err
 		}
+		if (kind == "TC" || kind == "ARQC") && atc <= c.LastATC {
+			kind = "REPLAY" // genuine cryptogram, but its counter was already used: a replayed or cloned transaction
+		}
 		a.Chip = kind
-		if kind == "INVALID" || kind == "AAC" {
+		if kind == "INVALID" || kind == "AAC" || kind == "REPLAY" {
 			if err := i.store.PutAuth(ctx, a); err != nil {
 				return a, err
 			}
 			slog.Warn("clearing: chip cryptogram refused", "auth", a.ID, "card", c.ID, "chip", kind)
-			return a, fmt.Errorf("%w: chip cryptogram %s: not posted, held for review", ErrInvalid, map[string]string{"INVALID": "does not verify", "AAC": "is an AAC (declined by the card)"}[kind])
+			return a, fmt.Errorf("%w: chip cryptogram %s: not posted, held for review", ErrInvalid, map[string]string{"INVALID": "does not verify", "AAC": "is an AAC (declined by the card)", "REPLAY": "reuses an ATC already cleared"}[kind])
+		}
+		c.LastATC = atc
+		if err := i.store.PutCard(ctx, c); err != nil {
+			return a, err
 		}
 	}
 	switch c.Product {

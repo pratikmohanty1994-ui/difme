@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -156,17 +157,21 @@ func hx(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
 
 // verifyChip checks the cryptogram in field 55 with the security module and returns its kind (TC, AAC, ARQC), or
 // "INVALID" when it does not verify.
-func (i *Issuer) verifyChip(ctx context.Context, pan, field55 string) (string, error) {
+func (i *Issuer) verifyChip(ctx context.Context, pan, field55 string) (kind string, atc int, err error) {
 	c, err := parseChip(pan, field55)
 	if err != nil {
-		return "", err
+		return "", 0, err
+	}
+	n, err := strconv.ParseUint(c.ATC, 16, 16)
+	if err != nil {
+		return "", 0, fmt.Errorf("%w: icc: tag 9F36 not hex", ErrInvalid)
 	}
 	ok, err := i.hsm.VerifyAC(ctx, c)
 	if err != nil {
-		return "", fmt.Errorf("security module: %w", err)
+		return "", 0, fmt.Errorf("security module: %w", err)
 	}
 	if !ok {
-		return "INVALID", nil
+		return "INVALID", int(n), nil
 	}
-	return c.Kind, nil
+	return c.Kind, int(n), nil
 }

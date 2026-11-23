@@ -63,7 +63,7 @@ func TestLivePINRevealToAnECKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := i.GeneratePIN(ctx, c.ID); err != nil {
+	if err := i.GeneratePIN(ctx, c.ID); err != nil {
 		t.Fatal(err)
 	}
 	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -23,9 +24,14 @@ type IssuerRequest struct {
 // Issuer is an issuer host (services/card-issuer).
 type Issuer interface {
 	Authorise(ctx context.Context, r IssuerRequest) (code, authID string, err error)
-	Clear(ctx context.Context, authID string, amountMinor int64) error
+	// Clear posts the authorisation; icc is field 55 (EMV tags, hex) for card-present chip transactions, else "".
+	Clear(ctx context.Context, authID string, amountMinor int64, icc string) error
 	Reverse(ctx context.Context, authID string) error
 }
+
+// ErrIssuerRefused: the issuer answered and refused the request (HTTP 4xx), as opposed to being unreachable or failing
+// (e.g. clearing with a chip cryptogram that does not verify).
+var ErrIssuerRefused = errors.New("issuer refused")
 
 // IssuerClient calls card-issuer's HTTP API.
 type IssuerClient struct {
@@ -46,6 +52,9 @@ func (c *IssuerClient) post(ctx context.Context, path string, in, out any) error
 		return err
 	}
 	defer r.Body.Close()
+	if r.StatusCode >= 400 && r.StatusCode < 500 {
+		return fmt.Errorf("%w: %s: HTTP %d", ErrIssuerRefused, path, r.StatusCode)
+	}
 	if r.StatusCode != http.StatusOK {
 		return fmt.Errorf("issuer %s: HTTP %d", path, r.StatusCode)
 	}
@@ -66,8 +75,12 @@ func (c *IssuerClient) Authorise(ctx context.Context, r IssuerRequest) (string, 
 	return a.Code, a.ID, nil
 }
 
-func (c *IssuerClient) Clear(ctx context.Context, id string, amountMinor int64) error {
-	return c.post(ctx, "/v1/authorisations/"+id+"/clear", map[string]int64{"amountMinor": amountMinor}, nil)
+func (c *IssuerClient) Clear(ctx context.Context, id string, amountMinor int64, icc string) error {
+	body := map[string]any{"amountMinor": amountMinor}
+	if icc != "" {
+		body["icc"] = icc // card-issuer verifies the TC/ARQC through the security module before posting
+	}
+	return c.post(ctx, "/v1/authorisations/"+id+"/clear", body, nil)
 }
 
 func (c *IssuerClient) Reverse(ctx context.Context, id string) error {

@@ -14,7 +14,7 @@ import (
 //	POST /v1/cards/{id}/renew            {"reason":"RENEWAL|REPLACEMENT|LOST_STOLEN","graceDays":45}: new card / expiry, PAN and CVV2 once
 //	PUT  /v1/cards/{id}/status           {"status":"BLOCKED"}
 //	POST /v1/cards/{id}/pin              {"pinBlock":"<ISO 9564 format 4, hex>"} (app PIN set)
-//	POST /v1/cards/{id}/pin/generate     random PIN (issuance / reset): {"appPinBlock": ISO 4 under the app key}
+//	POST /v1/cards/{id}/pin/generate     random PIN (issuance / reset), kept for one reveal; returns no PIN data
 //	POST /v1/cards/{id}/pin/reveal       {"appPublicKey":"<SPKI, base64>"}: the generated PIN once, as a JWE to the app's key
 //	GET  /v1/cards/{id}/dcvv2            the current dynamic CVV2 (app display)
 //	GET  /v1/cards/{id}/open-to-buy
@@ -74,8 +74,7 @@ func Handler(i *Issuer) http.Handler {
 		reply(w, 200, map[string]string{"status": "PIN set"}, i.SetPIN(r.Context(), r.PathValue("id"), q.PINBlock))
 	})
 	mux.HandleFunc("POST /v1/cards/{id}/pin/generate", func(w http.ResponseWriter, r *http.Request) {
-		v, err := i.GeneratePIN(r.Context(), r.PathValue("id"))
-		reply(w, 200, map[string]string{"appPinBlock": v}, err)
+		reply(w, 200, map[string]string{"status": "PIN generated: reveal it once in the app (/pin/reveal)"}, i.GeneratePIN(r.Context(), r.PathValue("id")))
 	})
 	mux.HandleFunc("POST /v1/cards/{id}/pin/reveal", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {

@@ -98,6 +98,21 @@ func TestClearingVerifiesTheChipCryptogram(t *testing.T) {
 	if err != nil || got.State != "CLEARED" || got.Chip != "TC" || l.balance[1] != 100_000-4_999 {
 		t.Fatalf("TC: %v %+v balance %d", err, got, l.balance[1])
 	}
+	if c, _ := st.Card(ctx, card.ID); c.LastATC != 0x12 {
+		t.Fatalf("last ATC after the TC: %d", c.LastATC)
+	}
+	// the same TC again (ATC 0012 already cleared): a replay, not posted
+	r := auth()
+	got, err = i.ClearPresentment(ctx, r.ID, 4_999, chipVectors[1].f55)
+	if !errors.Is(err, ErrInvalid) || got.State != "HELD" || got.Chip != "REPLAY" || l.balance[1] != 100_000-4_999 {
+		t.Fatalf("replayed TC: %v %+v balance %d", err, got, l.balance[1])
+	}
+	// a genuine TC with a lower ATC (0007 < 0012): also refused
+	got, err = i.ClearPresentment(ctx, r.ID, 4_999, chipVectors[0].f55)
+	if !errors.Is(err, ErrInvalid) || got.Chip != "REPLAY" {
+		t.Fatalf("lower ATC: %v %+v", err, got)
+	}
+	_, _ = i.Reverse(ctx, r.ID)
 	// AAC (the card declined): not posted, kept held and marked
 	b := auth()
 	got, err = i.ClearPresentment(ctx, b.ID, 4_999, chipVectors[2].f55)

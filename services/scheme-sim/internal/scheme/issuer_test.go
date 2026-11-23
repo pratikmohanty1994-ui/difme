@@ -15,6 +15,8 @@ type fakeIssuer struct {
 	code     string
 	cleared  []string
 	reversed []string
+	icc      []string
+	refuse   bool // Clear answers like card-issuer refusing a chip cryptogram
 	down     bool
 }
 
@@ -25,7 +27,11 @@ func (f *fakeIssuer) Authorise(_ context.Context, r IssuerRequest) (string, stri
 	f.got = append(f.got, r)
 	return f.code, fmt.Sprintf("auth-%d", len(f.got)), nil
 }
-func (f *fakeIssuer) Clear(_ context.Context, id string, _ int64) error {
+func (f *fakeIssuer) Clear(_ context.Context, id string, _ int64, icc string) error {
+	f.icc = append(f.icc, icc)
+	if f.refuse {
+		return fmt.Errorf("%w: chip cryptogram", ErrIssuerRefused)
+	}
 	f.cleared = append(f.cleared, id)
 	return nil
 }
@@ -70,6 +76,17 @@ func TestIssuerHostDecidesForItsCards(t *testing.T) {
 	if r, _ := n.Handle(msg(t, "0200", pan, 700, nil)); wire.Get(r, 39) != Approved || len(is.cleared) != 1 {
 		t.Fatalf("purchase is cleared at once: %v", is.cleared)
 	}
+	// Card-present chip purchase: field 55 goes to the issuer at clearing; a refused cryptogram declines (05) and
+	// releases the hold.
+	const icc = "9F2608AABBCCDDEEFF0011"
+	if r, _ := n.Handle(msg(t, "0200", pan, 800, map[int]string{55: icc})); wire.Get(r, 39) != Approved || is.icc[len(is.icc)-1] != icc {
+		t.Fatalf("field 55 at clearing: %s %v", wire.Get(r, 39), is.icc)
+	}
+	is.refuse = true
+	if r, _ := n.Handle(msg(t, "0200", pan, 900, map[int]string{55: icc})); wire.Get(r, 39) != "05" || is.reversed[len(is.reversed)-1] != "auth-4" {
+		t.Fatalf("refused cryptogram: %s %v", wire.Get(r, 39), is.reversed)
+	}
+	is.refuse = false
 	is.code = "51"
 	if r, _ := n.Handle(msg(t, "0100", pan, 99999, nil)); wire.Get(r, 39) != "51" {
 		t.Fatalf("issuer decline code: %s", wire.Get(r, 39))
