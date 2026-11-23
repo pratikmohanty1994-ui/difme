@@ -69,6 +69,7 @@ data:
   10-fluxnova.sql: |
     CREATE DATABASE fluxnova;
     CREATE DATABASE keycloak;
+    CREATE DATABASE superset;
   # First boot only (docker-entrypoint-initdb.d). Temporal gets its own role without CREATEDB; it owns its two databases.
   20-temporal.sh: |
     #!/bin/bash

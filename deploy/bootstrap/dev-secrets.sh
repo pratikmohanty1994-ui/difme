@@ -79,6 +79,7 @@ APICURIO_PG=$(rand)
 secret streaming     apicurio-db password="$APICURIO_PG"
 secret database-tier apicurio-db password="$APICURIO_PG"
 secret lakehouse     superset-secret-key key="$(rand 48)"
+secret lakehouse     postgres-docdb password="$PG_DOCDB"   # Superset metadata on the shared PostgreSQL
 secret streaming     risingwave-s3 AWS_ACCESS_KEY_ID="$S3_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET"   # key names the chart requires
 # RisingWave meta store is on the shared Postgres (ADR-019 pattern); both copies must match, so reuse an existing one.
 RW_PG=$(kubectl -n streaming get secret risingwave-db -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true); RW_PG=${RW_PG:-$(rand)}

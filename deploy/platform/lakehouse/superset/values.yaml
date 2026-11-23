@@ -3,8 +3,11 @@ bootstrapScript: |
   #!/bin/bash
   pip install --no-cache-dir trino[sqlalchemy]==0.333.0 psycopg2-binary==2.9.10
 supersetNode:
-  podLabels: { istio.io/dataplane-mode: ambient }   # mTLS to yb-tservers / valkey (STRICT meshed tiers)
-  connections: { db_host: yb-tservers.database-tier.svc, db_port: "5433", db_name: superset, db_user: superset }
+  podLabels: { istio.io/dataplane-mode: ambient }   # mTLS to postgres-docdb / valkey (STRICT meshed tiers)
+  # Superset's own metadata on the shared PostgreSQL, not YugabyteDB: its Alembic migrations (DDL inside transactions)
+  # kept failing on YugabyteDB with SerializationFailure (cluster-verify 2026-11-23). The password comes from the
+  # postgres-docdb Secret (extraEnvRaw DB_PASS, which takes precedence over the chart's generated env Secret).
+  connections: { db_host: postgres-docdb.database-tier.svc, db_port: "5432", db_name: superset, db_user: difme }
   resources: { requests: { cpu: 100m, memory: 384Mi }, limits: { memory: 1Gi } }
 postgresql: { enabled: false }
 redis: { enabled: false }
@@ -13,6 +16,7 @@ extraEnv: { REDIS_HOST: valkey.cache-tier.svc, REDIS_PORT: "6379" }
 # made by dev-secrets.sh (OpenBao in production), never from values in git.
 extraEnvRaw:
   - { name: SUPERSET_SECRET_KEY, valueFrom: { secretKeyRef: { name: superset-secret-key, key: key } } }
+  - { name: DB_PASS, valueFrom: { secretKeyRef: { name: postgres-docdb, key: password } } }
 configOverrides:
   secret: |
     SECRET_KEY = os.environ["SUPERSET_SECRET_KEY"]
@@ -25,7 +29,7 @@ supersetWorker:
   initContainers:
     - name: wait-for-valkey
       image: apache/superset:dockerize
-      command: [/bin/sh, -c, "dockerize -wait tcp://valkey.cache-tier.svc:6379 -wait tcp://yb-tservers.database-tier.svc:5433 -timeout 300s"]
+      command: [/bin/sh, -c, "dockerize -wait tcp://valkey.cache-tier.svc:6379 -wait tcp://postgres-docdb.database-tier.svc:5432 -timeout 300s"]
 # Pod-level ambient mesh (the namespace is outside it): database-tier and cache-tier enforce STRICT mTLS, so plaintext
 # from here was reset ("server closed the connection unexpectedly", cluster-verify 2026-11-23 all-profiles run).
 supersetCeleryBeat: { podLabels: { istio.io/dataplane-mode: ambient } }

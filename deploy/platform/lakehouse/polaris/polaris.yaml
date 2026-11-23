@@ -35,6 +35,7 @@ metadata: { name: polaris-bootstrap }
 spec:
   backoffLimit: 10
   template:
+    metadata: { labels: { istio.io/dataplane-mode: ambient } }   # mTLS to postgres-docdb, like the server
     spec:
       restartPolicy: OnFailure
       containers:
