@@ -79,6 +79,9 @@ spec:
             - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
             - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
             - { name: ACS_CHALLENGE_URL, value: "https://acs.difme.local/3ds/challenge" }
+            # Passcodes by email and email-to-SMS through Mailpit (development stand-in for the bank's mail relay and
+            # SMS gateway): read them at http://mailpit.rails.svc:8025.
+            - { name: ACS_SMTP_ADDR, value: "mailpit.rails.svc:1025" }
           ports: [{ name: http, containerPort: 8090 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8090 }, periodSeconds: 10 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
@@ -90,6 +93,59 @@ metadata: { name: acs }
 spec:
   selector: { app: acs }
   ports: [{ name: http, port: 8090 }]
+---
+# Mailpit v1.24.1 (MIT): catches the ACS's passcode emails and email-to-SMS messages in development, with a web inbox
+# on 8025. Messages are kept in memory only (pod restart empties the inbox). Not for production: there the ACS points
+# ACS_SMTP_ADDR at the bank's relay.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: mailpit }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mailpit, labels: { app: mailpit } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mailpit } }
+  template:
+    metadata: { labels: { app: mailpit, difme/team: rails, business.metric: acs-3ds } }
+    spec:
+      serviceAccountName: mailpit
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.24.1
+          env:
+            - { name: MP_MAX_MESSAGES, value: "500" }
+            - { name: MP_SMTP_AUTH_ACCEPT_ANY, value: "true" }
+            - { name: MP_SMTP_AUTH_ALLOW_INSECURE, value: "true" }
+          ports: [{ name: smtp, containerPort: 1025 }, { name: http, containerPort: 8025 }]
+          readinessProbe: { httpGet: { path: /readyz, port: 8025 }, periodSeconds: 10 }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 5m, memory: 16Mi }, limits: { memory: 64Mi } }
+      volumes:
+        - { name: tmp, emptyDir: { medium: Memory, sizeLimit: 32Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mailpit }
+spec:
+  selector: { app: mailpit }
+  ports: [{ name: smtp, port: 1025 }, { name: http, port: 8025 }]
+---
+# Only the ACS may send mail; the inbox (8025) is open inside the mesh for developers.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: mailpit-senders }
+spec:
+  selector: { matchLabels: { app: mailpit } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs"] } }]
+      to: [{ operation: { ports: ["1025"] } }]
+    - to: [{ operation: { ports: ["8025"] } }]
 ---
 # Only the ACS and the authorisation switch may call the security module (ztunnel enforces the mesh identity; probes are plain kubelet).
 apiVersion: security.istio.io/v1

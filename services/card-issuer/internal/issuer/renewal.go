@@ -93,7 +93,7 @@ func (i *Issuer) Renew(ctx context.Context, id string, r RenewRequest) (Renewed,
 		return Renewed{}, fmt.Errorf("security module: %w", err)
 	}
 	n := Card{ID: "card-" + randomDigits(12), PAN: pan, MaskedPAN: Mask(pan), Expiry: expiry, Product: c.Product, Account: c.Account,
-		LimitMinor: c.LimitMinor, Status: "ACTIVE", Holder: c.Holder, Channels: c.Channels, CreatedAt: i.now(), Replaces: c.ID}
+		LimitMinor: c.LimitMinor, Status: "ACTIVE", Holder: c.Holder, Channels: c.Channels, Email: c.Email, Mobile: c.Mobile, CreatedAt: i.now(), Replaces: c.ID}
 	if err := i.store.PutCard(ctx, n); err != nil {
 		return Renewed{}, err
 	}

@@ -37,6 +37,8 @@ type Card struct {
 	Status   string   // ACTIVE, BLOCKED, RESTRICTED
 	Holder   string   //
 	Channels []string // enrolled authentication channels: sms, email, app
+	Email    string   // passcode destination for channel email
+	Mobile   string   // passcode destination for channel sms (E.164)
 }
 
 // Cards is card management (CMS).

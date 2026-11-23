@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"math/big"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,18 +31,21 @@ const (
 
 // Card is the card record (no CVV2, no PIN: those exist only in the security module).
 type Card struct {
-	ID         string    `json:"id"`
-	PAN        string    `json:"-"`
-	MaskedPAN  string    `json:"maskedPan"`
-	Expiry     string    `json:"expiry"` // YYMM
-	Product    string    `json:"product"`
-	Account    int64     `json:"account"`              // Fineract savings account (debit) or loan (credit)
-	LimitMinor int64     `json:"limitMinor,omitempty"` // credit line
-	Status     string    `json:"status"`               // ACTIVE, BLOCKED, RESTRICTED
-	Holder     string    `json:"holder"`
-	Channels   []string  `json:"channels,omitempty"` // 3-D Secure channels: sms, email, app
-	PVV        string    `json:"-"`                  // PIN verification value (from the security module), when a PIN is set
-	PendingPIN string    `json:"-"`                  // a generated PIN awaiting its one-time reveal: ISO 4 block under the module's PIN key
+	ID         string   `json:"id"`
+	PAN        string   `json:"-"`
+	MaskedPAN  string   `json:"maskedPan"`
+	Expiry     string   `json:"expiry"` // YYMM
+	Product    string   `json:"product"`
+	Account    int64    `json:"account"`              // Fineract savings account (debit) or loan (credit)
+	LimitMinor int64    `json:"limitMinor,omitempty"` // credit line
+	Status     string   `json:"status"`               // ACTIVE, BLOCKED, RESTRICTED
+	Holder     string   `json:"holder"`
+	Channels   []string `json:"channels,omitempty"` // 3-D Secure channels: sms, email, app
+	// Where 3-D Secure passcodes go (channels sms / email). Cardholder data: in the card document, in the CDE database.
+	Email      string    `json:"email,omitempty"`
+	Mobile     string    `json:"mobile,omitempty"` // E.164
+	PVV        string    `json:"-"`                // PIN verification value (from the security module), when a PIN is set
+	PendingPIN string    `json:"-"`                // a generated PIN awaiting its one-time reveal: ISO 4 block under the module's PIN key
 	CreatedAt  time.Time `json:"createdAt"`
 	// Renewal / reissue (renewal.go). Same PAN: the previous expiry stays valid until PrevValidUntil or the first use
 	// of the new expiry. New PAN: Replaces / ReplacedBy link the cards; the old one stays valid until ValidUntil or the
@@ -152,6 +156,8 @@ type IssueRequest struct {
 	LimitMinor int64    `json:"limitMinor"`
 	Holder     string   `json:"holder"`
 	Channels   []string `json:"channels"`
+	Email      string   `json:"email,omitempty"`
+	Mobile     string   `json:"mobile,omitempty"`
 }
 
 // Issued is returned once at issuance: the full PAN and CVV2 go to the card bureau / the app's secure display, never
@@ -166,6 +172,9 @@ func (i *Issuer) Issue(ctx context.Context, r IssueRequest) (Issued, error) {
 	if (r.Product != Debit && r.Product != Credit) || r.Account <= 0 || r.Holder == "" || (r.Product == Credit && r.LimitMinor <= 0) {
 		return Issued{}, fmt.Errorf("%w: product DEBIT|CREDIT, account, holder and (credit) limitMinor required", ErrInvalid)
 	}
+	if (r.Email != "" && !strings.Contains(r.Email, "@")) || (r.Mobile != "" && !e164(r.Mobile)) {
+		return Issued{}, fmt.Errorf("%w: email must be an email address, mobile an E.164 number (+ and digits)", ErrInvalid)
+	}
 	pan := i.newPAN(ctx)
 	expiry := i.newExpiry()
 	cvv2, err := i.hsm.CVV2(ctx, pan, expiry)
@@ -173,7 +182,7 @@ func (i *Issuer) Issue(ctx context.Context, r IssueRequest) (Issued, error) {
 		return Issued{}, fmt.Errorf("security module: %w", err)
 	}
 	c := Card{ID: "card-" + randomDigits(12), PAN: pan, MaskedPAN: Mask(pan), Expiry: expiry, Product: r.Product, Account: r.Account,
-		LimitMinor: r.LimitMinor, Status: "ACTIVE", Holder: r.Holder, Channels: r.Channels, CreatedAt: i.now()}
+		LimitMinor: r.LimitMinor, Status: "ACTIVE", Holder: r.Holder, Channels: r.Channels, Email: r.Email, Mobile: r.Mobile, CreatedAt: i.now()}
 	if err := i.store.PutCard(ctx, c); err != nil {
 		return Issued{}, err
 	}
@@ -526,4 +535,9 @@ func luhn(s string) string {
 		sum += d
 	}
 	return s + strconv.Itoa((10-sum%10)%10)
+}
+
+// e164 reports whether s is an E.164 number (+ and 8-15 digits).
+func e164(s string) bool {
+	return len(s) >= 9 && len(s) <= 16 && s[0] == '+' && isDigits(s[1:])
 }

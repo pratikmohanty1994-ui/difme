@@ -15,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/smtp"
 	"os"
 	"strings"
 	"time"
@@ -53,7 +54,9 @@ func (c *CMSClient) Card(ctx context.Context, pan string) (Card, bool, error) {
 		Status   *string   `json:"status"`
 		Holder   *string   `json:"holder"`
 		Channels *[]string `json:"channels"`
-	}{&card.Expiry, &card.Status, &card.Holder, &card.Channels})
+		Email    *string   `json:"email"`
+		Mobile   *string   `json:"mobile"`
+	}{&card.Expiry, &card.Status, &card.Holder, &card.Channels, &card.Email, &card.Mobile})
 	return card, err == nil, err
 }
 
@@ -95,6 +98,36 @@ type LogOTP struct{}
 func (LogOTP) Send(_ context.Context, pan string, _ Card, channel, otp string) error {
 	slog.Warn("3ds DEV passcode (never in production)", "card", mask(pan), "channel", channel, "otp", otp)
 	return nil
+}
+
+// SMTPSender delivers passcodes by email (channel email) through an SMTP relay: Mailpit on the development cluster,
+// the bank's mail relay in production. Channel sms goes through the same relay to <mobile>@<SMSDomain>, the address
+// form of email-to-SMS gateways; on the development cluster Mailpit catches those too, so every passcode can be read
+// in one inbox. The message names only the card's last four digits.
+type SMTPSender struct {
+	Addr      string // host:port
+	From      string
+	SMSDomain string
+}
+
+func (s SMTPSender) Send(_ context.Context, pan string, card Card, channel, otp string) error {
+	var to, subject string
+	switch channel {
+	case "email":
+		to, subject = card.Email, "Your DIFME card passcode"
+	case "sms":
+		if card.Mobile != "" {
+			to, subject = card.Mobile+"@"+s.SMSDomain, "SMS"
+		}
+	default:
+		return fmt.Errorf("passcode channel %q not deliverable by SMTP", channel)
+	}
+	if to == "" || strings.ContainsAny(to, "\r\n") {
+		return fmt.Errorf("card has no %s address for passcodes", channel)
+	}
+	body := fmt.Sprintf("Your DIFME card ending %s: passcode %s for your online purchase. Never share it; DIFME will never ask for it.", pan[len(pan)-4:], otp)
+	msg := "From: " + s.From + "\r\nTo: " + to + "\r\nSubject: " + subject + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + body + "\r\n"
+	return smtp.SendMail(s.Addr, nil, s.From, []string{to}, []byte(msg))
 }
 
 // LogOOB is the development app-push channel: it logs the request; approve it with POST /3ds/oob/{acsTransID}.

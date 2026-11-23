@@ -18,6 +18,10 @@
 //	                    and the issuer app's credential registration (/3ds/fido/...). Credentials live in
 //	                    ACS_DATABASE_URL (table acs_fido_credential, sealed) or in memory.
 //	ACS_FIDO_RP_NAME    relying party display name
+//	ACS_SMTP_ADDR       SMTP relay (host:port) for passcodes by email and email-to-SMS (Mailpit on the development
+//	                    cluster); empty: passcodes are only logged (development)
+//	ACS_SMTP_FROM       sender address (default 3ds@difme.local)
+//	ACS_SMS_DOMAIN      email-to-SMS gateway domain for channel sms (default sms.difme.local)
 //	ACS_FIDO_ORIGINS    comma-separated origins allowed in client data: the ACS challenge page origin, the issuer web
 //	                    app, opaque app origins (android:apk-key-hash:...)
 //	ACS_FIDO_TRUSTED_REQUESTOR_RP_IDS  comma-separated 3DS Requestor rpIds whose FIDO Authentication Data is trusted
@@ -106,9 +110,14 @@ func main() {
 		sealed := store.Seal(acs.HSMSealer{URL: hsmURL}) // documents carry the card number: ciphertext only at rest
 		cfg.Store, cfg.Credentials = sealed, sealed      // FIDO credentials: sealed the same way
 	}
+	var otp acs.OTPSender = acs.LogOTP{}
+	if addr := os.Getenv("ACS_SMTP_ADDR"); addr != "" {
+		otp = acs.SMTPSender{Addr: addr, From: env("ACS_SMTP_FROM", "3ds@difme.local"), SMSDomain: env("ACS_SMS_DOMAIN", "sms.difme.local")}
+		log.Printf("passcodes by email / email-to-SMS through %s", addr)
+	}
 	a := acs.New(cfg,
 		acs.NewCMSClient(env("ACS_CMS_URL", "http://127.0.0.1:8080")), frm, threeds.NewHSMClient(env("HSM_URL", "http://127.0.0.1:8700")),
-		acs.LogOTP{}, acs.LogOOB{}, acs.NewDSClient(os.Getenv("ACS_DS_URL")))
+		otp, acs.LogOOB{}, acs.NewDSClient(os.Getenv("ACS_DS_URL")))
 	if n, err := a.Recover(context.Background()); err != nil {
 		log.Fatalf("challenge store: %v", err)
 	} else if n > 0 {
