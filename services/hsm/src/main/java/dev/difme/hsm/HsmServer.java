@@ -24,7 +24,7 @@ import org.jpos.security.SecureDESKey;
  * AuthorizationPolicy per path naming its callers; it binds to HSM_ADDR.
  *
  * <p>Keys ({@link KeyStore}): in a cluster only through attested key release ({@link KeyRelease}: HSM_KBS_URL,
- * HSM_TEE_SVN; first start HSM_BOOTSTRAP_OPENBAO + HSM_BOOTSTRAP_KEYS). Local tests only, with HSM_DEV_INSECURE=true:
+ * HSM_TEE_SVN; first start HSM_BOOTSTRAP_OPENBAO + HSM_BOOTSTRAP_KEYS; LMK rotation HSM_KEY_GENERATION + HSM_ROTATE). Local tests only, with HSM_DEV_INSECURE=true:
  * HSM_LMK/HSM_KEYS files, or HSM_DEV_REBUILD_LMK=true with HSM_DEV_KEYS ("label=TYPE:component,…;…") or
  * HSM_DEV_CVK_COMPONENTS.
  */
@@ -62,6 +62,20 @@ public final class HsmServer {
         }
 
         public KeyStore putAes(String label, String block) { aes.put(label, block); return this; }
+
+        /**
+         * LMK rotation over the whole store: every DES key through {@code translateKeyFromOldLMK}, every AES/RSA key
+         * block re-wrapped under the new KBPK, certificates and public keys copied. {@code hsm} holds the new LMK/KBPK
+         * with the old ones loaded ({@link SecurityModule#setOldKeys}); nothing leaves it in clear.
+         */
+        KeyStore rotated(SecurityModule hsm) throws SMException {
+            KeyStore n = new KeyStore();
+            for (var e : des.entrySet()) n.put(e.getKey(), hsm.translateKeyFromOldLmk(e.getValue()));
+            for (var e : aes.entrySet()) n.putAes(e.getKey(), hsm.translateFromOldKbpk(e.getValue()));
+            for (var e : rsa.entrySet()) n.rsa.put(e.getKey(), hsm.translateFromOldKbpk(e.getValue()));
+            n.certs.putAll(certs);
+            return n;
+        }
 
         SecureDESKey des(String label, String type) {
             SecureDESKey k = des.get(label);

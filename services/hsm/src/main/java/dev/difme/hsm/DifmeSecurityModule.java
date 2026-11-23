@@ -328,6 +328,62 @@ public class DifmeSecurityModule extends JCESecurityModule {
         }
     }
 
+    // ---- LMK / KBPK rotation (jPOS's software module declares translateKeyFromOldLMK but does not implement it) ----
+
+    private DifmeSecurityModule oldLmk; // the previous LMK, loaded only for a rotation drill
+    private byte[] oldKbpk;
+
+    /** Loads the previous LMK (file, jPOS format) and KBPK for {@link #translateKeyFromOldLMK} / {@link #translateFromOldKbpk}. */
+    public void setOldKeys(java.nio.file.Path oldLmkFile, byte[] oldKbpk) throws SMException {
+        try {
+            DifmeSecurityModule m = new DifmeSecurityModule();
+            java.util.Properties p = new java.util.Properties();
+            p.setProperty("lmk", oldLmkFile.toString());
+            p.setProperty("rebuildlmk", "false");
+            p.setProperty("provider", "org.bouncycastle.jce.provider.BouncyCastleProvider");
+            m.setConfiguration(new org.jpos.core.SimpleConfiguration(p));
+            this.oldLmk = m;
+        } catch (org.jpos.core.ConfigurationException e) {
+            throw new SMException(e);
+        }
+        if (oldKbpk != null) {
+            if (oldKbpk.length != 32) throw new IllegalArgumentException("old KBPK: 32 bytes");
+            this.oldKbpk = oldKbpk.clone();
+        }
+    }
+
+    /** A key under the old LMK, re-encrypted under the current one (same type, length and check value). */
+    @Override
+    protected SecureDESKey translateKeyFromOldLMKImpl(SecureDESKey kd) throws SMException {
+        if (oldLmk == null) throw new SMException("no old LMK loaded");
+        Key clear = oldLmk.decryptFromLMK(kd);
+        return encryptToLMK(kd.getKeyLength(), kd.getKeyType(), clear);
+    }
+
+    /** Forgets the old LMK and KBPK after a rotation; translations fail from then on. */
+    @Override
+    protected void eraseOldLMKImpl() {
+        oldLmk = null;
+        if (oldKbpk != null) java.util.Arrays.fill(oldKbpk, (byte) 0);
+        oldKbpk = null;
+    }
+
+    /** A TR-31 key block under the old KBPK, re-wrapped under the current one with the same header. */
+    public String translateFromOldKbpk(String block) throws SMException {
+        if (oldKbpk == null) throw new SMException("no old KBPK loaded");
+        Tr31.Unwrapped u;
+        try {
+            u = Tr31.unwrap(oldKbpk, block);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        }
+        try {
+            return Tr31.wrap(kbpk(), "D0000" + u.header().substring(5), u.key());
+        } finally {
+            java.util.Arrays.fill(u.key(), (byte) 0);
+        }
+    }
+
     /** The KBPK in a form for the key release store (bootstrap only, inside the TEE). */
     byte[] kbpkForRelease() throws SMException { return kbpk().clone(); }
 }

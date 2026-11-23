@@ -40,7 +40,13 @@ public final class KeyRelease {
         String prefix = env.getOrDefault("HSM_KBS_PREFIX", "difme/hsm");
         KbsClient kbs = new KbsClient(env.get("HSM_KBS_URL"), env.getOrDefault("HSM_TEE_SVN", "1"));
         Path tmp = Path.of(env.getOrDefault("HSM_TMPFS", "/run/hsm"));
-        byte[] lmk = fetch(kbs, prefix + "/lmk"), kbpk = fetch(kbs, prefix + "/kbpk"), keys = fetch(kbs, prefix + "/keys");
+        int gen = generation(env);
+        String sfx = suffix(gen);
+        byte[] lmk = fetch(kbs, prefix + "/lmk" + sfx), kbpk = fetch(kbs, prefix + "/kbpk" + sfx), keys = fetch(kbs, prefix + "/keys" + sfx);
+        if ("true".equals(env.get("HSM_ROTATE")) && lmk == null && kbpk == null && keys == null)
+            return rotateFrom(env, kbs, prefix, suffix(gen - 1), sfx, tmp);
+        if (gen > 1 && (lmk == null || kbpk == null || keys == null))
+            throw new IllegalStateException("key generation " + gen + " missing or incomplete: rotate into it (HSM_ROTATE=true), never bootstrap it");
         OpenBao bao = null;
         boolean bootstrapped = false;
         if ((lmk == null || kbpk == null || keys == null)) {
@@ -57,24 +63,92 @@ public final class KeyRelease {
             lmk = Files.readAllBytes(f);
             Files.deleteIfExists(f);
             Files.deleteIfExists(Path.of(f + ".aes"));
-            bao.create("kbs/" + prefix + "/lmk", lmk);
+            bao.create("kbs/" + prefix + "/lmk" + sfx, lmk);
         }
         if (kbpk == null) {
             kbpk = new byte[32];
             new java.security.SecureRandom().nextBytes(kbpk);
-            bao.create("kbs/" + prefix + "/kbpk", kbpk);
+            bao.create("kbs/" + prefix + "/kbpk" + sfx, kbpk);
         }
         SecurityModule hsm = load(lmk, kbpk, tmp);
         HsmServer.KeyStore ks;
         if (keys == null) {
             ks = generate(hsm, env.getOrDefault("HSM_BOOTSTRAP_KEYS", ""));
-            bao.create("kbs/" + prefix + "/keys", ks.toJson().getBytes(StandardCharsets.UTF_8));
+            bao.create("kbs/" + prefix + "/keys" + sfx, ks.toJson().getBytes(StandardCharsets.UTF_8));
         } else {
             ks = HsmServer.KeyStore.load(new String(keys, StandardCharsets.UTF_8));
         }
         java.util.Arrays.fill(lmk, (byte) 0);
         java.util.Arrays.fill(kbpk, (byte) 0);
         return new Loaded(hsm, ks, bootstrapped);
+    }
+
+    /** The result of an LMK rotation: the module on the new LMK/KBPK, the translated key store, and the new LMK/KBPK to store. */
+    record Rotated(SecurityModule hsm, HsmServer.KeyStore keys, byte[] lmk, byte[] kbpk) {}
+
+    /** HSM_KEY_GENERATION: the key generation in use (1, the default, is the first LMK). */
+    static int generation(Map<String, String> env) {
+        int g = Integer.parseInt(env.getOrDefault("HSM_KEY_GENERATION", "1"));
+        if (g < 1) throw new IllegalArgumentException("HSM_KEY_GENERATION: 1 or more");
+        return g;
+    }
+
+    /**
+     * Resource-name suffix of a generation: none for 1, "-g&lt;n&gt;" after (KBS resources are repository/type/tag, so
+     * the generation is part of the tag: difme/hsm/lmk, difme/hsm/lmk-g2, …, all under the create-only policy's
+     * kbs/difme/hsm/*).
+     */
+    static String suffix(int gen) { return gen <= 1 ? "" : "-g" + gen; }
+
+    /**
+     * LMK rotation drill (docs/knowledge-base/ops-hsm-lmk-rotation.md): with HSM_KEY_GENERATION=n (empty in the store) and
+     * HSM_ROTATE=true, generation n-1's LMK, KBPK and key list arrive by attested release; a new LMK and KBPK are
+     * generated inside the module; every key is translated ({@link HsmServer.KeyStore#rotated}); generation n is
+     * stored through the create-only bootstrap role (it can neither read nor overwrite, so generation n-1 stays intact
+     * for rollback); the old keys are erased from memory.
+     */
+    static Loaded rotateFrom(Map<String, String> env, KbsClient kbs, String prefix, String fromSfx, String toSfx, Path tmp) throws Exception {
+        byte[] oldLmk = fetch(kbs, prefix + "/lmk" + fromSfx), oldKbpk = fetch(kbs, prefix + "/kbpk" + fromSfx), oldKeys = fetch(kbs, prefix + "/keys" + fromSfx);
+        if (oldLmk == null || oldKbpk == null || oldKeys == null) throw new IllegalStateException("rotation source generation incomplete");
+        if (env.get("HSM_BOOTSTRAP_OPENBAO") == null) throw new IllegalStateException("rotation needs the create-only bootstrap role (HSM_BOOTSTRAP_OPENBAO)");
+        OpenBao bao = OpenBao.login(env.get("HSM_BOOTSTRAP_OPENBAO"), env.getOrDefault("HSM_BOOTSTRAP_ROLE", "hsm-bootstrap"),
+                Files.readString(Path.of(env.getOrDefault("HSM_BOOTSTRAP_JWT", "/var/run/secrets/openbao/token"))).trim());
+        Rotated r = rotate(oldLmk, oldKbpk, new String(oldKeys, StandardCharsets.UTF_8), tmp);
+        java.util.Arrays.fill(oldLmk, (byte) 0);
+        java.util.Arrays.fill(oldKbpk, (byte) 0);
+        try {
+            bao.create("kbs/" + prefix + "/lmk" + toSfx, r.lmk());
+            bao.create("kbs/" + prefix + "/kbpk" + toSfx, r.kbpk());
+            bao.create("kbs/" + prefix + "/keys" + toSfx, r.keys().toJson().getBytes(StandardCharsets.UTF_8));
+        } finally {
+            java.util.Arrays.fill(r.lmk(), (byte) 0);
+            java.util.Arrays.fill(r.kbpk(), (byte) 0);
+        }
+        System.out.println("hsm: LMK rotated to generation " + generation(env) + " (" + r.keys().des.size() + " DES keys translated, "
+                + (r.keys().aes.size() + r.keys().rsa.size()) + " key blocks re-wrapped); old keys erased from memory");
+        return new Loaded(r.hsm(), r.keys(), true);
+    }
+
+    /** Generates a new LMK and KBPK in the module and translates the old key store to them. */
+    static Rotated rotate(byte[] oldLmk, byte[] oldKbpk, String oldKeysJson, Path tmp) throws Exception {
+        Path f = tmp.resolve("lmk-rotate-" + Long.toHexString(new java.security.SecureRandom().nextLong()));
+        SecurityModule.software(f, true); // jPOS writes a fresh random LMK
+        byte[] lmk = Files.readAllBytes(f);
+        Files.deleteIfExists(f);
+        Files.deleteIfExists(Path.of(f + ".aes"));
+        byte[] kbpk = new byte[32];
+        new java.security.SecureRandom().nextBytes(kbpk);
+        SecurityModule hsm = load(lmk, kbpk, tmp);
+        Path old = Files.createTempFile(tmp, "lmk-old", "");
+        try {
+            Files.write(old, oldLmk);
+            hsm.setOldKeys(old, oldKbpk);
+        } finally {
+            Files.deleteIfExists(old);
+        }
+        HsmServer.KeyStore ks = HsmServer.KeyStore.load(oldKeysJson).rotated(hsm);
+        hsm.eraseOldLmk();
+        return new Rotated(hsm, ks, lmk, kbpk);
     }
 
     /** null when the resource does not exist yet; any other refusal (attestation not affirming) is fatal. */

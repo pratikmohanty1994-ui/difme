@@ -195,6 +195,20 @@ public final class SecurityModule {
 
     public byte[] aesCmac(String macKey, byte[] data) throws SMException { return ext().aesCmac(macKey, data); }
 
+    // ---- LMK rotation -------------------------------------------------------------------------------------------
+
+    /** Loads the previous LMK and KBPK into the module for a rotation (attested release only, ADR-026). */
+    public void setOldKeys(Path oldLmkFile, byte[] oldKbpk) throws SMException { ext().setOldKeys(oldLmkFile, oldKbpk); }
+
+    /** jPOS {@code translateKeyFromOldLMK}: a DES key under the old LMK re-encrypted under the current LMK. */
+    public SecureDESKey translateKeyFromOldLmk(SecureDESKey underOld) throws SMException { return sm.translateKeyFromOldLMK(underOld); }
+
+    /** An AES/RSA key block under the old KBPK re-wrapped under the current KBPK. */
+    public String translateFromOldKbpk(String block) throws SMException { return ext().translateFromOldKbpk(block); }
+
+    /** jPOS {@code eraseOldLMK}: forgets the old LMK and KBPK. */
+    public void eraseOldLmk() throws SMException { sm.eraseOldLMK(); }
+
     /** Sets the AES key block protection key (from the attested key release). */
     public void setKbpk(byte[] kbpk) throws SMException { ext().setKbpk(kbpk); }
 
