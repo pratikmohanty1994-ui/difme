@@ -268,7 +268,15 @@ is vendored as pinned source in `vendor/` (`ci/vendor-sync.sh`, `vendor/VENDORED
 | ISO 8583 + card network | **moov-io/iso8583** v0.26.4 in `services/scheme-sim` (scheme + issuers, ISO adapter, acquirer) | Apache-2.0 | Owner choice over jPOS (AGPL-3.0): a small Go library and a lighter service. |
 
 Flow: exchange → payment hub → Hyperswitch → acquirer → ISO 8583 → scheme/issuer; money is booked in Fineract (card
-settlement to merchants, escrow hold/release/refund). Test cards only. Profile `rails`; the exchange uses these rails
+settlement to merchants, escrow hold/release/refund).
+
+**Progress (2026-11-24, D3/D4):** everything the interim hub did now has a PH-EE path, built and unit-tested, first
+cluster run pending: escrow as on-us transfers (DifmeOnUsTransfer, channel patch 0002); card checkout and refunds as
+DifmeCardCheckout / DifmeCardRefund (authorise → Tazama check → capture / hold / cancel; then an on-us transfer
+card-settlement → merchant); account opening as DifmeOpenAccount. All three are answered by `services/core/rails-worker`
+(one Fluxnova external-task worker; card details stay in it, flows carry only a card reference). Mojaloop switch and the
+other bank deployed (Argo app `mojaloop-switch`); the payer now checks the payee's ILP fulfilment at commit (connector
+patch 0004). The interim hub's deletion is prepared for after that run. Test cards only. Profile `rails`; the exchange uses these rails
 when the profile's `exchange-rails` ConfigMap is present, otherwise its in-process simulators.
 
 ## ADR-023 — Fraud scoring and FRM on Tazama, on DIFME's stack (owner 2026-11-22)

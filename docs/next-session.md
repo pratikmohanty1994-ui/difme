@@ -112,6 +112,23 @@ card-settlement) and reads balances from Fineract: nothing in the exchange's pat
 Tests: PhEePaymentHubTest 12, CardTasksTest 4, AccountTasksTest 2. **Next: core images (exchange + rails-worker), then the
 cluster run; if green, delete payment-hub.**
 
+### Review findings (2026-11-24, after going through the whole session)
+- **Held-for-review card payments are never resolved (owner decision needed):** on a Tazama alert DifmeCardCheckout ends
+  "review" with the card authorised; the buyer's real-time authorisation is answered 96, and nothing approves or cancels
+  the hold (the interim hub had a review endpoint nobody called). Options: (a) in a real-time authorisation, an alert
+  declines and cancels the hold (like an interdiction); (b) keep holds and add an operator review (back office) that
+  captures or cancels, with an expiry that cancels.
+- Run 14 stopped at rails, so 9 of the 14 profiles (and the rails report: network tokenization, hsm, PH-EE flows; the
+  dbt lineage smoke) were not checked after run 13. The next PH-EE run covers rails+fraud; an all-profiles run should
+  follow once payment-hub is gone (memory).
+- Every commit since 2026-11-23 carried [skip ci], so the verify workflow hasn't run on them. Checked locally: render
+  checks, generated manifests, no key material, catalog dirs, YAML parse, kustomization file references. Not checked
+  locally: kustomize build (no binary here), TLA+, API linters (no API changes). The next push without [skip ci] (the
+  payment-hub deletion) runs it.
+- replay-engine image: its manifest's signing step hit a ghcr.io timeout (images run 45302041542); rebuild with the next
+  core build.
+- D4 GET /transfers after commit: the connector has no route for it; needs Fluxnova history lookups from the connector.
+
 ### Run 14 result (45291141393, core,security,streaming,process,rails; 2026-11-24)
 core, security, streaming, process **converged**; live buy ok four times. rails failed only on ph-ee: the ams connector
 never passed its startup probe and timed out calling Fluxnova while idle (5m CPU). Cause: memory pressure by the time
