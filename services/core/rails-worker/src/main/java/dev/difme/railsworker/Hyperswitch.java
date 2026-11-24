@@ -46,15 +46,15 @@ public final class Hyperswitch {
     /** Creates (or finds) the merchant account and its card connector, and issues an API key for this process. */
     public synchronized void bootstrap() {
         if (apiKey != null) return;
-        if (call("GET", "accounts/" + MERCHANT, null, adminKey, "api-key").status() == 404) {
+        if (call("GET", "accounts/" + MERCHANT, null, "admin-api-key=" + adminKey, "Authorization").status() == 404) {
             ObjectNode m = JSON.createObjectNode();
             m.put("merchant_id", MERCHANT).put("merchant_name", "DIFME marketplace").put("return_url", "https://difme.local/return");
-            ok(call("POST", "accounts", m, adminKey, "api-key"), "create merchant");
+            ok(call("POST", "accounts", m, "admin-api-key=" + adminKey, "Authorization"), "create merchant");
         }
         ObjectNode k = JSON.createObjectNode();
         k.put("name", "rails-worker").put("description", "PH-EE card flows worker").put("expiration", "never");
-        apiKey = ok(call("POST", "api_keys/" + MERCHANT, k, adminKey, "api-key"), "create api key").path("api_key").asText();
-        JsonNode connectors = ok(call("GET", "account/" + MERCHANT + "/connectors", null, adminKey, "api-key"), "list connectors");
+        apiKey = ok(call("POST", "api_keys/" + MERCHANT, k, "admin-api-key=" + adminKey, "Authorization"), "create api key").path("api_key").asText();
+        JsonNode connectors = ok(call("GET", "account/" + MERCHANT + "/connectors", null, "admin-api-key=" + adminKey, "Authorization"), "list connectors");
         for (JsonNode c : connectors) if (CONNECTOR.equals(c.path("connector_name").asText())) return;
         ObjectNode c = JSON.createObjectNode();
         c.put("connector_type", "payment_processor").put("connector_name", CONNECTOR).put("test_mode", true).put("disabled", false);
@@ -64,7 +64,7 @@ public final class Hyperswitch {
             pm.addObject().put("payment_method_type", t).put("minimum_amount", 1).put("maximum_amount", 1_000_000_000)
                     .put("recurring_enabled", false).put("installment_payment_enabled", false);
         }
-        ok(call("POST", "account/" + MERCHANT + "/connectors", c, adminKey, "api-key"), "create card connector");
+        ok(call("POST", "account/" + MERCHANT + "/connectors", c, "admin-api-key=" + adminKey, "Authorization"), "create card connector");
     }
 
     /** Charges a card (authorise + capture). paymentId is DIFME's id: a retry with the same id returns the first result. */

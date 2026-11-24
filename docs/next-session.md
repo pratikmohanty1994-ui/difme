@@ -156,6 +156,19 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 20 result (45398742032, core,security,process,rails; 2026-11-24): green, Mojaloop end to end
+All four profiles converged. **Mojaloop cross-bank payment works end to end:** xbank-check opened through
+DifmeOpenAccount (least-privilege client), funded on-us (DifmeOnUsTransfer done), paid MSISDN 919900000001 at payeefsp
+through PayerFundTransfer + the switch (success end), Fineract 10000 -> 9850. **ACS signing certificate issued by "DIFME
+Card Scheme Root CA"** (scheme CA key in the security module), network tokenization on, escrow + card-settlement
+accounts opened. Still failing:
+- Hyperswitch admin auth: the router reads `Authorization: admin-api-key=<key>` (V2AdminApiAuth, also behind the
+  merchant-route variants), not an `admin-api-key` or `api-key` header: fixed in the worker (test fake now requires it)
+  and the report's probe.
+- The exchange's escrow booking: PH-EE channel 403 "RBAC: access denied" at the waypoint: the realm role is in claim
+  `authorities` (the client's mapper), the policy only checked realm_access.roles: now either is accepted. The live buy
+  timed out (504) waiting on that booking.
+
 ### Run 19 result (45389945403, core,security,process,rails; 2026-11-24)
 core, security, process converged; rails failed: the ACS crash-looped. Its log: POST http://hsm.rails.svc:8700/v1/csr/acs-sign
 "connection reset by peer". Root cause: an ordering deadlock. The waypoint lived in the PH-EE app (rails wave 2) while

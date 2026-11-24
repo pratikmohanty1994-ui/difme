@@ -24,6 +24,12 @@ spec:
   targetRefs: [{ kind: Service, group: "", name: ph-ee-connector-channel }]
   action: ALLOW
   rules:
+    # The realm role arrives in claim "authorities" (the client's realm-role mapper) or, where the realm's "roles" scope
+    # applies, realm_access.roles: either is accepted (run 20: 403 RBAC with only realm_access checked).
+    - from: [{ source: { requestPrincipals: ["https://id.difme.local/realms/difme/*"] } }]
+      when:
+        - { key: "request.auth.claims[azp]", values: ["difme-exchange"] }
+        - { key: "request.auth.claims[authorities]", values: ["ph-ee-transfer"] }
     - from: [{ source: { requestPrincipals: ["https://id.difme.local/realms/difme/*"] } }]
       when:
         - { key: "request.auth.claims[azp]", values: ["difme-exchange"] }

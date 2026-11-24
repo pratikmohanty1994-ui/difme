@@ -189,7 +189,7 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   # Does Hyperswitch accept the admin key the rails-worker uses (Secret hyperswitch, admin-api-key)?
   if adm=$(kubectl -n rails get secret hyperswitch -o jsonpath='{.data.admin-api-key}' 2>/dev/null | base64 -d) && [ -n "$adm" ]; then
     kubectl -n rails port-forward svc/hyperswitch 18282:8080 >/dev/null 2>&1 & hpf=$!; sleep 3
-    code=$(curl -s -o /dev/null -w '%{http_code}' -H "api-key: $adm" http://127.0.0.1:18282/accounts/difme_marketplace)
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=$adm" http://127.0.0.1:18282/accounts/difme_marketplace)
     echo "  hyperswitch admin key: GET /accounts/difme_marketplace -> HTTP $code (200/404 = key accepted, 401 = refused)"
     kill $hpf 2>/dev/null
   fi
