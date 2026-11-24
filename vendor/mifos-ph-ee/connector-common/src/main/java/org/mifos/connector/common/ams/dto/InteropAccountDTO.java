@@ -18,10 +18,14 @@
  */
 package org.mifos.connector.common.ams.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+// DIFME: Fineract 1.16 adds fields (e.g. resourceId, resourceIdentifier) the connector does not use; ignore them
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class InteropAccountDTO {
 
     private String accountId;

@@ -77,6 +77,9 @@ spec:
             - { name: HTTPS_ENABLED, value: "false" }
             - { name: MUTUAL_TLS_ENABLED, value: "false" }
             - { name: SIMULATOR_API_LISTEN_PORT, value: "3000" }
+            # Payee fee = amount x FEE_MULTIPLIER; unset it was "NaN", which the switch rejects (400) and the quote failed
+            # with 2001 (cluster-verify run 17). No payee fee: the payer is debited exactly the amount.
+            - { name: FEE_MULTIPLIER, value: "0" }
             - name: PARTIES
               value: '[{"displayName":"Payee Test","firstName":"Payee","lastName":"Test","dateOfBirth":"1990-01-01","idType":"MSISDN","idValue":"919900000001"}]'
           ports: [{ name: http, containerPort: 3000 }]

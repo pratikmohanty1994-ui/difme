@@ -1,0 +1,36 @@
+# DIFME: Fineract 1.16's interop and savings replies carry fields the connector doesn't map (resourceId, resourceIdentifier);
+# ams failed with UnrecognizedPropertyException and every on-us transfer stalled at Local Quote (cluster-verify run 17).
+diff --git a/src/main/java/org/mifos/connector/common/ams/dto/InteropAccountDTO.java b/src/main/java/org/mifos/connector/common/ams/dto/InteropAccountDTO.java
+index 0d7b9283..24002bc6 100644
+--- a/src/main/java/org/mifos/connector/common/ams/dto/InteropAccountDTO.java
++++ b/src/main/java/org/mifos/connector/common/ams/dto/InteropAccountDTO.java
+@@ -18,10 +18,14 @@
+  */
+ package org.mifos.connector.common.ams.dto;
+ 
++import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
++
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ 
++// DIFME: Fineract 1.16 adds fields (e.g. resourceId, resourceIdentifier) the connector does not use; ignore them
++@JsonIgnoreProperties(ignoreUnknown = true)
+ public class InteropAccountDTO {
+ 
+     private String accountId;
+diff --git a/src/main/java/org/mifos/connector/common/ams/dto/PartyFspResponseDTO.java b/src/main/java/org/mifos/connector/common/ams/dto/PartyFspResponseDTO.java
+index 842502ec..7b35a8cf 100644
+--- a/src/main/java/org/mifos/connector/common/ams/dto/PartyFspResponseDTO.java
++++ b/src/main/java/org/mifos/connector/common/ams/dto/PartyFspResponseDTO.java
+@@ -7,6 +7,10 @@
+  */
+ package org.mifos.connector.common.ams.dto;
+ 
++import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
++
++// DIFME: Fineract 1.16 adds fields (e.g. resourceId, resourceIdentifier) the connector does not use; ignore them
++@JsonIgnoreProperties(ignoreUnknown = true)
+ public class PartyFspResponseDTO {
+ 
+     private String accountId;

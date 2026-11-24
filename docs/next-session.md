@@ -155,6 +155,20 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 17 result (45359895795, core,security,process,rails,lakehouse; 2026-11-24)
+core, security, process, **rails converged**; the notary starts from **attested key release** and witnesses evidence;
+hsm keys by attestation; rails-worker up on all topics; DifmeOpenAccount completed. Findings (diagnostics worked):
+- **The exchange never switched to PH-EE** (no exchange "rails:" line, no card tasks): it reads exchange-rails at start
+  and nothing restarted it after the rails profile. Fixed: exchange-rails-restart Job (as exchange-evidence-restart);
+  the live buy waits for that rollout.
+- **On-us stalled at Local Quote:** ams failed parsing Fineract 1.16's interop reply (UnrecognizedPropertyException on
+  resourceId/resourceIdentifier). Fixed: patch ph-ee-common/0003 (DTOs ignore unknown fields) + Camel Jackson setting.
+- **Quote error 2001:** the payee simulator's fee was "NaN" (FEE_MULTIPLIER unset), the switch rejected it (400).
+  Fixed: FEE_MULTIPLIER "0".
+- **lakehouse failed:** flink-archive needs the Flink operator (streaming profile). Scale-to-zero worked as designed
+  (dbt's init container: "trino ready after 3s"); dbt itself fails: Trino → Polaris OAuth "invalid_scope" (to look at in
+  the lakehouse run, with streaming).
+
 ### Run 16 result (45348130568, core,security,process,rails,lakehouse; 2026-11-24)
 core converged; **security failed**: the notary crash-looped ("KBS auth: Connection reset by peer") and the exchange
 followed (notary unreachable at start). Cause: Trustee joined the mesh, so its caller AuthorizationPolicy finally

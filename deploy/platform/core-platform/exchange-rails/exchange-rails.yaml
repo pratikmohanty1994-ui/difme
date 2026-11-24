@@ -4,7 +4,7 @@
 # (deploy/platform/rails/scheme-sim): partner node : PAN : expiry MMYY.
 apiVersion: v1
 kind: ConfigMap
-metadata: { name: exchange-rails }
+metadata: { name: exchange-rails, annotations: { argocd.argoproj.io/sync-wave: "0" } }
 data:
   DIFME_EXCHANGE_HUB_URL: "http://payment-hub.rails.svc:8090"
   # "*": the card for partners without their own (standing mandates' partner nodes are assigned at registration).
@@ -19,3 +19,44 @@ data:
   # Accounts (escrow, partner-*, merchant-*, card-settlement) opened through PH-EE's DifmeOpenAccount before first use.
   DIFME_EXCHANGE_PHEE_OPEN_ACCOUNTS: "true"
   DIFME_EXCHANGE_HUB_PARTNER_CARDS: "1:4375510000000001:1230,2:4375510000000019:1230,3:4375510000000027:1230,*:4375510000000001:1230"
+---
+# exchange-svc reads its environment at start: restart it once after the ConfigMap exists, so it actually uses PH-EE
+# (cluster-verify runs 15-17: the exchange kept its simulated rails, so no card checkout went through DifmeCardCheckout).
+# Same pattern as exchange-evidence-restart: the Job runs in "security", where the kubectl image is allowed.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: exchange-rails-restart, namespace: security }
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: exchange-rails-restart }
+rules:
+  - { apiGroups: [apps], resources: [deployments], resourceNames: [exchange-svc], verbs: [get, patch] }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: exchange-rails-restart }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: exchange-rails-restart }
+subjects: [{ kind: ServiceAccount, name: exchange-rails-restart, namespace: security }]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: exchange-rails-restart
+  namespace: security
+  annotations: { argocd.argoproj.io/sync-wave: "1" }   # after the ConfigMap; applied once, the completed Job is the record
+spec:
+  backoffLimit: 3
+  template:
+    metadata: { labels: { difme/team: exchange, business.metric: exchange-matching } }   # cost attribution (Kyverno)
+    spec:
+      serviceAccountName: exchange-rails-restart
+      restartPolicy: Never
+      containers:
+        - name: restart
+          image: registry.k8s.io/kubectl:v1.32.3
+          command: [kubectl, --cache-dir=/tmp/kube, -n, core-platform, rollout, restart, deployment/exchange-svc]
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 96Mi } }
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 16Mi } }]

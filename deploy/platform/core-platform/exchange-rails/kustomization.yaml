@@ -1,2 +1,3 @@
+# No namespace field: the restart Job and its ServiceAccount run in "security" (where the kubectl image is allowed);
+# everything else goes to the application's destination namespace (core-platform).
 resources: [exchange-rails.yaml]
-namespace: core-platform

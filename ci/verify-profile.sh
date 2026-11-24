@@ -157,6 +157,8 @@ fi
 # Live buy smoke (informational): the full FR-01 path through the shopbot PWA's /api proxy.
 if [ "$rc" -eq 0 ] && kubectl -n core-platform get svc pwa-shopbot >/dev/null 2>&1; then
   echo "== live buy through the PWA"
+  # the rails profile restarts exchange-svc to pick up its rails settings (exchange-rails-restart): buy on the new pod
+  kubectl -n core-platform rollout status deploy/exchange-svc --timeout=180s >/dev/null 2>&1 || echo "  (exchange-svc rollout not finished)"
   python3 ci/live-buy.py || true
 fi
 # Rails checks (informational): settings that only show in healthy pods' logs, which the failing-pod report never sees.

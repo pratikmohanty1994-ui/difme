@@ -26,3 +26,10 @@ server:
   ssl: { enabled: false }
 management:
   endpoints: { web: { exposure: { include: "health,info,prometheus" } } }
+# Fineract 1.16 replies carry fields the connector's DTOs don't map (cluster-verify run 17: UnrecognizedPropertyException
+# on the interop party lookup stalled every on-us transfer at Local Quote). Camel's JSON format ignores unknown fields;
+# the DTOs also do (patch ph-ee-common/0003).
+camel:
+  dataformat:
+    jackson:
+      disable-features: FAIL_ON_UNKNOWN_PROPERTIES
