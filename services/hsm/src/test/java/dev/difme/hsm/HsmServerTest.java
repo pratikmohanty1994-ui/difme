@@ -1,6 +1,7 @@
 package dev.difme.hsm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.URI;
@@ -39,6 +40,9 @@ class HsmServerTest {
                 .put("tak", hsm.keyFromComponents(SMAdapter.TYPE_TAK, PinAndChipTest.KEY))
                 .putAes("aes-mac", hsm.aesKeyFromComponents("M7", "2B7E151628AED2A6ABF7158809CF4F3C"))
                 .putAes("ilp-difme", hsm.aesKeyFromComponents("M7", ILP_KEY));
+        String[] ca = hsm.generateRsaCaKey("DIFME Card Scheme Root CA");
+        String[] acs = hsm.generateRsaSigningKey("DIFME acs-sign (dev)");
+        keys.putRsa("scheme-ca", ca[0], ca[1]).putRsa("acs-sign", acs[0], acs[1]);
         http = HsmServer.serve(new HsmServer(hsm, keys), "127.0.0.1:0");
         base = "http://127.0.0.1:" + http.getAddress().getPort();
     }
@@ -169,5 +173,31 @@ class HsmServerTest {
         assertEquals(400, post("/v1/ilp/payeefsp/hmac", Map.of("data", "00")).statusCode());
         assertEquals(400, post("/v1/hmac", Map.of("key", "ilp-difme", "data", "00")).statusCode());
         assertEquals(404, post("/v1/ilp/Bad_Name/hmac", Map.of("data", "00")).statusCode());
+    }
+
+    @Test
+    void schemeCaIssuesFromACsrSignedInTheModule() throws Exception {
+        var cf = java.security.cert.CertificateFactory.getInstance("X.509");
+        var caCert = (java.security.cert.X509Certificate) cf.generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(
+                C.send(HttpRequest.newBuilder(URI.create(base + "/v1/certs/scheme-ca")).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .body().replaceAll(".*\"x5c\":\"([^\"]+)\".*", "$1"))));
+        assertEquals(1, caCert.getBasicConstraints(), "a CA certificate (path length 1)");
+        // CSR for acs-sign, signed inside the module: proof of possession verifies with the key's public key
+        String csrB64 = post("/v1/csr/acs-sign", Map.of("cn", "DIFME ACS")).body().replaceAll(".*\"csr\":\"([^\"]+)\".*", "$1");
+        var csr = new org.bouncycastle.pkcs.PKCS10CertificationRequest(java.util.Base64.getDecoder().decode(csrB64));
+        assertTrue(csr.isSignatureValid(new org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder().build(csr.getSubjectPublicKeyInfo())));
+        assertEquals("CN=DIFME ACS", csr.getSubject().toString());
+        // the CA signs a digest (what the scheme's CA software sends); verifies with the CA certificate's key
+        byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest("tbs".getBytes());
+        String sig = post("/v1/ca/scheme-ca/sign-digest", Map.of("digest", ISOUtil.hexString(digest))).body().replaceAll(".*\"signature\":\"([0-9A-F]+)\".*", "$1");
+        var v = java.security.Signature.getInstance("SHA256withRSA");
+        v.initVerify(caCert.getPublicKey());
+        v.update("tbs".getBytes());
+        assertTrue(v.verify(ISOUtil.hex2byte(sig)));
+        // CA keys: not through the generic signing path, no CSR for them; names are checked
+        assertEquals(400, post("/v1/sign/ps256", Map.of("key", "scheme-ca", "data", "00")).statusCode());
+        assertEquals(400, post("/v1/csr/scheme-ca", Map.of("cn", "x")).statusCode());
+        assertEquals(400, post("/v1/csr/acs-sign", Map.of("cn", "a,O=evil")).statusCode());
+        assertEquals(404, post("/v1/ca/acs-sign/sign-digest", Map.of("digest", ISOUtil.hexString(digest))).statusCode());
     }
 }

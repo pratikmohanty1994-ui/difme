@@ -29,7 +29,7 @@ spec:
             - { name: HSM_TEE_SVN, value: "1" }          # emulated TEE: the measurement registered in Trustee (dev)
             - { name: HSM_TMPFS, value: /run/hsm }
             - { name: HSM_BOOTSTRAP_OPENBAO, value: "http://openbao.security.svc:8200" }
-            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-smc=MK-SMC;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA;nts-jwe=RSA-ENC;issuer-rsa=RSA-EMV/1408;perso-kek=ZMK;ilp-difme=AES/M7;ilp-payeefsp=AES/M7" }
+            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-smc=MK-SMC;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA;nts-jwe=RSA-ENC;issuer-rsa=RSA-EMV/1408;perso-kek=ZMK;ilp-difme=AES/M7;ilp-payeefsp=AES/M7;scheme-ca=RSA-CA" }
             - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+DisableAttachMechanism -XX:-CreateCoredumpOnCrash" }
           ports: [{ name: http, containerPort: 8700 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8700 }, periodSeconds: 10 }
@@ -76,6 +76,8 @@ spec:
             - { name: ACS_ADDR, value: ":8090" }
             - { name: ACS_CMS_URL, value: "http://card-issuer.rails.svc:8080" }
             - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }
+            # Signing certificate issued by the card scheme's CA at start (key acs-sign stays in the security module)
+            - { name: ACS_SCHEME_CA_URL, value: "http://scheme-sim.rails.svc:8080" }
             - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
             - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
             - { name: ACS_CHALLENGE_URL, value: "https://acs.difme.local/3ds/challenge" }
@@ -150,7 +152,8 @@ spec:
 # Who may call the security module (ztunnel enforces the mesh identity; probes are plain kubelet): the ACS, the
 # authorisation switch and card management for the card functions; for the Mojaloop ILP fulfilment HMAC, each
 # institution's connector for its own key only (keys only in the TEE: DIFME's PH-EE connector -> ilp-difme, the other
-# bank's scheme adapter -> ilp-payeefsp). The card callers can't reach the ILP keys.
+# bank's scheme adapter -> ilp-payeefsp). The card callers can't reach the ILP keys, and only the scheme simulator (the
+# card scheme's CA) can sign with scheme-ca.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata: { name: hsm-callers }
@@ -159,7 +162,10 @@ spec:
   action: ALLOW
   rules:
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs", "difme.local/ns/rails/sa/scheme-sim", "difme.local/ns/rails/sa/card-issuer"] } }]
-      to: [{ operation: { notPaths: ["/v1/ilp/*"] } }]
+      to: [{ operation: { notPaths: ["/v1/ilp/*", "/v1/ca/*"] } }]
+    # the card scheme's CA key (scheme-ca): only the scheme simulator signs certificates with it
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/scheme-sim"] } }]
+      to: [{ operation: { methods: ["POST"], paths: ["/v1/ca/scheme-ca/sign-digest"] } }]
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/ph-ee-connector-mojaloop"] } }]
       to: [{ operation: { methods: ["POST"], paths: ["/v1/ilp/difme/hmac"] } }]
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/payeefsp"] } }]

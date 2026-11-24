@@ -236,6 +236,9 @@ public final class SecurityModule {
     public byte[] rsaOaepDecrypt(String rsaKeyBlock, byte[] data) throws SMException { return ext().rsaOaepDecrypt(rsaKeyBlock, data); }
 
     public byte[] signPs256(String rsaKeyBlock, byte[] data) throws SMException { return ext().signPs256(rsaKeyBlock, data); }
+    public byte[] signDigestRs256(String rsaKeyBlock, byte[] digest) throws SMException { return ext().signDigestRs256(rsaKeyBlock, digest); }
+    public byte[] csr(String rsaKeyBlock, String certB64, String cn) throws SMException { return ext().csr(rsaKeyBlock, certB64, cn); }
+    public String[] generateRsaCaKey(String cn) throws SMException { return ext().generateRsaCaKey(cn); }
 
     public byte[] hmacSha256(String macKeyBlock, byte[] data) throws SMException { return ext().hmacSha256(macKeyBlock, data); }
 

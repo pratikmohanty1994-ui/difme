@@ -112,6 +112,22 @@ card-settlement) and reads balances from Fineract: nothing in the exchange's pat
 Tests: PhEePaymentHubTest 12, CardTasksTest 4, AccountTasksTest 2. **Next: core images (exchange + rails-worker), then the
 cluster run; if green, delete payment-hub.**
 
+### Keys only in the emulated TEE + scheme-issued certificates (owner 2026-11-24)
+- **Mojaloop ILP keys** (`ilp-difme`, `ilp-payeefsp`) generated inside services/hsm; `/v1/ilp/<institution>/hmac`, one
+  caller each (mesh policy); PH-EE connector patch 0005, SDK adapter patch ml-sdk-adapter/0001 (byte-identical to
+  upstream). Keys added after a site's first start: `key-<label>` create-only resources, rotated with the LMK.
+- **Notary seed** by attested key release from Trustee (`difme/notary/seed`, created once by the notary, OpenBao role
+  `notary-bootstrap`); Trustee and notary pods join the mesh, so Trustee's caller policy is enforced (it wasn't before).
+- **Scheme CA:** key `scheme-ca` (RSA-CA, root "DIFME Card Scheme Root CA") in services/hsm, signed only by scheme-sim
+  (`/v1/ca/scheme-ca/sign-digest`); scheme-sim issues on `POST /ca/acs-signing` (CSR made and signed in the module:
+  `/v1/csr/<key>`); the ACS obtains its signing certificate at start (`ACS_SCHEME_CA_URL`) and presents [leaf, root].
+- Not in the TEE, by design or blocked (owner): OpenBao's unseal key (the root of the key-release chain; production:
+  cloud KMS / PKCS#11 auto-unseal), third-party apps' internal keys read from their own config (Hyperswitch master/hash
+  keys: its key-manager API could be served by services/hsm, later; Superset, Harbor, Form.io, Grafana), and passwords /
+  client secrets (credentials, not keys).
+- All held until the PH-EE cluster run: worktree scratchpad/keys-tee (applied to main by the check-in, then images
+  hsm, phee, mojaloop, notary, scheme rebuilt).
+
 ### Review findings (2026-11-24, after going through the whole session)
 - **Held-for-review card payments are never resolved (owner decision needed):** on a Tazama alert DifmeCardCheckout ends
   "review" with the card authorised; the buyer's real-time authorisation is answered 96, and nothing approves or cancels

@@ -229,6 +229,70 @@ public class DifmeSecurityModule extends JCESecurityModule {
         }
     }
 
+    /** A new RSA-3072 CA key ("S0" block, as signing keys) plus its self-signed CA certificate: the card scheme's root. */
+    public String[] generateRsaCaKey(String commonName) throws SMException {
+        try {
+            java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("RSA");
+            g.initialize(3072);
+            java.security.KeyPair kp = g.generateKeyPair();
+            byte[] cert = SelfSigned.caCertificate(kp, commonName);
+            return new String[] {Tr31.wrap(kbpk(), "D0000S0RN00E0000", kp.getPrivate().getEncoded()), java.util.Base64.getEncoder().encodeToString(cert)};
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        }
+    }
+
+    private java.security.PrivateKey signingKey(Tr31.Unwrapped u) throws java.security.GeneralSecurityException {
+        return java.security.KeyFactory.getInstance("RSA").generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(u.key()));
+    }
+
+    private Tr31.Unwrapped unwrapSigning(String rsaKeyBlock) throws SMException {
+        Tr31.Unwrapped u;
+        try {
+            u = Tr31.unwrap(kbpk(), rsaKeyBlock);
+        } catch (IllegalArgumentException e) {
+            throw new SMException(e.getMessage());
+        }
+        if (!u.header().substring(5, 7).equals("S0")) throw new SMException("not a signing key");
+        return u;
+    }
+
+    /**
+     * RSASSA-PKCS1-v1_5 over a SHA-256 digest computed by the caller (sha256WithRSAEncryption, as X.509 certificates are
+     * signed): the scheme CA signs a certificate's to-be-signed part, hashed by the CA software.
+     */
+    public byte[] signDigestRs256(String rsaKeyBlock, byte[] digest) throws SMException {
+        if (digest.length != 32) throw new SMException("SHA-256 digest must be 32 bytes");
+        Tr31.Unwrapped u = unwrapSigning(rsaKeyBlock);
+        try {
+            byte[] prefix = {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, (byte) 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20};
+            byte[] info = java.util.Arrays.copyOf(prefix, prefix.length + 32);
+            System.arraycopy(digest, 0, info, prefix.length, 32);
+            java.security.Signature sig = java.security.Signature.getInstance("NONEwithRSA");
+            sig.initSign(signingKey(u));
+            sig.update(info);
+            return sig.sign();
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        } finally {
+            java.util.Arrays.fill(u.key(), (byte) 0);
+        }
+    }
+
+    /** A PKCS#10 certificate request for a signing key in the module (its public key from the key's certificate). */
+    public byte[] csr(String rsaKeyBlock, String certB64, String cn) throws SMException {
+        Tr31.Unwrapped u = unwrapSigning(rsaKeyBlock);
+        try {
+            java.security.cert.X509Certificate c = (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+                    .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(certB64)));
+            return SelfSigned.csr(signingKey(u), c.getPublicKey(), cn);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new SMException(e);
+        } finally {
+            java.util.Arrays.fill(u.key(), (byte) 0);
+        }
+    }
+
     /** A new RSA-2048 encryption key as a TR-31 D block ("D1", PKCS#8 inside) plus its public key (X.509 SubjectPublicKeyInfo, base64). */
     public String[] generateRsaEncryptionKey() throws SMException {
         try {

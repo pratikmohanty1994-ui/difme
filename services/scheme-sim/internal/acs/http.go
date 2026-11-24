@@ -310,6 +310,46 @@ func HSMSignerWithChain(hsmURL string, chain []*x509.Certificate) (*Signer, erro
 	}}, nil
 }
 
+// SchemeIssuedChain obtains the ACS signing certificate from the card scheme's CA (owner 2026-11-24): the security
+// module makes a PKCS#10 request for its acs-sign key (signed inside it: proof of possession), the scheme CA at caURL
+// (POST /ca/acs-signing) returns [leaf, root]. The private key never leaves the module.
+func SchemeIssuedChain(hsmURL, caURL, cn string) ([]*x509.Certificate, error) {
+	c := &http.Client{Timeout: 5 * time.Second}
+	csr, err := hsmCall(c, hsmURL+"/v1/csr/acs-sign", map[string]string{"cn": cn}, "csr")
+	if err != nil {
+		return nil, fmt.Errorf("certificate request from the security module: %w", err)
+	}
+	body, _ := json.Marshal(map[string]string{"csr": csr})
+	r, err := c.Post(strings.TrimRight(caURL, "/")+"/ca/acs-signing", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("scheme CA: %w", err)
+	}
+	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		msg, _ := io.ReadAll(io.LimitReader(r.Body, 300))
+		return nil, fmt.Errorf("scheme CA: HTTP %d %s", r.StatusCode, strings.TrimSpace(string(msg)))
+	}
+	var out struct {
+		Chain []string `json:"chain"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&out); err != nil || len(out.Chain) == 0 {
+		return nil, errors.New("scheme CA: no certificate chain")
+	}
+	var chain []*x509.Certificate
+	for _, b := range out.Chain {
+		der, err := base64.StdEncoding.DecodeString(b)
+		if err != nil {
+			return nil, err
+		}
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			return nil, err
+		}
+		chain = append(chain, cert)
+	}
+	return chain, nil
+}
+
 // LoadCertChain reads a PEM file of certificates, leaf first (ACS_SIGNING_CERT_CHAIN). Private keys are refused:
 // the signing key stays in the security module.
 func LoadCertChain(path string) ([]*x509.Certificate, error) {

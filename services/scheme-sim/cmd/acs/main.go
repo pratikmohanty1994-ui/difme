@@ -14,6 +14,9 @@
 //	ACS_SIGNING_CERT_CHAIN  PEM file, leaf first: the scheme-issued ACS signing certificate chain presented in
 //	                    acsSignedContent's x5c; the leaf's key is the security module's acs-sign key, which still signs.
 //	                    Empty: the security module's own certificate.
+//	ACS_SCHEME_CA_URL   the card scheme's CA (scheme-sim, POST /ca/acs-signing): at start the ACS obtains its signing
+//	                    certificate from it for a request the security module makes and signs (takes precedence over
+//	                    ACS_SIGNING_CERT_CHAIN). ACS_CERT_CN: the certificate's common name (default "DIFME ACS").
 //	ACS_FIDO_RP_ID      WebAuthn relying party id (the ACS/issuer domain); set to turn on WebAuthn / SPC authentication
 //	                    and the issuer app's credential registration (/3ds/fido/...). Credentials live in
 //	                    ACS_DATABASE_URL (table acs_fido_credential, sealed) or in memory.
@@ -86,6 +89,16 @@ func main() {
 	var signer *acs.Signer
 	for i := 0; ; i++ {
 		var err error
+		if caURL := os.Getenv("ACS_SCHEME_CA_URL"); caURL != "" {
+			if chain, err = acs.SchemeIssuedChain(hsmURL, caURL, env("ACS_CERT_CN", "DIFME ACS")); err != nil {
+				if i == 60 {
+					log.Fatalf("scheme-issued signing certificate: %v", err)
+				}
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			log.Printf("ACS signing certificate issued by %s (serial %x)", chain[len(chain)-1].Subject.CommonName, chain[0].SerialNumber)
+		}
 		if signer, err = acs.HSMSignerWithChain(hsmURL, chain); err == nil {
 			break
 		} else if i == 60 {

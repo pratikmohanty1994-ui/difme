@@ -233,7 +233,10 @@ public final class HsmServer {
             case "/v1/mac/retail/verify" -> valid(out, hsm.verifyRetailMac(key(in, "key", "tak", SMAdapter.TYPE_TAK), h(in, "data"), h(in, "mac")));
             case "/v1/mac/cmac/verify" -> valid(out, hsm.verifyAesCmac(keys.aes(in.getOrDefault("aesKey", "aes-mac")), h(in, "data"), h(in, "mac")));
             case "/v1/perso/batch" -> out.put("file", java.util.Base64.getEncoder().encodeToString(persoBatch(in).getBytes(StandardCharsets.UTF_8)));
-            case "/v1/sign/ps256" -> out.put("signature", ISOUtil.hexString(hsm.signPs256(keys.rsa(in.getOrDefault("key", "acs-sign")), h(in, "data"))));
+            case "/v1/sign/ps256" -> {
+                if (in.getOrDefault("key", "acs-sign").startsWith("scheme-ca")) throw new IllegalArgumentException("CA keys only through /v1/ca/<key>/sign-digest");
+                out.put("signature", ISOUtil.hexString(hsm.signPs256(keys.rsa(in.getOrDefault("key", "acs-sign")), h(in, "data"))));
+            }
             case "/v1/data/encrypt" -> out.put("ciphertext", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), true,
                     h(in, "data"), in.containsKey("aad") ? h(in, "aad") : null)));
             case "/v1/data/decrypt" -> out.put("data", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), false,
@@ -250,14 +253,30 @@ public final class HsmServer {
                 // Mojaloop/ILP (D4, keys only in the TEE): fulfilment = HMAC-SHA256 over the ILP packet with the institution's
                 // own key ilp-<institution>; the connector sends the bytes it would have MACed and never holds the key.
                 Matcher m = ILP.matcher(path);
-                if (!m.matches()) return null;
-                out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes("ilp-" + m.group(1)), h(in, "data"))));
+                Matcher ca = CA_SIGN.matcher(path);
+                Matcher csr = CSR.matcher(path);
+                if (m.matches()) {
+                    out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes("ilp-" + m.group(1)), h(in, "data"))));
+                } else if (ca.matches()) {
+                    // The card scheme's CA (key scheme-ca*): signs a certificate's SHA-256 digest; only the scheme simulator may call
+                    out.put("signature", ISOUtil.hexString(hsm.signDigestRs256(keys.rsa(ca.group(1)), h(in, "digest"))));
+                } else if (csr.matches()) {
+                    String label = csr.group(1);
+                    if (label.startsWith("scheme-ca")) throw new IllegalArgumentException("no certificate requests for CA keys");
+                    String cert = keys.certs.get(label);
+                    if (cert == null) throw new IllegalArgumentException("no signing key '" + label + "'");
+                    out.put("csr", java.util.Base64.getEncoder().encodeToString(hsm.csr(keys.rsa(label), cert, cn(in))));
+                } else {
+                    return null;
+                }
             }
         }
         return out;
     }
 
     private static final Pattern ILP = Pattern.compile("/v1/ilp/([a-z0-9][a-z0-9-]{0,30})/hmac");
+    private static final Pattern CA_SIGN = Pattern.compile("/v1/ca/(scheme-ca[a-z0-9-]{0,20})/sign-digest");
+    private static final Pattern CSR = Pattern.compile("/v1/csr/([a-z0-9][a-z0-9-]{0,30})");
 
     private static final Pattern PERSO_CARD = Pattern.compile("([0-9]{12,19}):([0-9]{2}):([0-9]{4})");
 
@@ -335,6 +354,13 @@ public final class HsmServer {
     }
 
     private static final Pattern DIGITS = Pattern.compile("[0-9]{1,19}"), HEX = Pattern.compile("([0-9A-Fa-f]{2}){1,8192}");
+
+    /** A certificate subject common name: letters, digits, space, dot, dash; 1-64 (no DN injection). */
+    private static String cn(Map<String, String> in) {
+        String v = in.get("cn");
+        if (v == null || !v.matches("[A-Za-z0-9 .-]{1,64}")) throw new IllegalArgumentException("cn: letters, digits, space, dot, dash (1-64)");
+        return v;
+    }
 
     private static String d(Map<String, String> in, String k) {
         String v = in.get(k);

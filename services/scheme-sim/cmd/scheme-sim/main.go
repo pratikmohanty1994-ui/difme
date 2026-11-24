@@ -11,8 +11,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
+	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/ca"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/ntadapter"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/scheme"
 	"github.com/pratikmohanty1294/difme/services/scheme-sim/internal/server"
@@ -72,6 +74,35 @@ func main() {
 		mux.Handle("/", handler)
 		handler = mux
 		log.Printf("network tokenization service for Hyperswitch on /nts")
+	}
+	// The card scheme's certificate authority (owner 2026-11-24): issues the ACS signing certificate on /ca/acs-signing.
+	// Its key (SCHEME_CA_KEY, default scheme-ca) stays in the security module, which signs each certificate's digest.
+	if hsm := os.Getenv("HSM_URL"); hsm != "" && os.Getenv("SCHEME_CA_KEY") != "-" {
+		caKey := env("SCHEME_CA_KEY", "scheme-ca")
+		var iss atomic.Pointer[ca.Issuer]
+		go func() { // the security module may still be starting
+			for i := 0; ; i++ {
+				if v, err := ca.New(hsm, caKey); err == nil {
+					iss.Store(v)
+					log.Printf("scheme CA ready: %s (key %s in the security module)", v.Root.Subject.CommonName, caKey)
+					return
+				} else if i%15 == 0 {
+					log.Printf("scheme CA not ready yet: %v", err)
+				}
+				time.Sleep(2 * time.Second)
+			}
+		}()
+		mux := http.NewServeMux()
+		mux.Handle("/ca/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			v := iss.Load()
+			if v == nil {
+				http.Error(w, "scheme CA starting", http.StatusServiceUnavailable)
+				return
+			}
+			v.Handler().ServeHTTP(w, r)
+		}))
+		mux.Handle("/", handler)
+		handler = mux
 	}
 	srv := &http.Server{Addr: env("HTTP_LISTEN", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	log.Printf("scheme-sim: ISO 8583 on %s, admin on %s", l.Addr(), srv.Addr)
