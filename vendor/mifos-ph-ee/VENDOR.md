@@ -51,6 +51,11 @@ Local changes to the Mifos source: two patches to connector-mojaloop (`vendor/pa
   condition on record (connector restarted in between) makes the transfer failed: the flow releases the block instead
   of booking (fail closed). A real Mojaloop switch checks this too; DIFME's dev switch (Testing Toolkit) does not.
 
+- `0005` keys only in the emulated TEE: the ILP fulfilment HMAC comes from the security module (`connector.hsm-url`,
+  key `ilp-<connector.ilp-institution>`, POST /v1/ilp/&lt;institution&gt;/hmac); the connector holds no ILP secret. Without
+  `connector.hsm-url` (local runs, upstream tests) the in-process `connector.ilp-secret` is used, with a warning; DIFME's
+  profile sets it blank, so a missing URL fails instead of falling back to upstream's public default.
+
 Patches to connector-ams-mifos (`vendor/patches/ph-ee-ams-mifos/`), first for logins through Keycloak (component reuse):
 - `0001` tenant `authtype: oauth` for Fineract 1.2 (upstream: "TODO implement") = OAuth2 client credentials at
   `ams.local.oauth.token-url`; the tenant's `user`/`password` are the Keycloak client id/secret. Fineract accepts the

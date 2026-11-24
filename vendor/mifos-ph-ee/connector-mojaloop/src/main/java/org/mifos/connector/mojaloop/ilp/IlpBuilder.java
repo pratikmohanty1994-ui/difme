@@ -25,8 +25,8 @@ public class IlpBuilder {
     @Autowired
     private IlpConditionHandlerImpl ilpConditionHandlerImpl;
 
-    @Value("${connector.ilp-secret}")
-    private String conectorIlpSecret;
+    @Autowired
+    private IlpMac ilpMac;   // DIFME: the fulfilment HMAC comes from the security module (keys only in the TEE)
 
     public Ilp build(String transactionId, String quoteId, BigDecimal transactionAmount, String currency, Party payer,
                      Party payee, BigDecimal transferAmount) throws IOException {
@@ -37,8 +37,9 @@ public class IlpBuilder {
     public Ilp build(Transaction transaction, BigDecimal amount) throws IOException {
         String ilpAddress = buildIlpAddress(transaction);
         String ilpPacket = ilpConditionHandlerImpl.getILPPacket(ilpAddress, ContextUtil.formatAmount(amount), transaction);
-        String ilpCondition = ilpConditionHandlerImpl.generateCondition(ilpPacket, conectorIlpSecret.getBytes());
-        String fulfillment = ilpConditionHandlerImpl.generateFulfillment(ilpPacket, conectorIlpSecret.getBytes());
+        byte[] mac = ilpMac.mac(ilpPacket);
+        String ilpCondition = ilpConditionHandlerImpl.conditionFromMac(mac);
+        String fulfillment = ilpConditionHandlerImpl.fulfillmentFromMac(mac);
 
         return new Ilp(ilpPacket, ilpCondition, fulfillment, transaction);
     }
@@ -48,7 +49,7 @@ public class IlpBuilder {
     }
 
     public boolean isValidPacketAgainstCondition(String packet, String condition) {
-        return ilpConditionHandlerImpl.generateCondition(packet, conectorIlpSecret.getBytes()).equals(condition);
+        return ilpConditionHandlerImpl.conditionFromMac(ilpMac.mac(packet)).equals(condition);
     }
 
     public String buildIlpAddress(Transaction transaction) {

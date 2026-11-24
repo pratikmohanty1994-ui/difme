@@ -37,6 +37,7 @@ const shared = require('./lib/shared');
 const { BackendRequests, HTTPResponseError } = require('./lib/requests');
 const { SDKStateEnum, CacheKeyPrefixes } = require('./common');
 const { extractStatusCodeFromError } = require('../utils');
+const { makeIlp } = require('../HsmIlp');   // DIFME: keys only in the TEE
 const { CallbackLatencyTracker } = require('./lib/callbackLatencyTracker');
 
 const TRACESTATE_KEY_CALLBACK_START_TS = 'tx_callback_start_ts';
@@ -104,10 +105,8 @@ class InboundTransfersModel {
         this._checkIlp = config.checkIlp;
 
         const ilpVersion = config.ilpVersion === '4' ? Ilp.ILP_VERSIONS.v4 : Ilp.ILP_VERSIONS.v1;
-        this._ilp = Ilp.ilpFactory(ilpVersion, {
-            secret: config.ilpSecret,
-            logger: config.logger,
-        });
+        // DIFME: fulfilments from the security module when HSM_URL is set (keys only in the TEE; lib/HsmIlp.js)
+        this._ilp = makeIlp(Ilp, ilpVersion, config);
         this._cacheTtl = config.redisCacheTtl;
     }
 
@@ -278,7 +277,7 @@ class InboundTransfersModel {
             const mojaloopResponse = shared.internalQuoteResponseToMojaloop(response);
 
             // create our ILP packet and condition and tag them on to our internal quote response
-            const { fulfilment, ilpPacket, condition } = this._ilp.getQuoteResponseIlp(quoteRequest, mojaloopResponse);
+            const { fulfilment, ilpPacket, condition } = await this._ilp.getQuoteResponseIlp(quoteRequest, mojaloopResponse);
 
             mojaloopResponse.ilpPacket = ilpPacket;
             mojaloopResponse.condition = condition;
@@ -470,7 +469,7 @@ class InboundTransfersModel {
                 fulfilment = quote.fulfilment;
                 condition = quote.mojaloopResponse.condition;
             } else {
-                fulfilment = this._ilp.calculateFulfil(prepareRequest.ilpPacket);
+                fulfilment = await this._ilp.calculateFulfil(prepareRequest.ilpPacket);
                 condition = this._ilp.calculateConditionFromFulfil(fulfilment);
             }
 
@@ -630,7 +629,7 @@ class InboundTransfersModel {
 
             let fulfilment;
             if (this._dfspId === response.to.fspId) {
-                fulfilment = this._ilp.getResponseIlp(ilpPaymentData).fulfilment;
+                fulfilment = (await this._ilp.getResponseIlp(ilpPaymentData)).fulfilment;
             }
 
             // create a  mojaloop transfer fulfil response
@@ -675,7 +674,7 @@ class InboundTransfersModel {
 
             const mojaloopResponse = shared.internalFxQuoteResponseToMojaloop(beResponse);
             // create our ILP packet and condition and tag them on to our internal fxQuote response
-            const { fulfilment, condition } = this._ilp.getFxQuoteResponseIlp(body, mojaloopResponse);
+            const { fulfilment, condition } = await this._ilp.getFxQuoteResponseIlp(body, mojaloopResponse);
 
             mojaloopResponse.condition = condition;
 
@@ -812,7 +811,7 @@ class InboundTransfersModel {
             const mojaloopResponse = shared.internalBulkQuotesResponseToMojaloop(response);
 
             // create our ILP packet and condition and tag them on to our internal quote response
-            bulkQuoteRequest.individualQuotes.map((quote) => {
+            await Promise.all(bulkQuoteRequest.individualQuotes.map(async (quote) => {
                 // TODO: Optimize with a HashMap
                 const mojaloopIndividualQuote = mojaloopResponse.individualQuoteResults.find(
                     (quoteResult) => quoteResult.quoteId === quote.quoteId
@@ -832,7 +831,7 @@ class InboundTransfersModel {
                         transferAmount: mojaloopIndividualQuote.transferAmount,
                         note: mojaloopIndividualQuote.note || '',
                     };
-                    const { fulfilment, ilpPacket, condition } = this._ilp.getQuoteResponseIlp(quoteRequest, quoteResponse);
+                    const { fulfilment, ilpPacket, condition } = await this._ilp.getQuoteResponseIlp(quoteRequest, quoteResponse);
 
                     // mutate individual quotes in `mojaloopResponse`
                     mojaloopIndividualQuote.ilpPacket = ilpPacket;
@@ -840,7 +839,7 @@ class InboundTransfersModel {
 
                     fulfilments[quote.quoteId] = fulfilment;
                 }
-            });
+            }));
 
             // now store the fulfilments and the bulk quotes data against the bulkQuoteId in our cache
             await this._cache.set(`bulkQuotes_${bulkQuoteId}`, {
@@ -944,7 +943,7 @@ class InboundTransfersModel {
                     condition = quote.condition;
                 }
                 else {
-                    fulfilment = this._ilp.calculateFulfil(transfer.ilpPacket);
+                    fulfilment = await this._ilp.calculateFulfil(transfer.ilpPacket);
                     condition = this._ilp.calculateConditionFromFulfil(fulfilment);
                 }
 
@@ -1044,7 +1043,7 @@ class InboundTransfersModel {
                 };
                 let fulfilment;
                 if (this._dfspId === transfer.to.fspId) {
-                    fulfilment = this._ilp.getResponseIlp(ilpPaymentData).fulfilment;
+                    fulfilment = (await this._ilp.getResponseIlp(ilpPaymentData)).fulfilment;
                 }
                 const transferResult = { transferId: transfer.transferId, fulfilment };
                 transfer.errorInformation && (transferResult.errorInformation = transfer.errorInformation);

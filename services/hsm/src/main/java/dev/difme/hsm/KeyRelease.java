@@ -77,10 +77,40 @@ public final class KeyRelease {
             bao.create("kbs/" + prefix + "/keys" + sfx, ks.toJson().getBytes(StandardCharsets.UTF_8));
         } else {
             ks = HsmServer.KeyStore.load(new String(keys, StandardCharsets.UTF_8));
+            ks = extend(ks, hsm, kbs, prefix, sfx, env, bao);
         }
         java.util.Arrays.fill(lmk, (byte) 0);
         java.util.Arrays.fill(kbpk, (byte) 0);
         return new Loaded(hsm, ks, bootstrapped);
+    }
+
+    /**
+     * Keys added to HSM_BOOTSTRAP_KEYS after the first start (the stored key list is create-only and never rewritten):
+     * each missing label is its own resource {@code <prefix>/key-<label>} — released by attestation when it exists,
+     * otherwise generated inside the module and stored through the create-only role — and merged into the key list.
+     * Key values never leave the module unencrypted, as for the first start.
+     */
+    static HsmServer.KeyStore extend(HsmServer.KeyStore ks, SecurityModule hsm, KbsClient kbs, String prefix, String sfx,
+                                     Map<String, String> env, OpenBao bao) throws Exception {
+        for (String e : env.getOrDefault("HSM_BOOTSTRAP_KEYS", "").split(";")) {
+            if (e.isBlank() || !e.contains("=")) continue;
+            String label = e.trim().split("=", 2)[0];
+            if (ks.has(label)) continue;
+            byte[] one = fetch(kbs, prefix + "/key-" + label + sfx);
+            if (one == null) {
+                if (env.get("HSM_BOOTSTRAP_OPENBAO") == null)
+                    throw new IllegalStateException("key " + label + " listed but not in the key release store, and bootstrap not enabled");
+                if (bao == null) bao = OpenBao.login(env.get("HSM_BOOTSTRAP_OPENBAO"), env.getOrDefault("HSM_BOOTSTRAP_ROLE", "hsm-bootstrap"),
+                        Files.readString(Path.of(env.getOrDefault("HSM_BOOTSTRAP_JWT", "/var/run/secrets/openbao/token"))).trim());
+                HsmServer.KeyStore added = generate(hsm, e.trim());
+                bao.create("kbs/" + prefix + "/key-" + label + sfx, added.toJson().getBytes(StandardCharsets.UTF_8));
+                ks.merge(added);
+                System.out.println("hsm: key " + label + " generated inside the module and stored (create-only)");
+            } else {
+                ks.merge(HsmServer.KeyStore.load(new String(one, StandardCharsets.UTF_8)));
+            }
+        }
+        return ks;
     }
 
     /** The result of an LMK rotation: the module on the new LMK/KBPK, the translated key store, and the new LMK/KBPK to store. */
@@ -110,6 +140,15 @@ public final class KeyRelease {
     static Loaded rotateFrom(Map<String, String> env, KbsClient kbs, String prefix, String fromSfx, String toSfx, Path tmp) throws Exception {
         byte[] oldLmk = fetch(kbs, prefix + "/lmk" + fromSfx), oldKbpk = fetch(kbs, prefix + "/kbpk" + fromSfx), oldKeys = fetch(kbs, prefix + "/keys" + fromSfx);
         if (oldLmk == null || oldKbpk == null || oldKeys == null) throw new IllegalStateException("rotation source generation incomplete");
+        // Keys added after the source generation's first start (key-<label> resources) are rotated with the rest.
+        HsmServer.KeyStore merged = HsmServer.KeyStore.load(new String(oldKeys, StandardCharsets.UTF_8));
+        for (String e : env.getOrDefault("HSM_BOOTSTRAP_KEYS", "").split(";")) {
+            if (e.isBlank() || !e.contains("=")) continue;
+            String label = e.trim().split("=", 2)[0];
+            byte[] one = merged.has(label) ? null : fetch(kbs, prefix + "/key-" + label + fromSfx);
+            if (one != null) merged.merge(HsmServer.KeyStore.load(new String(one, StandardCharsets.UTF_8)));
+        }
+        oldKeys = merged.toJson().getBytes(StandardCharsets.UTF_8);
         if (env.get("HSM_BOOTSTRAP_OPENBAO") == null) throw new IllegalStateException("rotation needs the create-only bootstrap role (HSM_BOOTSTRAP_OPENBAO)");
         OpenBao bao = OpenBao.login(env.get("HSM_BOOTSTRAP_OPENBAO"), env.getOrDefault("HSM_BOOTSTRAP_ROLE", "hsm-bootstrap"),
                 Files.readString(Path.of(env.getOrDefault("HSM_BOOTSTRAP_JWT", "/var/run/secrets/openbao/token"))).trim());

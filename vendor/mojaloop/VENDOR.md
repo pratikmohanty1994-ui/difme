@@ -22,6 +22,12 @@ Local changes:
   `npm install --package-lock-only --ignore-scripts`); `sdk-scheme-adapter` resolution proxy-addr 2.0.8 (`yarn install
   --mode=update-lockfile`). Re-apply after a vendor sync until upstream ships them; images re-scanned locally: 0 critical.
 
+- Keys only in the emulated TEE (patch `vendor/patches/ml-sdk-adapter/0001`): with `HSM_URL` set, the scheme adapter's
+  ILP fulfilments are HMACed by DIFME's security module with key `ilp-<ILP_INSTITUTION>` (`api-svc/src/lib/HsmIlp.js`);
+  packets are still built by sdk-standard-components with a public placeholder secret whose fulfilment is always
+  replaced; the inbound fulfilment calls became async (`await`). Verified byte-identical to upstream's construction
+  (key = ASCII of base64(secret), data = ASCII of the base64url packet). Without `HSM_URL`: upstream's `ILP_SECRET`.
+
 Installing: `npm ci --omit=dev --ignore-scripts` (testing-toolkit, simulator); the scheme adapter with its bundled Yarn
 (`node .yarn/releases/yarn-4.18.0.cjs workspaces focus @mojaloop/sdk-scheme-adapter-api-svc --production`; corepack
 would download Yarn from a host the session blocks).

@@ -4,7 +4,11 @@ zeebe:
   broker:
     contactpoint: "${FLUXNOVA_ENGINE_URL}"
 connector:
-  ilp-secret: "${ILP_SECRET}"
+  # Keys only in the emulated TEE: the ILP fulfilment HMAC is computed by the security module with key ilp-difme
+  # (services/hsm, /v1/ilp/difme/hmac); the connector holds no secret. Blank so upstream's public default can't apply.
+  hsm-url: "http://hsm.rails.svc:8700"
+  ilp-institution: difme
+  ilp-secret: ""
 switch:
   quotes-host: "http://mojaloop-switch.rails.svc:4040"
   als-host: "http://mojaloop-switch.rails.svc:4040"

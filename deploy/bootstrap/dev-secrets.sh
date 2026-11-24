@@ -49,11 +49,10 @@ secret security      keycloak-clients ph-ee-ams="$PHEE_AMS_CS" difme-exchange="$
 secret core-platform loan-origination-oauth FINERACT_CLIENT_ID=loan-origination FINERACT_CLIENT_SECRET="$LOAN_ORIG_CS"
 secret rails         card-issuer-oauth client-id=card-issuer client-secret="$CARD_ISSUER_CS"
 secret rails         ph-ee-ams-oauth client-id=ph-ee-ams client-secret="$PHEE_AMS_CS"
-# PH-EE connectors (rails): Fluxnova login for the workers and the flow-deploy job (same admin as in "process"), and
-# the ILP secret that replaces upstream's public default.
+# PH-EE connectors (rails): Fluxnova login for the workers and the flow-deploy job (same admin as in "process").
 secret rails         fluxnova admin-basic="admin:${FLUX_ADMIN}"
-secret rails         ph-ee-mojaloop ilp-secret="$(rand 48)"
-secret rails         payeefsp ilp-secret="$(rand 48)"   # the other bank on the Mojaloop switch (its own fulfilment secret)
+# ILP fulfilment keys (DIFME and the other bank on the Mojaloop switch) live only in the security module (ilp-difme,
+# ilp-payeefsp; generated inside it), not here.
 secret rails         fineract-admin-oauth client-id=fineract-admin client-secret="$FIN_ADMIN_CS"
 secret core-platform difme-exchange-oauth client-id=difme-exchange client-secret="$EXCHANGE_CS"
 # exchange-svc → PH-EE (D3): the channel token (client difme-exchange) and the Fluxnova login for transfer status

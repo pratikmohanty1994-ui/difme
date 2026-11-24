@@ -167,6 +167,9 @@ module.exports = {
     dfspId: env.get('DFSP_ID').default('mojaloop').asString(),
     multiDfsp: env.get('MULTI_DFSP').default('false').asBool(),
     ilpSecret: env.get('ILP_SECRET').default('mojaloop-sdk').asString(),
+    // DIFME: the security module that holds this FSP's ILP key (keys only in the TEE); unset = in-process ILP_SECRET (local runs)
+    hsmUrl: env.get('HSM_URL').asString(),
+    ilpInstitution: env.get('ILP_INSTITUTION').asString(),
     checkIlp: env.get('CHECK_ILP').default('true').asBool(),
     expirySeconds: env.get('EXPIRY_SECONDS').default('20').asIntPositive(),
 

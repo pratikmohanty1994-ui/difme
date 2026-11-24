@@ -63,6 +63,18 @@ public final class HsmServer {
 
         public KeyStore putAes(String label, String block) { aes.put(label, block); return this; }
 
+        /** Whether any key carries this label. */
+        public boolean has(String label) { return des.containsKey(label) || aes.containsKey(label) || rsa.containsKey(label); }
+
+        /** Adds the other store's keys (labels this store doesn't have yet); returns this. */
+        public KeyStore merge(KeyStore other) {
+            other.des.forEach(des::putIfAbsent);
+            other.aes.forEach(aes::putIfAbsent);
+            other.rsa.forEach(rsa::putIfAbsent);
+            other.certs.forEach(certs::putIfAbsent);
+            return this;
+        }
+
         /**
          * LMK rotation over the whole store: every DES key through {@code translateKeyFromOldLMK}, every AES/RSA key
          * block re-wrapped under the new KBPK, certificates and public keys copied. {@code hsm} holds the new LMK/KBPK
@@ -227,12 +239,25 @@ public final class HsmServer {
             case "/v1/data/decrypt" -> out.put("data", ISOUtil.hexString(hsm.aesGcm(keys.aes(in.getOrDefault("key", "card-vault")), false,
                     h(in, "ciphertext"), in.containsKey("aad") ? h(in, "aad") : null)));
             case "/v1/rsa/decrypt" -> out.put("data", ISOUtil.hexString(hsm.rsaOaepDecrypt(keys.rsa(in.getOrDefault("key", "nts-jwe")), h(in, "data"))));
-            case "/v1/hmac" -> out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes(in.getOrDefault("key", "acs-hmac")), h(in, "data"))));
+            case "/v1/hmac" -> {
+                String label = in.getOrDefault("key", "acs-hmac");
+                // ILP fulfilment keys only through /v1/ilp/<institution>/hmac, whose AuthorizationPolicy names one caller each
+                if (label.startsWith("ilp-")) throw new IllegalArgumentException("key " + label + ": use /v1/ilp/<institution>/hmac");
+                out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes(label), h(in, "data"))));
+            }
             case "/v1/mac/cmac" -> out.put("mac", ISOUtil.hexString(hsm.aesCmac(keys.aes(in.getOrDefault("aesKey", "aes-mac")), h(in, "data"))));
-            default -> { return null; }
+            default -> {
+                // Mojaloop/ILP (D4, keys only in the TEE): fulfilment = HMAC-SHA256 over the ILP packet with the institution's
+                // own key ilp-<institution>; the connector sends the bytes it would have MACed and never holds the key.
+                Matcher m = ILP.matcher(path);
+                if (!m.matches()) return null;
+                out.put("mac", ISOUtil.hexString(hsm.hmacSha256(keys.aes("ilp-" + m.group(1)), h(in, "data"))));
+            }
         }
         return out;
     }
+
+    private static final Pattern ILP = Pattern.compile("/v1/ilp/([a-z0-9][a-z0-9-]{0,30})/hmac");
 
     private static final Pattern PERSO_CARD = Pattern.compile("([0-9]{12,19}):([0-9]{2}):([0-9]{4})");
 

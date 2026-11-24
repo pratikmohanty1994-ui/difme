@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 /** The HTTP interface: CAVV and CVV2 values as in SecurityModuleTest (psec), validation, no key material out. */
 class HsmServerTest {
+    static final String ILP_KEY = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
     static HttpServer http;
     static String base;
     static final HttpClient C = HttpClient.newHttpClient();
@@ -36,7 +37,8 @@ class HsmServerTest {
                 .putAes("aes-pin", hsm.aesKeyFromComponents("P0", "00112233445566778899AABBCCDDEEFF"))
                 .putAes("bdk-aes", hsm.aesKeyFromComponents("B0", AesDukptTest.BDK128))
                 .put("tak", hsm.keyFromComponents(SMAdapter.TYPE_TAK, PinAndChipTest.KEY))
-                .putAes("aes-mac", hsm.aesKeyFromComponents("M7", "2B7E151628AED2A6ABF7158809CF4F3C"));
+                .putAes("aes-mac", hsm.aesKeyFromComponents("M7", "2B7E151628AED2A6ABF7158809CF4F3C"))
+                .putAes("ilp-difme", hsm.aesKeyFromComponents("M7", ILP_KEY));
         http = HsmServer.serve(new HsmServer(hsm, keys), "127.0.0.1:0");
         base = "http://127.0.0.1:" + http.getAddress().getPort();
     }
@@ -153,5 +155,19 @@ class HsmServerTest {
         assertEquals(400, post("/v1/cavv", Map.of("pan", "43755100000000x1", "upn", "1234", "authrc", "0", "sfarc", "00")).statusCode());
         assertEquals(400, post("/v1/cavv", Map.of("pan", "4375510000000001")).statusCode());
         assertEquals(404, post("/v1/keys", Map.of()).statusCode());
+    }
+
+    @Test
+    void ilpFulfilmentHmacWithTheInstitutionsOwnKey() throws Exception {
+        String packet = "AYIBgQAAAAAAAASwNGxldmVsb25lLmRmc3AxLm1lci45T2RTOF81MDdqUUZERmZlakgyOVc4bXFmNEpLMHlGTFGCAUBQU0svMS4wCk5vbmNlOiB1SXlweUYzY3pYSXBFdzVVc05TYWh3CkVuY3J5cHRpb246IG5vbmUKUGF5bWVudC1JZDogMTMyMzZhM2ItOGZhOC00MTYzLTg0NDctNGMzZWQzZGE5OGE3";
+        byte[] data = packet.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(ISOUtil.hex2byte(ILP_KEY), "HmacSHA256"));
+        String expected = ISOUtil.hexString(mac.doFinal(data));
+        assertEquals("{\"mac\":\"" + expected + "\"}", post("/v1/ilp/difme/hmac", Map.of("data", ISOUtil.hexString(data))).body());
+        // another institution's key: not here; the generic HMAC endpoint can't reach ILP keys
+        assertEquals(400, post("/v1/ilp/payeefsp/hmac", Map.of("data", "00")).statusCode());
+        assertEquals(400, post("/v1/hmac", Map.of("key", "ilp-difme", "data", "00")).statusCode());
+        assertEquals(404, post("/v1/ilp/Bad_Name/hmac", Map.of("data", "00")).statusCode());
     }
 }

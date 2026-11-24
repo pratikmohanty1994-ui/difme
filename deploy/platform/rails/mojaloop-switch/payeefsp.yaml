@@ -37,8 +37,10 @@ spec:
             - { name: AUTO_ACCEPT_PARTY, value: "true" }
             - { name: EXPIRY_SECONDS, value: "60" }
             - { name: LOG_LEVEL, value: info }
-            # The payee's own secret for the fulfilments it issues (not shared with DIFME: patch ph-ee-mojaloop/0002).
-            - { name: ILP_SECRET, valueFrom: { secretKeyRef: { name: payeefsp, key: ilp-secret } } }
+            # Keys only in the emulated TEE: the payee's fulfilments are HMACed by the security module with its own key
+            # ilp-payeefsp (not DIFME's; patch ph-ee-mojaloop/0002); the adapter holds no ILP secret.
+            - { name: HSM_URL, value: "http://hsm.rails.svc:8700" }
+            - { name: ILP_INSTITUTION, value: payeefsp }
           ports: [{ name: http-fspiop, containerPort: 4000 }, { name: http-outbound, containerPort: 4001 }]
           readinessProbe: { tcpSocket: { port: 4000 }, periodSeconds: 10 }
           livenessProbe: { tcpSocket: { port: 4000 }, initialDelaySeconds: 20, periodSeconds: 30 }

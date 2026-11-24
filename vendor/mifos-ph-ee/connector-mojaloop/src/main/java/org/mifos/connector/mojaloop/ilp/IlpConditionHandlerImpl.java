@@ -76,6 +76,16 @@ public class IlpConditionHandlerImpl {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(fulfillment.getCondition().getHash());
     }
 
+    /** DIFME: the fulfilment from its HMAC (computed by the security module, IlpMac). */
+    public String fulfillmentFromMac(byte[] mac) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(mac);
+    }
+
+    /** DIFME: the condition (SHA-256 of the fulfilment) from the fulfilment's HMAC. */
+    public String conditionFromMac(byte[] mac) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(Fulfillment.builder().preimage(mac).build().getCondition().getHash());
+    }
+
     public boolean validateFulfillmentAgainstCondition(String strFulfillment, String strCondition) {
         byte[] bFulfillment = getUrlDecoder().decode(strFulfillment);
         Fulfillment fulfillment = Fulfillment.of(bFulfillment);

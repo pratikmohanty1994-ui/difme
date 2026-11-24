@@ -29,7 +29,7 @@ spec:
             - { name: HSM_TEE_SVN, value: "1" }          # emulated TEE: the measurement registered in Trustee (dev)
             - { name: HSM_TMPFS, value: /run/hsm }
             - { name: HSM_BOOTSTRAP_OPENBAO, value: "http://openbao.security.svc:8200" }
-            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-smc=MK-SMC;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA;nts-jwe=RSA-ENC;issuer-rsa=RSA-EMV/1408;perso-kek=ZMK" }
+            - { name: HSM_BOOTSTRAP_KEYS, value: "card-index=AES/M7;card-vault=AES/D0;cvk=CVK;dcvv2=CVK;zpk=ZPK;pvk=PVK;imk-ac=MK-AC;imk-smi=MK-SMI;imk-smc=MK-SMC;imk-cvc3=MK-CVC3;tak=TAK;aes-pin=AES/P0;aes-mac=AES/M7;acs-hmac=AES/M7;acs-sign=RSA;nts-jwe=RSA-ENC;issuer-rsa=RSA-EMV/1408;perso-kek=ZMK;ilp-difme=AES/M7;ilp-payeefsp=AES/M7" }
             - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=70 -XX:+DisableAttachMechanism -XX:-CreateCoredumpOnCrash" }
           ports: [{ name: http, containerPort: 8700 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8700 }, periodSeconds: 10 }
@@ -147,7 +147,10 @@ spec:
       to: [{ operation: { ports: ["1025"] } }]
     - to: [{ operation: { ports: ["8025"] } }]
 ---
-# Only the ACS and the authorisation switch may call the security module (ztunnel enforces the mesh identity; probes are plain kubelet).
+# Who may call the security module (ztunnel enforces the mesh identity; probes are plain kubelet): the ACS, the
+# authorisation switch and card management for the card functions; for the Mojaloop ILP fulfilment HMAC, each
+# institution's connector for its own key only (keys only in the TEE: DIFME's PH-EE connector -> ilp-difme, the other
+# bank's scheme adapter -> ilp-payeefsp). The card callers can't reach the ILP keys.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata: { name: hsm-callers }
@@ -156,6 +159,11 @@ spec:
   action: ALLOW
   rules:
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs", "difme.local/ns/rails/sa/scheme-sim", "difme.local/ns/rails/sa/card-issuer"] } }]
+      to: [{ operation: { notPaths: ["/v1/ilp/*"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/ph-ee-connector-mojaloop"] } }]
+      to: [{ operation: { methods: ["POST"], paths: ["/v1/ilp/difme/hmac"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/payeefsp"] } }]
+      to: [{ operation: { methods: ["POST"], paths: ["/v1/ilp/payeefsp/hmac"] } }]
 ---
 apiVersion: v1
 kind: ServiceAccount

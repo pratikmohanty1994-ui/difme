@@ -124,8 +124,6 @@ spec:
             - { name: SPRING_PROFILES_ACTIVE, value: "difme" }
             - { name: SPRING_CONFIG_ADDITIONAL_LOCATION, value: "file:/config/" }
             - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
-            # Secret for the ILP fulfilments this FSP issues as payee (upstream ships a public default: never used).
-            - { name: ILP_SECRET, valueFrom: { secretKeyRef: { name: ph-ee-mojaloop, key: ilp-secret } } }
           ports: [{ name: http, containerPort: 8080 }, { name: http-switch, containerPort: 5000 }]
           startupProbe: { httpGet: { path: /actuator/health/liveness, port: 8080 }, periodSeconds: 5, failureThreshold: 60 }
           readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 8080 }, periodSeconds: 10 }
