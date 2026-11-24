@@ -143,6 +143,15 @@ public class Exchange {
     // a hub URL is set. Partner cards: "partnerNode:PAN:MMYY", comma-separated (test cards on the scheme simulator).
     @ConfigProperty(name = "difme.exchange.hub.url") java.util.Optional<String> hubUrl;
     @ConfigProperty(name = "difme.exchange.hub.partner-cards") java.util.Optional<List<String>> hubPartnerCards;
+    // D3: escrow movements through Mifos PH-EE (PhEePaymentHub) instead of the hub when the channel URL is set; card
+    // payments stay on the hub. Channel calls carry a Keycloak token (client difme-exchange); status from Fluxnova history.
+    @ConfigProperty(name = "difme.exchange.phee.channel-url") java.util.Optional<String> pheeChannelUrl;
+    @ConfigProperty(name = "difme.exchange.phee.token-url") java.util.Optional<String> pheeTokenUrl;
+    @ConfigProperty(name = "difme.exchange.phee.client-id") java.util.Optional<String> pheeClientId;
+    @ConfigProperty(name = "difme.exchange.phee.client-secret") java.util.Optional<String> pheeClientSecret;
+    @ConfigProperty(name = "difme.exchange.phee.fluxnova-url") java.util.Optional<String> pheeFluxnovaUrl;
+    @ConfigProperty(name = "difme.exchange.phee.fluxnova-basic") java.util.Optional<String> pheeFluxnovaBasic;   // user:password
+    @ConfigProperty(name = "difme.exchange.phee.settlement-account", defaultValue = "card-settlement") String pheeSettlementAccount;
     /** Dev only: keep the in-process evidence keys here so chains sealed before a restart still verify after it. */
     @ConfigProperty(name = "difme.evidence.local-keys-dir") java.util.Optional<String> localKeysDir;
     private StateStore store = StateStore.none();
@@ -1152,7 +1161,15 @@ public class Exchange {
     private void connectRails() {
         if (hubUrl.filter(u -> !u.isBlank()).isEmpty()) return;
         Map<Long, dev.difme.exchange.rails.PaymentHub.CardOnFile> cards = partnerCards(hubPartnerCards.orElse(List.of()));
-        rails.useHub(new HttpPaymentHub(hubUrl.get()), cards, m -> LOG.warn(m));
+        dev.difme.exchange.rails.PaymentHub hub = new HttpPaymentHub(hubUrl.get());
+        if (pheeChannelUrl.filter(u -> !u.isBlank()).isPresent()) {
+            var token = new ClientCredentials(pheeTokenUrl.orElseThrow(), pheeClientId.orElseThrow(), pheeClientSecret.orElseThrow());
+            String basic = "Basic " + java.util.Base64.getEncoder().encodeToString(pheeFluxnovaBasic.orElseThrow().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            hub = new PhEePaymentHub(hub, pheeChannelUrl.get(), token::header, pheeFluxnovaUrl.orElseThrow(), () -> basic,
+                    pheeSettlementAccount, java.time.Duration.ofSeconds(20));
+            LOG.info("escrow movements through Mifos PH-EE (" + pheeChannelUrl.get() + "); card payments through the hub");
+        }
+        rails.useHub(hub, cards, m -> LOG.warn(m));
         // Journal every CBS booking in the durable state; those still PENDING from before a restart go out again.
         List<dev.difme.exchange.rails.hub.HubMirror.Move> pending = new ArrayList<>();
         for (var n : store.load("cbsmove")) {
