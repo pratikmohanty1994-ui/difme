@@ -176,6 +176,13 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   kubectl -n core-platform logs deploy/exchange-svc --tail=3000 2>/dev/null | grep -E "through Mifos PH-EE|CBS refused|CBS booking .* failed" \
     | tail -5 | sed 's/^/  exchange escrow: /' | cut -c1-260
 fi
+# Tazama end to end (informational): a payment and a 3-D Secure pain.001 through the deployed fraud engine, verdicts read
+# from its evaluation database (ci/tazama-cluster-check.py; the cluster counterpart of ci/tazama-e2e.sh). Once per run,
+# with the fraud profile.
+if [ "$rc" -eq 0 ] && [ "$P" = fraud ] && kubectl -n fraud get svc tazama-tms >/dev/null 2>&1; then
+  echo "== tazama end to end"
+  python3 ci/tazama-cluster-check.py || true
+fi
 # Exchange restart smoke (informational): a mandate registered before the pod is replaced must still be there after
 # (StateStore in YugabyteDB). Runs only where exchange-svc has its store configured.
 if [ "$rc" -eq 0 ] && kubectl -n core-platform get deploy exchange-svc -o yaml 2>/dev/null | grep -q DIFME_EXCHANGE_STORE_URL; then
