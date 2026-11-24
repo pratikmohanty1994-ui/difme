@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DIFME card checkout for Mifos Payment Hub EE (D3: card checkout off the interim hub). Written in PH-EE's Zeebe dialect and converted
+  for Fluxnova by ci/zeebe-bpmn-to-fluxnova.py, like the other flows.
+  Charges a buying partner's card through Hyperswitch (DIFME's PSP: card network via the acquirer and the scheme).
+  The task's worker (services/core/hyperswitch-worker) resolves the card from its own cards-on-file by cardRef, so no card
+  number is ever a process variable (Fluxnova's database stays out of the cardholder-data environment). Variables in:
+  paymentId (idempotency key at the PSP), merchant, amountMinor, currency, cardRef, description. Out: chargeStatus
+  (succeeded | declined), declineCode, declineMessage, pspPaymentId. The caller (exchange-svc's PhEePaymentHub) then
+  credits the merchant with an on-us transfer (DifmeOnUsTransfer) and refunds (DifmeCardRefund) if that is refused.
+  Transient failures (PSP unreachable) are retried by the worker; when retries run out Fluxnova raises an incident.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="difme-cardcheckout" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="DifmeCardCheckout-DFSPID" name="DIFME card checkout" isExecutable="true">
+    <bpmn:startEvent id="start" name="Request"><bpmn:outgoing>s1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="psp" name="Charge card (Hyperswitch)">
+      <bpmn:extensionElements><zeebe:taskDefinition type="hyperswitch-charge" retries="5" /></bpmn:extensionElements>
+      <bpmn:incoming>s1</bpmn:incoming><bpmn:outgoing>s2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="done" name="Answered"><bpmn:incoming>s2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="s1" sourceRef="start" targetRef="psp" />
+    <bpmn:sequenceFlow id="s2" sourceRef="psp" targetRef="done" />
+  </bpmn:process>
+</bpmn:definitions>

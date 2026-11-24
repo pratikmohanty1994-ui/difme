@@ -175,6 +175,9 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   # D3: escrow movements through PH-EE (exchange-svc's PhEePaymentHub); booking failures are retried and logged.
   kubectl -n core-platform logs deploy/exchange-svc --tail=3000 2>/dev/null | grep -E "through Mifos PH-EE|CBS refused|CBS booking .* failed" \
     | tail -5 | sed 's/^/  exchange escrow: /' | cut -c1-260
+  # D3 (c): card checkout on PH-EE (DifmeCardCheckout/DifmeCardRefund answered by the hyperswitch-worker).
+  kubectl -n rails logs deploy/hyperswitch-worker --tail=500 2>/dev/null | grep -E "card flows worker|card task" \
+    | tail -4 | sed 's/^/  card checkout: /' | cut -c1-240
 fi
 # Tazama end to end (informational): a payment and a 3-D Secure pain.001 through the deployed fraud engine, verdicts read
 # from its evaluation database (ci/tazama-cluster-check.py; the cluster counterpart of ci/tazama-e2e.sh). Once per run,

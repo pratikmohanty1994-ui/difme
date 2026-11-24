@@ -26,6 +26,7 @@
     <module>replay-engine</module>
     <module>process-gateway</module>
     <module>payment-hub</module>
+    <module>hyperswitch-worker</module>
   </modules>
 
   <properties>

@@ -10,7 +10,9 @@ public interface PaymentHub {
     record Outcome(String status, String detail) {}
 
     /** A buying partner's card on file (test cards on the scheme simulator). Never logged. */
-    record CardOnFile(String pan, String expiryMonth, String expiryYear, String cvc) {
+    /** ref: the configuration key the card came from ("42", "*"); PH-EE's card flows carry only this, never the PAN. */
+    record CardOnFile(String pan, String expiryMonth, String expiryYear, String cvc, String ref) {
+        public CardOnFile(String pan, String expiryMonth, String expiryYear, String cvc) { this(pan, expiryMonth, expiryYear, cvc, null); }
         @Override public String toString() { return "CardOnFile[****]"; }
     }
 

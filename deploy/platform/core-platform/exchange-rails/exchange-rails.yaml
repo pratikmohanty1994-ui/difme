@@ -8,9 +8,12 @@ metadata: { name: exchange-rails }
 data:
   DIFME_EXCHANGE_HUB_URL: "http://payment-hub.rails.svc:8090"
   # "*": the card for partners without their own (standing mandates' partner nodes are assigned at registration).
-  # D3: escrow movements through Mifos PH-EE (on-us transfers; status from Fluxnova history). Card payments stay on the
-  # hub. Secrets (client secret, Fluxnova login) come from Secret exchange-phee. Remove these three to go back to the hub.
+  # D3: escrow movements through Mifos PH-EE (on-us transfers; status from Fluxnova history). Card payments too: the
+  # DifmeCardCheckout / DifmeCardRefund flows, answered by the hyperswitch-worker (rails), then an on-us transfer
+  # card-settlement -> merchant-<m>. Secrets (client secret, Fluxnova login) come from Secret exchange-phee. Remove
+  # these four to go back to the hub (CARD_FLOWS "false" keeps escrow on PH-EE and cards on the hub).
   DIFME_EXCHANGE_PHEE_CHANNEL_URL: "http://ph-ee-connector-channel.rails.svc:8080"
   DIFME_EXCHANGE_PHEE_TOKEN_URL: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token"
   DIFME_EXCHANGE_PHEE_FLUXNOVA_URL: "http://fluxnova.process.svc:8080/engine-rest"
+  DIFME_EXCHANGE_PHEE_CARD_FLOWS: "true"
   DIFME_EXCHANGE_HUB_PARTNER_CARDS: "1:4375510000000001:1230,2:4375510000000019:1230,3:4375510000000027:1230,*:4375510000000001:1230"

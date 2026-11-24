@@ -29,6 +29,11 @@ class PhEePaymentHubTest {
     private volatile String endEventForNext = "done";
     private PhEePaymentHub hub;
     private final List<String> cardCalls = new CopyOnWriteArrayList<>();
+    /** card flows: business key -> final variables (as the hyperswitch-worker leaves them) */
+    private final Map<String, Map<String, String>> flows = new ConcurrentHashMap<>();
+    private final List<String> flowStarts = new CopyOnWriteArrayList<>();
+    private volatile String chargeResult = "succeeded", refundResult = "succeeded";
+    private PhEePaymentHub flowHub;
 
     @BeforeEach
     void start() throws Exception {
@@ -45,8 +50,35 @@ class PhEePaymentHubTest {
             x.getResponseBody().write(r);
             x.close();
         });
+        server.createContext("/engine-rest/process-definition/key/", x -> {
+            String def = x.getRequestURI().getPath().replaceAll(".*/key/([^/]*)/start", "$1");
+            var body = JSON.readTree(x.getRequestBody());
+            String bk = body.path("businessKey").asText();
+            var vars = body.path("variables");
+            flowStarts.add(def + " " + bk + " " + vars.path("cardRef").path("value").asText("") + " "
+                    + vars.path("amountMinor").path("value").asText() + "/" + vars.path("amountMinor").path("type").asText());
+            assertTrue(!body.toString().contains("4375510000000001"), "the card number never goes into a flow");
+            flows.put(bk, def.startsWith("DifmeCardCheckout")
+                    ? ("succeeded".equals(chargeResult) ? Map.of("chargeStatus", "succeeded", "pspPaymentId", "pay_1")
+                            : Map.of("chargeStatus", "declined", "declineCode", "51", "declineMessage", "insufficient funds"))
+                    : Map.of("refundStatus", refundResult, "refundMessage", refundResult));
+            reply(x, "{\"id\":\"ci-" + bk + "\"}");
+        });
+        server.createContext("/engine-rest/history/variable-instance", x -> {
+            String bk = x.getRequestURI().getQuery().replaceAll(".*processInstanceId=ci-([^&]*).*", "$1");
+            var arr = JSON.createArrayNode();
+            flows.getOrDefault(bk, Map.of()).forEach((k, v) -> arr.addObject().put("name", k).put("value", v));
+            reply(x, arr.toString());
+        });
         server.createContext("/engine-rest/history/process-instance", x -> {
+            String path = x.getRequestURI().getPath();
+            if (path.contains("/process-instance/ci-")) { reply(x, "{\"state\":\"COMPLETED\"}"); return; }
             String q = URLDecoder.decode(x.getRequestURI().getRawQuery(), StandardCharsets.UTF_8);
+            if (q.contains("processInstanceBusinessKey=")) {
+                String bk = q.replaceAll(".*processInstanceBusinessKey=([^&]*).*", "$1");
+                reply(x, flows.containsKey(bk) ? "[{\"id\":\"ci-" + bk + "\"}]" : "[]");
+                return;
+            }
             String id = q.replaceAll(".*clientCorrelationId_eq_([^&]*).*", "$1");
             String end = instances.get(id);
             String json = end == null ? "[]" : "[{\"id\":\"pi-" + id + "\",\"state\":\"" + (end.isEmpty() ? "ACTIVE" : "COMPLETED") + "\"}]";
@@ -65,6 +97,8 @@ class PhEePaymentHubTest {
             public Outcome refundCard(String i, String p, String m, long a, String r) { cardCalls.add("refund " + i); return new Outcome("REFUNDED", "ok"); }
         };
         hub = new PhEePaymentHub(cards, base, () -> "Bearer tok", base + "/engine-rest", () -> "Basic x", "card-settlement", Duration.ofSeconds(2));
+        flowHub = new PhEePaymentHub(cards, base, () -> "Bearer tok", base + "/engine-rest", () -> "Basic x", "card-settlement",
+                Duration.ofSeconds(2), true);
     }
 
     private static void reply(com.sun.net.httpserver.HttpExchange x, String json) throws java.io.IOException {
@@ -116,5 +150,50 @@ class PhEePaymentHubTest {
         assertEquals("REFUNDED", hub.refundCard("r1", "p1", "m", 100, "x").status());
         assertEquals(List.of("pay p1", "refund r1"), cardCalls);
         assertTrue(started.isEmpty());
+    }
+
+    private static final PaymentHub.CardOnFile CARD = new PaymentHub.CardOnFile("4375510000000001", "12", "2030", "123", "*");
+
+    @Test
+    void cardCheckoutRunsTheFlowThenCreditsTheMerchant() {
+        assertEquals("SETTLED", flowHub.payCard("p1", "acme", 250_00, CARD).status());
+        assertEquals(List.of("DifmeCardCheckout-default p1 * 25000/Long"), flowStarts);
+        assertEquals(List.of("p1:settle card-settlement>merchant-acme 250.00 default default Bearer tok"), started);
+        // a retry finds the earlier checkout (no second charge) and the finished credit
+        assertEquals("SETTLED", flowHub.payCard("p1", "acme", 250_00, CARD).status());
+        assertEquals(1, flowStarts.size());
+        assertEquals(1, started.size());
+        assertTrue(cardCalls.isEmpty());
+    }
+
+    @Test
+    void aDeclineMovesNoMoney() {
+        chargeResult = "declined";
+        var o = flowHub.payCard("p2", "acme", 1_00, CARD);
+        assertEquals("DECLINED", o.status());
+        assertEquals("51: insufficient funds", o.detail());
+        assertTrue(started.isEmpty());
+    }
+
+    @Test
+    void aRefusedMerchantCreditRefundsTheCard() {
+        endEventForNext = "failed";
+        assertEquals("REFUNDED", flowHub.payCard("p3", "acme", 1_00, CARD).status());
+        assertEquals("DifmeCardRefund-default p3-unwind  100/Long", flowStarts.get(1));
+    }
+
+    @Test
+    void refundDebitsTheMerchantThenRefundsTheCard() {
+        assertEquals("REFUNDED", flowHub.refundCard("r1", "p1", "acme", 1_00, "returned").status());
+        assertTrue(started.get(0).startsWith("r1:debit merchant-acme>card-settlement 1.00"));
+        assertEquals("DifmeCardRefund-default r1  100/Long", flowStarts.get(0));
+        // the PSP refuses: the merchant debit is undone
+        refundResult = "failed";
+        assertEquals("FAILED", flowHub.refundCard("r2", "p1", "acme", 1_00, "returned").status());
+        assertTrue(started.get(2).startsWith("r2:undo card-settlement>merchant-acme 1.00"));
+        // the merchant can't cover it: nothing reaches the PSP
+        endEventForNext = "failed";
+        assertEquals("REJECTED", flowHub.refundCard("r3", "p1", "acme", 1_00, "returned").status());
+        assertEquals(2, flowStarts.size());
     }
 }

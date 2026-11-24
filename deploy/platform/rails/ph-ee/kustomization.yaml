@@ -1,5 +1,5 @@
 # Mifos Payment Hub EE connectors on Fluxnova (owner 2026-11-21; vendor/mifos-ph-ee, MPL-2.0).
-resources: [connectors.yaml, channel-auth.yaml, flows-job.yaml]
+resources: [connectors.yaml, channel-auth.yaml, flows-job.yaml, hyperswitch-worker.yaml]
 namespace: rails
 configMapGenerator:
   # DIFME's runtime settings for each connector (Spring profile "difme", loaded from /config). Secrets are ${ENV}
@@ -14,4 +14,6 @@ configMapGenerator:
       - PayeePartyLookup-DFSPID.bpmn=../../../../vendor/mifos-ph-ee/flows/PayeePartyLookup-DFSPID.bpmn
       - PayeeQuoteTransfer-DFSPID.bpmn=../../../../vendor/mifos-ph-ee/flows/PayeeQuoteTransfer-DFSPID.bpmn
       - DifmeOnUsTransfer-DFSPID.bpmn=../../../../processes/ph-ee/DifmeOnUsTransfer-DFSPID.bpmn
+      - DifmeCardCheckout-DFSPID.bpmn=../../../../processes/ph-ee/DifmeCardCheckout-DFSPID.bpmn
+      - DifmeCardRefund-DFSPID.bpmn=../../../../processes/ph-ee/DifmeCardRefund-DFSPID.bpmn
       - zeebe-bpmn-to-fluxnova.py=../../../../ci/zeebe-bpmn-to-fluxnova.py

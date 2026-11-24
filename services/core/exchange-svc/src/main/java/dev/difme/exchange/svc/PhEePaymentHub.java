@@ -11,6 +11,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -24,11 +26,17 @@ import java.util.function.Supplier;
  * operator: funds blocked, an operator must look). Idempotency: before starting, the movement id is looked up, so a retry
  * after a lost answer never starts a second transfer. An unfinished transfer throws (the caller retries later).
  *
- * <p>Card payments and refunds stay on the hub ({@code cards}) until card checkout has its own home.
+ * <p>Card payments: PH-EE's DifmeCardCheckout flow (one task, answered by services/core/hyperswitch-worker through
+ * Hyperswitch), started directly in Fluxnova with business key = the payment id, then the merchant is credited with an
+ * on-us transfer from the card settlement account; if that is refused the card is refunded (DifmeCardRefund). Refunds:
+ * the merchant is debited back to the settlement account first, then the card is refunded; a refused card refund undoes
+ * the debit. The flows carry only the card's reference (CardOnFile.ref), never its number. Without {@code cardFlows},
+ * card payments stay on the hub ({@code cards}).
  */
 final class PhEePaymentHub implements PaymentHub {
     static final String TENANT = "default";
     static final String FLOW = "DifmeOnUsTransfer-" + TENANT;
+    static final String CHECKOUT = "DifmeCardCheckout-" + TENANT, REFUND = "DifmeCardRefund-" + TENANT;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final PaymentHub cards;
@@ -36,10 +44,17 @@ final class PhEePaymentHub implements PaymentHub {
     private final Supplier<String> channelAuth, fluxnovaAuth;
     private final String settlementAccount;
     private final Duration wait;
+    private final boolean cardFlows;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
 
     PhEePaymentHub(PaymentHub cards, String channelUrl, Supplier<String> channelAuth, String fluxnovaEngineUrl,
                    Supplier<String> fluxnovaAuth, String settlementAccount, Duration wait) {
+        this(cards, channelUrl, channelAuth, fluxnovaEngineUrl, fluxnovaAuth, settlementAccount, wait, false);
+    }
+
+    PhEePaymentHub(PaymentHub cards, String channelUrl, Supplier<String> channelAuth, String fluxnovaEngineUrl,
+                   Supplier<String> fluxnovaAuth, String settlementAccount, Duration wait, boolean cardFlows) {
+        this.cardFlows = cardFlows;
         this.cards = cards;
         this.channel = URI.create(slash(channelUrl));
         this.fluxnova = URI.create(slash(fluxnovaEngineUrl));
@@ -72,12 +87,87 @@ final class PhEePaymentHub implements PaymentHub {
 
     @Override
     public Outcome payCard(String paymentId, String merchant, long amountMinor, CardOnFile card) {
-        return cards.payCard(paymentId, merchant, amountMinor, card);
+        if (!cardFlows) return cards.payCard(paymentId, merchant, amountMinor, card);
+        if (card.ref() == null) return new Outcome("DECLINED", "14: card has no reference for the PSP worker");
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("paymentId", paymentId); vars.put("merchant", merchant); vars.put("amountMinor", amountMinor);
+        vars.put("currency", "INR"); vars.put("cardRef", card.ref()); vars.put("description", "DIFME card payment " + paymentId);
+        Map<String, String> r = runFlow(CHECKOUT, paymentId, vars);
+        if (!"succeeded".equals(r.get("chargeStatus"))) {
+            return new Outcome("DECLINED", r.getOrDefault("declineCode", "05") + ": " + r.getOrDefault("declineMessage", "declined"));
+        }
+        String account = "merchant-" + merchant;
+        Outcome credit = transfer(paymentId + ":settle", settlementAccount, account, amountMinor, "card payment " + paymentId);
+        if ("DONE".equals(credit.status())) return new Outcome("SETTLED", account + " credited");
+        // The merchant can't be credited: give the cardholder the money back rather than leave it in limbo.
+        Map<String, String> back = runFlow(REFUND, paymentId + "-unwind",
+                refundVars(paymentId + "-unwind", paymentId, amountMinor, "settlement failed"));
+        return "succeeded".equals(back.get("refundStatus"))
+                ? new Outcome("REFUNDED", "merchant credit failed (" + credit.detail() + "); card refunded")
+                : new Outcome("FAILED", "merchant credit failed (" + credit.detail() + ") and the refund was refused: needs an operator");
     }
 
     @Override
     public Outcome refundCard(String refundId, String paymentId, String merchant, long amountMinor, String reason) {
-        return cards.refundCard(refundId, paymentId, merchant, amountMinor, reason);
+        if (!cardFlows) return cards.refundCard(refundId, paymentId, merchant, amountMinor, reason);
+        String account = "merchant-" + merchant;
+        Outcome debit = transfer(refundId + ":debit", account, settlementAccount, amountMinor, "refund " + refundId);
+        if (!"DONE".equals(debit.status())) return debit;
+        Map<String, String> r = runFlow(REFUND, refundId, refundVars(refundId, paymentId, amountMinor, reason));
+        if ("succeeded".equals(r.get("refundStatus"))) return new Outcome("REFUNDED", "card refund " + r.getOrDefault("refundMessage", ""));
+        transfer(refundId + ":undo", settlementAccount, account, amountMinor, "refund " + refundId + " undone");
+        return new Outcome("FAILED", "card refund refused (" + r.get("refundMessage") + "); merchant debit undone");
+    }
+
+    private static Map<String, Object> refundVars(String refundId, String paymentId, long amountMinor, String reason) {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("refundId", refundId); v.put("paymentId", paymentId); v.put("amountMinor", amountMinor); v.put("reason", reason);
+        return v;
+    }
+
+    // ── card flows in Fluxnova ──────────────────────────────────────────────────────────────────────────────────────
+
+    /** Runs a card flow once per business key (a retry finds the earlier instance) and returns its final variables. */
+    Map<String, String> runFlow(String definition, String businessKey, Map<String, Object> vars) {
+        String id = instance(definition, businessKey);
+        if (id == null) id = startFlow(definition, businessKey, vars);
+        long until = System.nanoTime() + wait.toNanos();
+        while (true) {
+            JsonNode p = get("history/process-instance/" + enc(id));
+            String state = p == null ? "" : p.path("state").asText();
+            if ("COMPLETED".equals(state)) break;
+            if (state.contains("TERMINATED")) throw new IllegalStateException(definition + " " + businessKey + " " + state);
+            if (System.nanoTime() > until) throw new IllegalStateException(definition + " " + businessKey + " not finished yet");
+            sleep(250);
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        JsonNode all = get("history/variable-instance?processInstanceId=" + enc(id));
+        if (all != null) for (JsonNode v : all) out.put(v.path("name").asText(), v.path("value").isNull() ? null : v.path("value").asText());
+        return out;
+    }
+
+    private String instance(String definition, String businessKey) {
+        JsonNode l = get("history/process-instance?processDefinitionKey=" + enc(definition) + "&processInstanceBusinessKey=" + enc(businessKey));
+        return l != null && l.isArray() && !l.isEmpty() ? l.get(0).path("id").asText() : null;
+    }
+
+    private String startFlow(String definition, String businessKey, Map<String, Object> vars) {
+        ObjectNode b = JSON.createObjectNode().put("businessKey", businessKey);
+        ObjectNode v = b.putObject("variables");
+        vars.forEach((k, val) -> {
+            ObjectNode e = v.putObject(k);
+            if (val instanceof Long l) e.put("value", l).put("type", "Long");
+            else e.put("value", String.valueOf(val)).put("type", "String");
+        });
+        HttpResponse<String> r = send(HttpRequest.newBuilder(fluxnova.resolve("process-definition/key/" + enc(definition) + "/start"))
+                .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json").header("Authorization", fluxnovaAuth.get())
+                .POST(HttpRequest.BodyPublishers.ofString(b.toString())).build(), "Fluxnova");
+        if (r.statusCode() / 100 != 2) throw new IllegalStateException("Fluxnova start " + definition + ": HTTP " + r.statusCode() + " " + head(r.body()));
+        try {
+            return JSON.readTree(r.body()).path("id").asText();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Fluxnova start answered without JSON");
+        }
     }
 
     // ── PH-EE channel ───────────────────────────────────────────────────────────────────────────────────────────────

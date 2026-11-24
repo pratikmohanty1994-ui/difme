@@ -59,7 +59,7 @@ jobs:
       max-parallel: 8          # keeps the dependency download burst moderate
       matrix:
         module: [cmd-svc, qry-svc, saga-orchestrator, rehydration-svc, consistency-router, rate-limiter, projection-svc,
-                 replay-engine, process-gateway, exchange-svc, payment-hub]
+                 replay-engine, process-gateway, exchange-svc, payment-hub, hyperswitch-worker]
         arch: [amd64, arm64]
         include:
           - { arch: amd64, runner: ubuntu-24.04 }
@@ -100,7 +100,7 @@ jobs:
       fail-fast: false
       matrix:
         module: [cmd-svc, qry-svc, saga-orchestrator, rehydration-svc, consistency-router, rate-limiter, projection-svc,
-                 replay-engine, process-gateway, exchange-svc, payment-hub]
+                 replay-engine, process-gateway, exchange-svc, payment-hub, hyperswitch-worker]
     uses: ./.github/workflows/_manifest.yml
     with:
       name: difme-${{ matrix.module }}

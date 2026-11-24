@@ -152,6 +152,7 @@ public class Exchange {
     @ConfigProperty(name = "difme.exchange.phee.fluxnova-url") java.util.Optional<String> pheeFluxnovaUrl;
     @ConfigProperty(name = "difme.exchange.phee.fluxnova-basic") java.util.Optional<String> pheeFluxnovaBasic;   // user:password
     @ConfigProperty(name = "difme.exchange.phee.settlement-account", defaultValue = "card-settlement") String pheeSettlementAccount;
+    @ConfigProperty(name = "difme.exchange.phee.card-flows", defaultValue = "false") boolean pheeCardFlows;   // DifmeCardCheckout + hyperswitch-worker
     /** Dev only: keep the in-process evidence keys here so chains sealed before a restart still verify after it. */
     @ConfigProperty(name = "difme.evidence.local-keys-dir") java.util.Optional<String> localKeysDir;
     private StateStore store = StateStore.none();
@@ -1153,7 +1154,7 @@ public class Exchange {
             // "*": the card for partners without their own. Standing mandates bid as partner nodes from 1000001, assigned at
             // registration, so a fixed node list can't name them (cluster-verify 2026-11-23: every hub-mode buy got 14).
             long key = f[0].equals("*") ? dev.difme.exchange.rails.hub.HubCheckout.ANY_PARTNER : Long.parseLong(f[0]);
-            cards.put(key, new dev.difme.exchange.rails.PaymentHub.CardOnFile(f[1], f[2].substring(0, 2), "20" + f[2].substring(2), "123"));
+            cards.put(key, new dev.difme.exchange.rails.PaymentHub.CardOnFile(f[1], f[2].substring(0, 2), "20" + f[2].substring(2), "123", f[0]));
         }
         return cards;
     }
@@ -1166,8 +1167,9 @@ public class Exchange {
             var token = new ClientCredentials(pheeTokenUrl.orElseThrow(), pheeClientId.orElseThrow(), pheeClientSecret.orElseThrow());
             String basic = "Basic " + java.util.Base64.getEncoder().encodeToString(pheeFluxnovaBasic.orElseThrow().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             hub = new PhEePaymentHub(hub, pheeChannelUrl.get(), token::header, pheeFluxnovaUrl.orElseThrow(), () -> basic,
-                    pheeSettlementAccount, java.time.Duration.ofSeconds(20));
-            LOG.info("escrow movements through Mifos PH-EE (" + pheeChannelUrl.get() + "); card payments through the hub");
+                    pheeSettlementAccount, java.time.Duration.ofSeconds(20), pheeCardFlows);
+            LOG.info("escrow movements through Mifos PH-EE (" + pheeChannelUrl.get() + "); card payments through "
+                    + (pheeCardFlows ? "PH-EE DifmeCardCheckout (hyperswitch-worker)" : "the hub"));
         }
         rails.useHub(hub, cards, m -> LOG.warn(m));
         // Journal every CBS booking in the durable state; those still PENDING from before a restart go out again.

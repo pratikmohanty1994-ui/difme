@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DIFME card refund for Mifos Payment Hub EE (D3: card checkout off the interim hub). Written in PH-EE's Zeebe dialect and converted
+  for Fluxnova by ci/zeebe-bpmn-to-fluxnova.py, like the other flows.
+  Refunds (part of) a card payment through Hyperswitch. Variables in: refundId (idempotency key), paymentId,
+  amountMinor, reason. Out: refundStatus (succeeded | failed), refundMessage.
+  Transient failures (PSP unreachable) are retried by the worker; when retries run out Fluxnova raises an incident.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="difme-cardrefund" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="DifmeCardRefund-DFSPID" name="DIFME card refund" isExecutable="true">
+    <bpmn:startEvent id="start" name="Request"><bpmn:outgoing>s1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="psp" name="Refund card (Hyperswitch)">
+      <bpmn:extensionElements><zeebe:taskDefinition type="hyperswitch-refund" retries="5" /></bpmn:extensionElements>
+      <bpmn:incoming>s1</bpmn:incoming><bpmn:outgoing>s2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="done" name="Answered"><bpmn:incoming>s2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="s1" sourceRef="start" targetRef="psp" />
+    <bpmn:sequenceFlow id="s2" sourceRef="psp" targetRef="done" />
+  </bpmn:process>
+</bpmn:definitions>

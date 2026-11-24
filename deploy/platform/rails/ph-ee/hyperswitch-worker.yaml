@@ -1,0 +1,39 @@
+# D3 (c): the PSP side of card checkout. A Fluxnova external-task worker (services/core/hyperswitch-worker) that answers
+# the DifmeCardCheckout / DifmeCardRefund flows (topics hyperswitch-charge, hyperswitch-refund) through Hyperswitch.
+# The flows carry only a card reference ("*" or a partner node); the card details live here, next to the PSP call, in
+# Secret hyperswitch-worker-cards (dev-secrets.sh; scheme-sim's seeded test cards in dev). No Service: it only calls out.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: hyperswitch-worker }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: hyperswitch-worker, labels: { app: hyperswitch-worker } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: hyperswitch-worker } }
+  template:
+    metadata: { labels: { app: hyperswitch-worker, difme/team: rails, business.metric: card-checkout } }
+    spec:
+      serviceAccountName: hyperswitch-worker
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: worker
+          image: ghcr.io/pratikmohanty1994-ui/difme-hyperswitch-worker:0.1.0
+          env:
+            - { name: FLUXNOVA_ENGINE_URL, value: "http://fluxnova.process.svc:8080/engine-rest" }
+            - { name: FLUXNOVA_BASIC, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-basic } } }
+            - { name: HYPERSWITCH_URL, value: "http://hyperswitch.rails.svc:8080" }
+            - { name: HYPERSWITCH_ADMIN_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: admin-api-key } } }
+            - { name: HYPERSWITCH_ACQUIRER_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: acquirer-api-key } } }
+            - { name: HSWORKER_CARDS, valueFrom: { secretKeyRef: { name: hyperswitch-worker-cards, key: cards } } }
+            # The image's entrypoint selects G1 already (services/core/Dockerfile.jvm): no GC flag here.
+            - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
+          ports: [{ name: http, containerPort: 8091 }]
+          readinessProbe: { httpGet: { path: /q/health/ready, port: 8091 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /q/health/live, port: 8091 }, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 25m, memory: 160Mi }, limits: { memory: 320Mi } }
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 64Mi } }]
