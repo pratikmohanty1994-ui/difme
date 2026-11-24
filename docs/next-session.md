@@ -139,6 +139,15 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 15 result (45331437349, core,security,process,rails,fraud; 2026-11-24)
+core, security, process, **rails converged** (PH-EE healthy, Mojaloop switch + payeefsp running, rails-worker running:
+**DifmeOpenAccount completed on the cluster**); live buy ok 4x; network tokenization on; hsm keys by attestation.
+**Not yet shown:** card checkout through PH-EE (the report's worker pattern still matched the old start-up line, and the
+exchange's rails line wasn't printed; fixed in verify-profile). **Mojaloop cross-bank failed:** the on-us funding transfer
+stayed ACTIVE for 2 min; PayerFundTransfer aborted after Payee Quote (diagnostics added: flow steps with the open one,
+error variables, error lines of ams/mojaloop/channel/switch/payeefsp). **fraud failed:** Tazama needs Kafka, i.e. the
+streaming profile, which this run left out (memory): run fraud together with streaming.
+
 ### Run 14 result (45291141393, core,security,streaming,process,rails; 2026-11-24)
 core, security, streaming, process **converged**; live buy ok four times. rails failed only on ph-ee: the ams connector
 never passed its startup probe and timed out calling Fluxnova while idle (5m CPU). Cause: memory pressure by the time

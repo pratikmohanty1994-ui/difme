@@ -173,14 +173,27 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   kubectl -n rails logs job/ph-ee-deploy-flows -c deploy --tail=2 2>&1 | sed 's/^/  ph-ee flows: /' | cut -c1-240
   kubectl -n rails logs deploy/hsm --tail=400 2>/dev/null | grep -iE "key release|attest|bootstrap|listening" | tail -4 | sed 's/^/  hsm: /' | cut -c1-200
   # D3: escrow movements through PH-EE (exchange-svc's PhEePaymentHub); booking failures are retried and logged.
-  kubectl -n core-platform logs deploy/exchange-svc --tail=3000 2>/dev/null | grep -E "through Mifos PH-EE|CBS refused|CBS booking .* failed" \
+  kubectl -n core-platform logs deploy/exchange-svc --tail=5000 2>/dev/null | grep -E "rails: |through Mifos PH-EE|CBS refused|CBS booking .* failed" \
     | tail -5 | sed 's/^/  exchange escrow: /' | cut -c1-260
   # D3 (c): card checkout on PH-EE (DifmeCardCheckout/DifmeCardRefund answered by the rails-worker).
-  kubectl -n rails logs deploy/rails-worker --tail=500 2>/dev/null | grep -E "card flows worker|card task" \
-    | tail -4 | sed 's/^/  card checkout: /' | cut -c1-240
+  kubectl -n rails logs deploy/rails-worker --tail=2000 2>/dev/null | grep -E "flows worker|card task|hyperswitch-|tazama-check|fineract-open-account" \
+    | tail -8 | sed 's/^/  card checkout: /' | cut -c1-240
   # D3 (d/e): a cross-bank payment through the Mojaloop switch to the other bank (informational until it has passed once).
   if kubectl -n rails get deploy mojaloop-switch payeefsp-sdk >/dev/null 2>&1; then
-    timeout 300 python3 ci/mojaloop-cluster-check.py 2>&1 | cut -c1-500 || echo "  mojaloop cross-bank: FAILED (informational)"
+    if ! timeout 300 python3 ci/mojaloop-cluster-check.py 2>&1 | cut -c1-500; then
+      echo "  mojaloop cross-bank: FAILED (informational); errors from the parties involved:"
+      for d in ph-ee-connector-ams-mifos ph-ee-connector-mojaloop ph-ee-connector-channel mojaloop-switch payeefsp-sdk payeefsp-simulator; do
+        kubectl -n rails logs deploy/$d --tail=400 2>/dev/null | grep -iE "error|exception|fail|refus|denied|timeout" | grep -v "engine unreachable" \
+          | tail -4 | sed "s/^/    $d: /" | cut -c1-260
+      done
+    fi
+  fi
+fi
+# Scale-to-zero (ADR-029, informational): KEDA's view and the replicas it set.
+if [ "$rc" -eq 0 ] && kubectl get crd scaledobjects.keda.sh >/dev/null 2>&1; then
+  if [ -n "$(kubectl get scaledobject -A --no-headers 2>/dev/null)" ]; then
+    echo "== scale-to-zero"
+    kubectl get scaledobject -A --no-headers 2>/dev/null | awk '{printf "  %s/%s target=%s ready=%s active=%s\n", $1, $2, $4, $7, $8}'
   fi
 fi
 # Tazama end to end (informational): a payment and a 3-D Secure pain.001 through the deployed fraud engine, verdicts read

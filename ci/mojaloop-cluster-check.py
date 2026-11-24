@@ -111,6 +111,16 @@ def flow_end(flux_auth, definition, query):
     return pid, state, end
 
 
+def steps(flux_auth, pid):
+    """The instance's task/wait steps in order, with the one still open marked."""
+    code, acts = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/activity-instance?processInstanceId={pid}&sortBy=startTime&sortOrder=asc",
+                      headers={"Authorization": flux_auth})
+    if code != 200 or not acts:
+        return ""
+    return " > ".join((a.get("activityName") or a["activityId"]) + ("" if a.get("endTime") else " (open)") for a in acts
+                      if a.get("activityType") in ("serviceTask", "receiveTask", "intermediateCatchEvent", "intermediateMessageCatch"))
+
+
 def open_account(flux_auth, name):
     """Opens the account through DifmeOpenAccount (the exchange's way); True when Fineract has it with its ACCOUNT_ID."""
     bk = "open-" + name
@@ -163,7 +173,9 @@ def run(flux_auth):
         return 1
     fund = "xbank-fund-" + run_id
     code, r = channel_transfer(fund, "card-settlement", "ACCOUNT_ID", PAYER, "default")
-    _, fstate, fend = flow_end(flux_auth, "DifmeOnUsTransfer-default", {"variables": "clientCorrelationId_eq_" + fund}) if code // 100 == 2 else (None, "", "")
+    fpid, fstate, fend = flow_end(flux_auth, "DifmeOnUsTransfer-default", {"variables": "clientCorrelationId_eq_" + fund}) if code // 100 == 2 else (None, "", "")
+    if fpid and fend != "done":
+        print(f"  mojaloop cross-bank: DifmeOnUsTransfer steps: {steps(flux_auth, fpid)}")
     before = balance()
     print(f"  mojaloop cross-bank: payer funded on-us (channel {code}, DifmeOnUsTransfer {fstate or '-'} end {fend or '-'}), balance {before}")
     if before is None:
@@ -178,10 +190,11 @@ def run(flux_auth):
     # 3. follow the PayerFundTransfer instance in Fluxnova's history
     pid, state, end = flow_end(flux_auth, "PayerFundTransfer-default", {"variables": "clientCorrelationId_eq_" + corr})
     if pid:
-        code, acts = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/activity-instance?processInstanceId={pid}&sortBy=startTime&sortOrder=asc",
-                          headers={"Authorization": flux_auth})
-        steps = " > ".join(a.get("activityName") or a["activityId"] for a in acts if a.get("activityType") in ("serviceTask", "receiveTask", "intermediateCatchEvent")) if code == 200 and acts else ""
-        print(f"  mojaloop cross-bank: PayerFundTransfer {pid} {state or '-'} end {end or '-'}; steps: {steps[:400]}")
+        print(f"  mojaloop cross-bank: PayerFundTransfer {pid} {state or '-'} end {end or '-'}; steps: {steps(flux_auth, pid)[:400]}")
+        code, v = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/variable-instance?processInstanceId={pid}", headers={"Authorization": flux_auth})
+        if code == 200 and v and end != SUCCESS_END:
+            hints = {x["name"]: str(x.get("value"))[:160] for x in v if any(k in x["name"].lower() for k in ("error", "fail", "state", "fsp"))}
+            print(f"  mojaloop cross-bank: flow variables: {hints}"[:600])
     else:
         print("  mojaloop cross-bank: no PayerFundTransfer instance for " + corr)
     after = None
