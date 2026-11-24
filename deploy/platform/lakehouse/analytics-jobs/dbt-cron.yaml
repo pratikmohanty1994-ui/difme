@@ -7,9 +7,12 @@ spec:
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      # Never + a small backoffLimit: each failed attempt keeps its pod and log. With OnFailure the container retried in
+      # place and the pod was deleted when the Job gave up, so the cause was lost (all-profiles run 13, 2026-11-23).
+      backoffLimit: 2
       template:
         spec:
-          restartPolicy: OnFailure
+          restartPolicy: Never
           containers:
             - name: dbt
               image: ghcr.io/pratikmohanty1994-ui/difme-dbt:0.1.0

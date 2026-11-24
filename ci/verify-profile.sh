@@ -199,13 +199,20 @@ if [ "$rc" -eq 0 ] && kubectl -n governance get svc marquez >/dev/null 2>&1; the
     kubectl -n lakehouse delete job dbt-lineage-smoke --ignore-not-found >/dev/null 2>&1
     if ! out=$(kubectl -n lakehouse create job --from=cronjob/dbt-run dbt-lineage-smoke 2>&1); then
       echo "  dbt run: could not create the job: $out" | cut -c1-300
-    elif kubectl -n lakehouse wait --for=condition=complete job/dbt-lineage-smoke --timeout=420s >/dev/null 2>&1; then
-      echo "  dbt run: complete"
     else
-      echo "  dbt run: not complete"
+      # Stream its output while waiting: a failed Job's pods can be gone by the time the wait gives up.
+      (sleep 5; kubectl -n lakehouse logs -f job/dbt-lineage-smoke --all-containers 2>&1) > /tmp/dbt-smoke.log & lp=$!
+      if kubectl -n lakehouse wait --for=condition=complete job/dbt-lineage-smoke --timeout=420s >/dev/null 2>&1; then
+        echo "  dbt run: complete"; kill $lp 2>/dev/null
+      else
+        kill $lp 2>/dev/null
+        echo "  dbt run: not complete"
+        grep -iE "error|fail|exception|warn" /tmp/dbt-smoke.log | tail -15 | cut -c1-240
+        tail -10 /tmp/dbt-smoke.log | cut -c1-240
       kubectl -n lakehouse get pods -l job-name=dbt-lineage-smoke --no-headers 2>&1 | cut -c1-160
       kubectl -n lakehouse logs -l job-name=dbt-lineage-smoke --all-containers --tail=25 2>&1 | cut -c1-220
       kubectl -n lakehouse get events --field-selector involvedObject.kind=Pod --sort-by=.lastTimestamp 2>/dev/null | grep dbt-lineage | tail -5 | cut -c1-220
+      fi
     fi
     sleep 10
   fi
