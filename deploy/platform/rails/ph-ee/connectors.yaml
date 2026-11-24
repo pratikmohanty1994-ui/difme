@@ -102,9 +102,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: { name: ph-ee-connector-mojaloop, labels: { app: ph-ee-connector-mojaloop } }
 spec:
-  # 0 until the Mojaloop switch has manifests (D3): without its peer the connector only holds memory, and the single-node
-  # dev cluster ran out of schedulable memory with it (cluster-verify 2026-11-23). Set 1 with the switch.
-  replicas: 0
+  # The Mojaloop switch is deployed with the rails profile (deploy/platform/rails/mojaloop-switch, D3 d).
+  replicas: 1
   selector: { matchLabels: { app: ph-ee-connector-mojaloop } }
   template:
     metadata:

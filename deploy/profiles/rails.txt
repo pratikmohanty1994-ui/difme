@@ -6,4 +6,5 @@ fineract
 hyperswitch
 payment-hub
 ph-ee
+mojaloop-switch
 exchange-rails

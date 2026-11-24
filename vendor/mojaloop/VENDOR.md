@@ -21,4 +21,7 @@ Installing: `npm ci --omit=dev --ignore-scripts` (testing-toolkit, simulator); t
 (`node .yarn/releases/yarn-4.18.0.cjs workspaces focus @mojaloop/sdk-scheme-adapter-api-svc --production`; corepack
 would download Yarn from a host the session blocks).
 
+Images: `deploy/images/mojaloop/Dockerfile` (one per directory, `COMPONENT=`; Node 22 on Debian slim); manifests:
+`deploy/platform/rails/mojaloop-switch` (Argo app `mojaloop-switch`, rails profile).
+
 Infrastructure it expects and the DIFME component used instead: `docs/architecture/component-reuse.md`.

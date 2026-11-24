@@ -53,6 +53,7 @@ secret rails         ph-ee-ams-oauth client-id=ph-ee-ams client-secret="$PHEE_AM
 # the ILP secret that replaces upstream's public default.
 secret rails         fluxnova admin-basic="admin:${FLUX_ADMIN}"
 secret rails         ph-ee-mojaloop ilp-secret="$(rand 48)"
+secret rails         payeefsp ilp-secret="$(rand 48)"   # the other bank on the Mojaloop switch (its own fulfilment secret)
 secret rails         fineract-admin-oauth client-id=fineract-admin client-secret="$FIN_ADMIN_CS"
 secret core-platform difme-exchange-oauth client-id=difme-exchange client-secret="$EXCHANGE_CS"
 # exchange-svc → PH-EE (D3): the channel token (client difme-exchange) and the Fluxnova login for transfer status

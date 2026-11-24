@@ -1,0 +1,37 @@
+{
+ "VERSION": 1,
+ "HUB_ONLY_MODE": true,
+ "FSPID": "switch",
+ "DEFAULT_USER_FSPID": "difme",
+ "ENDPOINTS_DFSP_WISE": {
+  "dfsps": {
+   "difme": {
+    "defaultEndpoint": "http://ph-ee-connector-mojaloop.rails.svc:5000/switch",
+    "endpoints": []
+   },
+   "payeefsp": {
+    "defaultEndpoint": "http://payeefsp-sdk.rails.svc:4000",
+    "endpoints": []
+   }
+  }
+ },
+ "CALLBACK_ENDPOINT": "http://localhost:4040",
+ "SEND_CALLBACK_ENABLE": true,
+ "CALLBACK_TIMEOUT": 20000,
+ "CALLBACK_RESOURCE_ENDPOINTS": {
+  "enabled": false,
+  "endpoints": []
+ },
+ "TRANSFERS_VALIDATION_WITH_PREVIOUS_QUOTES": false,
+ "TRANSFERS_VALIDATION_ILP_PACKET": false,
+ "TRANSFERS_VALIDATION_CONDITION": false,
+ "ILP_SECRET": "switch-unused",
+ "VERSIONING_SUPPORT_ENABLE": true,
+ "VALIDATE_INBOUND_JWS": false,
+ "VALIDATE_INBOUND_PUT_PARTIES_JWS": false,
+ "JWS_SIGN": false,
+ "JWS_SIGN_PUT_PARTIES": false,
+ "INBOUND_MUTUAL_TLS_ENABLED": false,
+ "OUTBOUND_MUTUAL_TLS_ENABLED": false,
+ "ADVANCED_FEATURES_ENABLED": true
+}

@@ -1,0 +1,91 @@
+# The other bank on the switch, FSP "payeefsp" (participants.json: MSISDNs 919900000000-919999999999): SDK scheme
+# adapter v24.20.0 (FSPIOP in/out, api-svc only) in front of mojaloop-simulator v15.5.5 (its core banking: parties,
+# quotes, transfers; in-memory SQLite). One seeded party, 919900000001, is the payee of the money tests. No signing:
+# JWS and mTLS are off on this dev switch, as on the switch itself.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: payeefsp }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: payeefsp-sdk, labels: { app: payeefsp-sdk } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payeefsp-sdk } }
+  template:
+    metadata: { labels: { app: payeefsp-sdk, difme/team: rails, business.metric: settlement } }
+    spec:
+      serviceAccountName: payeefsp
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: sdk
+          image: ghcr.io/pratikmohanty1994-ui/difme-mojaloop-sdk-scheme-adapter:0.1.0
+          env:
+            - { name: DFSP_ID, value: payeefsp }
+            - { name: PEER_ENDPOINT, value: "mojaloop-switch.rails.svc:4040" }
+            - { name: BACKEND_ENDPOINT, value: "payeefsp-simulator.rails.svc:3000" }
+            - { name: CACHE_URL, value: "redis://valkey.cache-tier.svc:6379/3" }
+            - { name: INBOUND_LISTEN_PORT, value: "4000" }
+            - { name: OUTBOUND_LISTEN_PORT, value: "4001" }
+            - { name: TEST_LISTEN_PORT, value: "4002" }
+            - { name: ENABLE_BACKEND_EVENT_HANDLER, value: "false" }
+            - { name: ENABLE_FSPIOP_EVENT_HANDLER, value: "false" }
+            - { name: VALIDATE_INBOUND_JWS, value: "false" }
+            - { name: JWS_SIGN, value: "false" }
+            - { name: AUTO_ACCEPT_QUOTES, value: "true" }
+            - { name: AUTO_ACCEPT_PARTY, value: "true" }
+            - { name: EXPIRY_SECONDS, value: "60" }
+            - { name: LOG_LEVEL, value: info }
+            # The payee's own secret for the fulfilments it issues (not shared with DIFME: patch ph-ee-mojaloop/0002).
+            - { name: ILP_SECRET, valueFrom: { secretKeyRef: { name: payeefsp, key: ilp-secret } } }
+          ports: [{ name: http-fspiop, containerPort: 4000 }, { name: http-outbound, containerPort: 4001 }]
+          readinessProbe: { tcpSocket: { port: 4000 }, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: 4000 }, initialDelaySeconds: 20, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 25m, memory: 128Mi }, limits: { memory: 384Mi } }
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 64Mi } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payeefsp-sdk }
+spec:
+  selector: { app: payeefsp-sdk }
+  ports: [{ name: http-fspiop, port: 4000, targetPort: http-fspiop }, { name: http-outbound, port: 4001, targetPort: http-outbound }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: payeefsp-simulator, labels: { app: payeefsp-simulator } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payeefsp-simulator } }
+  template:
+    metadata: { labels: { app: payeefsp-simulator, difme/team: rails, business.metric: settlement } }
+    spec:
+      serviceAccountName: payeefsp
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: simulator
+          image: ghcr.io/pratikmohanty1994-ui/difme-mojaloop-simulator:0.1.0
+          env:
+            - { name: DFSP_ID, value: payeefsp }
+            - { name: MODEL_DATABASE, value: ":memory:" }
+            - { name: RULES_FILE, value: /opt/app/rules/example.json }
+            - { name: HTTPS_ENABLED, value: "false" }
+            - { name: MUTUAL_TLS_ENABLED, value: "false" }
+            - { name: SIMULATOR_API_LISTEN_PORT, value: "3000" }
+            - name: PARTIES
+              value: '[{"displayName":"Payee Test","firstName":"Payee","lastName":"Test","dateOfBirth":"1990-01-01","idType":"MSISDN","idValue":"919900000001"}]'
+          ports: [{ name: http, containerPort: 3000 }]
+          readinessProbe: { tcpSocket: { port: 3000 }, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: 3000 }, initialDelaySeconds: 20, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 192Mi } }
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 64Mi } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payeefsp-simulator }
+spec: { selector: { app: payeefsp-simulator }, ports: [{ name: http, port: 3000, targetPort: http }] }

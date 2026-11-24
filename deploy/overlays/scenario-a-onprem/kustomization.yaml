@@ -69,6 +69,7 @@ resources:
 - ../../../deploy/argocd/apps/hyperswitch.yaml
 - ../../../deploy/argocd/apps/payment-hub.yaml
 - ../../../deploy/argocd/apps/ph-ee.yaml
+- ../../../deploy/argocd/apps/mojaloop-switch.yaml
 - ../../../deploy/argocd/apps/exchange-rails.yaml
 - ../../../deploy/argocd/apps/tazama.yaml
 - ../../../deploy/argocd/apps/victoria-metrics.yaml

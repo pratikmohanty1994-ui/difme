@@ -1,0 +1,51 @@
+# The central switch: Mojaloop Testing Toolkit v18.19.2 in hub mode (vendor/mojaloop/testing-toolkit). Routes FSPIOP
+# requests and callbacks between participants: GET /parties by MSISDN range (the account-lookup role), everything else by
+# FSPIOP-Destination (FSPIOP 1.0 and 1.1). The toolkit keeps its settings under spec_files and writes there, so the image's
+# spec_files are copied to a scratch volume with DIFME's routing on top (read-only root filesystem).
+# Known gap (status.md): the toolkit doesn't check the ILP fulfilment at commit, a real switch core would.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: mojaloop-switch }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mojaloop-switch, labels: { app: mojaloop-switch } }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: mojaloop-switch } }
+  template:
+    metadata: { labels: { app: mojaloop-switch, difme/team: rails, business.metric: settlement } }
+    spec:
+      serviceAccountName: mojaloop-switch
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      initContainers:
+        - name: spec-files
+          image: ghcr.io/pratikmohanty1994-ui/difme-mojaloop-testing-toolkit:0.1.0
+          command: ["sh", "-c", "cp -r /opt/app/spec_files/. /spec/ && cp /cfg/user_config.json /spec/user_config.json && mkdir -p /spec/rules_forward && cp /cfg/rules_forward_default.json /spec/rules_forward/default.json && cp /cfg/rules_forward_config.json /spec/rules_forward/config.json"]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: spec, mountPath: /spec }, { name: config, mountPath: /cfg, readOnly: true }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 64Mi } }
+      containers:
+        - name: switch
+          image: ghcr.io/pratikmohanty1994-ui/difme-mojaloop-testing-toolkit:0.1.0
+          ports: [{ name: http-fspiop, containerPort: 4040 }, { name: http-admin, containerPort: 5050 }]
+          readinessProbe: { tcpSocket: { port: 4040 }, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: 4040 }, initialDelaySeconds: 20, periodSeconds: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: spec, mountPath: /opt/app/spec_files }
+            - { name: uploads, mountPath: /opt/app/uploads }
+            - { name: tmp, mountPath: /tmp }
+          resources: { requests: { cpu: 25m, memory: 128Mi }, limits: { memory: 384Mi } }
+      volumes:
+        - { name: config, configMap: { name: mojaloop-switch-config } }
+        - { name: spec, emptyDir: { sizeLimit: 64Mi } }
+        - { name: uploads, emptyDir: { sizeLimit: 16Mi } }
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mojaloop-switch }
+spec: { selector: { app: mojaloop-switch }, ports: [{ name: http-fspiop, port: 4040, targetPort: http-fspiop }] }

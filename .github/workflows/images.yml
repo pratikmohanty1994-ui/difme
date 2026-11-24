@@ -42,6 +42,7 @@ jobs:
       veraison: ${{ steps.d.outputs.veraison }}
       tazama: ${{ steps.d.outputs.tazama }}
       phee: ${{ steps.d.outputs.phee }}
+      mojaloop: ${{ steps.d.outputs.mojaloop }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -158,6 +159,21 @@ jobs:
       dockerfile: deploy/images/mifos-ph-ee/Dockerfile
       build-args: CONNECTOR=${{ matrix.connector }}
       smoke: bash deploy/images/mifos-ph-ee/smoke.sh "$IMAGE:scan" ${{ matrix.connector }}
+
+  mojaloop:
+    needs: changes
+    if: needs.changes.outputs.mojaloop == 'true'
+    # Mojaloop settlement leg (vendor/mojaloop, Apache-2.0): the central switch (Testing Toolkit) and the other bank
+    # (SDK scheme adapter + simulator). Node images, so both platforms come from one job.
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [testing-toolkit, sdk-scheme-adapter, simulator]
+    uses: ./.github/workflows/_image.yml
+    with:
+      name: difme-mojaloop-${{ matrix.component }}
+      dockerfile: deploy/images/mojaloop/Dockerfile
+      build-args: COMPONENT=${{ matrix.component }}
 
   tazama:
     needs: changes

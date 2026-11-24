@@ -1,0 +1,14 @@
+# Mojaloop settlement leg (owner 2026-11-21; vendor/mojaloop, Apache-2.0): the central switch (Testing Toolkit in hub
+# mode) and the other bank ("payeefsp": SDK scheme adapter + mojaloop-simulator). DIFME joins as FSP "difme" through
+# Mifos PH-EE's own Mojaloop connector (deploy/platform/rails/ph-ee). Component reuse: the scheme adapter's cache is
+# Valkey (cache-tier, database 3); its Kafka handlers, the toolkit's MongoDB/Keycloak and every OAuth server are off.
+resources: [switch.yaml, payeefsp.yaml]
+namespace: rails
+configMapGenerator:
+  # Routing generated from participants.json: python3 ci/mojaloop-switch-config.py
+  #   deploy/platform/rails/mojaloop-switch/participants.json deploy/platform/rails/mojaloop-switch/config
+  - name: mojaloop-switch-config
+    files:
+      - user_config.json=config/user_config.json
+      - rules_forward_default.json=config/rules_forward/default.json
+      - rules_forward_config.json=config/rules_forward/config.json

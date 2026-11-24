@@ -89,6 +89,7 @@ components:
   - { name: hyperswitch,       ns: rails,           kind: path, profile: rails, wave: 1, pdf: "rails" }   # PSP (Hyperswitch v1.129.0, dummy connector)
   - { name: payment-hub,       ns: rails,           kind: path, profile: rails, wave: 2, pdf: "rails" }   # payment hub on Temporal (PSP + CBS)
   - { name: ph-ee,             ns: rails,           kind: path, profile: rails, wave: 2, pdf: "rails" }   # Mifos PH-EE connectors on Fluxnova (channel, ams, mojaloop) + flows
+  - { name: mojaloop-switch,   ns: rails,           kind: path, profile: rails, wave: 2, pdf: "rails" }   # Mojaloop switch (Testing Toolkit hub) + the other bank (SDK scheme adapter + simulator)
   - { name: exchange-rails,    ns: core-platform,   kind: path, profile: rails, wave: 3, pdf: "rails" }   # exchange → payment hub link (ConfigMap)
 
   # ── Fraud and AML monitoring (profile: fraud; owner 2026-11-22, ADR-023) ─────
