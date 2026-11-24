@@ -17,6 +17,11 @@ Local changes:
 - `simulator/package-lock.json` regenerated (`npm install --package-lock-only`): upstream's lock at v15.5.5 is out of
   sync with its package.json (missing argparse 1.0.10, sprintf-js 1.0.3), so `npm ci` refuses it.
 
+- Critical CVEs with fixed releases (Trivy gate, images run 2026-11-24): `testing-toolkit` handlebars 4.7.10, mongoose
+  9.9.2, overrides convict 6.2.5, fast-xml-parser 4.5.4, protobufjs 7.5.5, proxy-addr 2.0.8 (lock regenerated with
+  `npm install --package-lock-only --ignore-scripts`); `sdk-scheme-adapter` resolution proxy-addr 2.0.8 (`yarn install
+  --mode=update-lockfile`). Re-apply after a vendor sync until upstream ships them; images re-scanned locally: 0 critical.
+
 Installing: `npm ci --omit=dev --ignore-scripts` (testing-toolkit, simulator); the scheme adapter with its bundled Yarn
 (`node .yarn/releases/yarn-4.18.0.cjs workspaces focus @mojaloop/sdk-scheme-adapter-api-svc --production`; corepack
 would download Yarn from a host the session blocks).
