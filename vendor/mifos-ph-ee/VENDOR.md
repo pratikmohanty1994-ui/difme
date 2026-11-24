@@ -46,6 +46,11 @@ Local changes to the Mifos source: two patches to connector-mojaloop (`vendor/pa
   FSPs share one secret); it checks the packet carries this quote and the condition is a 32-byte SHA-256. The
   fulfilment is checked at commit by the switch (see Known gaps).
 
+- `0004` (D4) the payer checks the payee's ILP fulfilment at commit: condition = base64url(SHA-256(fulfilment)), the
+  condition remembered when the transfer is sent. A mismatch, a COMMITTED callback without a fulfilment, or no
+  condition on record (connector restarted in between) makes the transfer failed: the flow releases the block instead
+  of booking (fail closed). A real Mojaloop switch checks this too; DIFME's dev switch (Testing Toolkit) does not.
+
 Patches to connector-ams-mifos (`vendor/patches/ph-ee-ams-mifos/`), first for logins through Keycloak (component reuse):
 - `0001` tenant `authtype: oauth` for Fineract 1.2 (upstream: "TODO implement") = OAuth2 client credentials at
   `ams.local.oauth.token-url`; the tenant's `user`/`password` are the Keycloak client id/secret. Fineract accepts the

@@ -203,6 +203,9 @@ public class TransferRoutes extends ErrorHandlerRouteBuilder {
                             ilp.getCondition(),
                             ContextUtil.parseDate(quoteResponse.getExpiration()).plusHours(1),
                             objectMapper.readValue(exchange.getProperty(CHANNEL_REQUEST, String.class), TransactionChannelRequestDTO.class).getExtensionList());
+                    // DIFME (D4): remember the condition to check the payee's fulfilment at commit (FulfilmentCheck)
+                    FulfilmentCheck.remember(transaction.getTransactionId(), ilp.getCondition(),
+                            ContextUtil.parseDate(quoteResponse.getExpiration()).plusHours(1).atZone(java.time.ZoneId.systemDefault()).toInstant());
 
                     exchange.getIn().setBody(request);
                     mojaloopUtil.setTransferHeadersRequest(exchange, transaction);

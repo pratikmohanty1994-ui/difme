@@ -35,8 +35,18 @@ public class TransferResponseProcessor implements Processor {
             variables.put(ERROR_INFORMATION, error);
             variables.put(TRANSFER_FAILED, true);
         } else {
-            variables.put(TRANSFER_STATE, exchange.getIn().getBody(TransferSwitchResponseDTO.class).getTransferState().name());
-            variables.put(TRANSFER_FAILED, false);
+            TransferSwitchResponseDTO response = exchange.getIn().getBody(TransferSwitchResponseDTO.class);
+            variables.put(TRANSFER_STATE, response.getTransferState().name());
+            // DIFME (D4): a COMMITTED transfer is booked only when the payee's fulfilment matches the condition sent.
+            String refused = response.getTransferState() == org.mifos.connector.common.mojaloop.type.TransferState.COMMITTED
+                    ? FulfilmentCheck.verify(exchange.getProperty(CACHED_TRANSACTION_ID, String.class), response.getFulfilment()) : null;
+            if (refused != null) {
+                logger.error("Mojaloop transfer {} not booked: {}", exchange.getProperty(CACHED_TRANSACTION_ID, String.class), refused);
+                variables.put(ERROR_INFORMATION, refused);
+                variables.put(TRANSFER_FAILED, true);
+            } else {
+                variables.put(TRANSFER_FAILED, false);
+            }
         }
 
         if(zeebeClient != null) {
