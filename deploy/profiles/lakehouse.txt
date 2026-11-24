@@ -2,5 +2,6 @@
 polaris
 trino
 superset
+idle-scaling
 analytics-jobs
 flink-archive

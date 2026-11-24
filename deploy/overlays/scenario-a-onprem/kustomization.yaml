@@ -56,12 +56,14 @@ resources:
 - ../../../deploy/argocd/apps/polaris.yaml
 - ../../../deploy/argocd/apps/trino.yaml
 - ../../../deploy/argocd/apps/superset.yaml
+- ../../../deploy/argocd/apps/idle-scaling.yaml
 - ../../../deploy/argocd/apps/analytics-jobs.yaml
 - ../../../deploy/argocd/apps/flink-archive.yaml
 - ../../../deploy/argocd/apps/marquez.yaml
 - ../../../deploy/argocd/apps/feast.yaml
 - ../../../deploy/argocd/apps/onnx-serving.yaml
 - ../../../deploy/argocd/apps/mlflow.yaml
+- ../../../deploy/argocd/apps/ml-idle-scaling.yaml
 - ../../../deploy/argocd/apps/scheme-sim.yaml
 - ../../../deploy/argocd/apps/loan-origination.yaml
 - ../../../deploy/argocd/apps/card-security.yaml

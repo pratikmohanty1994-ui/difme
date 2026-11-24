@@ -2,3 +2,4 @@
 feast
 onnx-serving
 mlflow
+ml-idle-scaling

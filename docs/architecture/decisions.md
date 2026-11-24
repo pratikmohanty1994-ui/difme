@@ -705,3 +705,32 @@ already pointed at per-region overlays that did not exist (and from a bundle pat
 **Consequences.** Guide: `docs/deployment-scenarios.md`. Nothing has been brought up on a real site yet: BGP
 peering, the ClusterMesh connection and the WireGuard routes are checked at the first real bring-up. Cross-site
 authorisation relies on Keycloak tokens, because Istio ambient identities are per cluster.
+
+## ADR-029 — Scale idle tools to zero, with cold starts taken by whoever can wait (owner 2026-11-24)
+**Owner:** "Idle services scaling to zero would present a cold start problem… if you feel that helps then handle the
+cold start problem intelligently."
+
+**Decision.** Scale to zero only tools that idle for long stretches and whose callers can wait; never anything on the
+money path or that others depend on synchronously. KEDA (2.16, Apache-2.0) moves to the base profile (~192 Mi requested,
+half on CI) so every profile can use it; it already owned rehydration-svc's replicas.
+
+| Class | Members | Why |
+|---|---|---|
+| Always on | exchange, ISO switch / scheme-sim, ACS, security module (hsm), card-issuer, Fineract, Hyperswitch, PH-EE + rails-worker, Fluxnova, Tazama, Keycloak, Trustee, OpenBao, data stores, mesh, Argo CD, KEDA | latency budgets (50 ms bid window, card authorisation), synchronous dependents, or keys/state |
+| Always on (event sinks) | Marquez | Flink jobs and Trino post lineage continuously; events sent while it was down would be lost |
+| Scale to zero | Trino, Superset (web + worker), MLflow | ~1.4 GiB requested together; idle most of the time on a dev site |
+
+**Cold starts, by caller type** (no request ever fails or waits blind):
+1. *Batch callers wake their dependency.* Pods labelled `difme/wakes-trino=true` (the dbt and iceberg-maintenance jobs)
+   scale Trino from zero through KEDA's `kubernetes-workload` trigger and wait in an init container until it answers;
+   the ~60 s JVM start is absorbed by a background job. Trino scales down 10 min after the last caller pod.
+2. *Dependency chains follow their head.* Superset's web pods carry the same label, so a running Superset keeps Trino
+   up; the Celery worker follows the web node (`difme/superset-web=true`).
+3. *People get working hours plus one-command wake.* Superset and MLflow are up 09:00–20:00 IST on weekdays (KEDA cron);
+   outside that, `ci/wake.sh superset` pins a replica (KEDA paused-replicas), waits until it serves and prints how long it
+   took; `--sleep` hands it back. Sites change the window in their overlay.
+4. *Argo CD doesn't fight KEDA:* `/spec/replicas` of the scaled Deployments is ignored (deploy/argocd/render.py IGNORE).
+
+Not chosen: KEDA's HTTP add-on (an interceptor that holds requests while scaling up). These tools are reached by
+port-forward and by in-cluster batch jobs, not through the gateway, so an interceptor would not see most callers; it
+remains the option for a future UI exposed through the gateway.

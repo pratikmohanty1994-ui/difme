@@ -38,6 +38,12 @@ IGNORE = {
         {"group": "admissionregistration.k8s.io", "kind": "ValidatingWebhookConfiguration", "jqPathExpressions": [".webhooks[]?.failurePolicy", ".webhooks[]?.clientConfig.caBundle"]},
         {"group": "admissionregistration.k8s.io", "kind": "MutatingWebhookConfiguration", "jqPathExpressions": [".webhooks[]?.clientConfig.caBundle"]},
     ],
+    # ADR-029 scale-to-zero: KEDA owns these Deployments' replica counts (deploy/platform/*/idle-scaling); declared
+    # replicas would make Argo CD and KEDA reset each other (as with rehydration-svc and its HPA, found live).
+    "trino": [{"group": "apps", "kind": "Deployment", "name": "trino-coordinator", "jsonPointers": ["/spec/replicas"]}],
+    "superset": [{"group": "apps", "kind": "Deployment", "name": "superset", "jsonPointers": ["/spec/replicas"]},
+                 {"group": "apps", "kind": "Deployment", "name": "superset-worker", "jsonPointers": ["/spec/replicas"]}],
+    "mlflow": [{"group": "apps", "kind": "Deployment", "name": "mlflow", "jsonPointers": ["/spec/replicas"]}],
     "envoy-gateway": [
         {"group": "rbac.authorization.k8s.io", "kind": "ClusterRole", "jqPathExpressions": [".rules"]},
         {"group": "rbac.authorization.k8s.io", "kind": "ClusterRoleBinding", "jqPathExpressions": [".subjects"]},

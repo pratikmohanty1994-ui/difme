@@ -15,6 +15,7 @@ resources:
 - ../../../../deploy/argocd/apps/policies.yaml
 - ../../../../deploy/argocd/apps/fleet-bundles.yaml
 - ../../../../deploy/argocd/apps/quinn-hub.yaml
+- ../../../../deploy/argocd/apps/keda.yaml
 - ../../../../deploy/argocd/apps/victoria-metrics.yaml
 - ../../../../deploy/argocd/apps/loki.yaml
 - ../../../../deploy/argocd/apps/tempo.yaml

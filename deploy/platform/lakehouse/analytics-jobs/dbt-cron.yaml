@@ -11,8 +11,23 @@ spec:
       # place and the pod was deleted when the Job gave up, so the cause was lost (all-profiles run 13, 2026-11-23).
       backoffLimit: 2
       template:
+        metadata: { labels: { difme/wakes-trino: "true" } }
         spec:
           restartPolicy: Never
+          # ADR-029: this pod's label wakes Trino (scaled to zero when idle); wait until it serves before running.
+          initContainers:
+            - name: wait-for-trino
+              image: curlimages/curl:8.12.1
+              command: [sh, -c]
+              args:
+                - |
+                  for i in $(seq 1 100); do
+                    curl -sf http://trino.lakehouse.svc:8080/v1/info | grep -q '"starting":false' && { echo "trino ready after $((i*3))s"; exit 0; }
+                    sleep 3
+                  done
+                  echo "trino did not start within 300s"; exit 1
+              securityContext: { runAsNonRoot: true, runAsUser: 100, runAsGroup: 101, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+              resources: { requests: { cpu: 5m, memory: 16Mi }, limits: { memory: 32Mi } }
           containers:
             - name: dbt
               image: ghcr.io/pratikmohanty1994-ui/difme-dbt:0.1.0

@@ -1,0 +1,3 @@
+# Scale-to-zero for MLflow (ADR-029): working hours, training jobs, or on demand.
+resources: [scaledobjects.yaml]
+namespace: ml-platform

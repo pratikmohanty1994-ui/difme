@@ -22,12 +22,19 @@ spec:
     syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true
+    - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
         duration: 10s
         factor: 2
         maxDuration: 3m
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    name: mlflow
+    jsonPointers:
+    - /spec/replicas
   sources:
   - repoURL: https://community-charts.github.io/helm-charts
     chart: mlflow

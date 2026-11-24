@@ -62,7 +62,7 @@ components:
   - { name: risingwave,        ns: streaming,       kind: helm, profile: streaming, wave: 0,  pdf: "5.5", repo: https://risingwavelabs.github.io/helm-charts/, chart: risingwave, version: 0.2.27 }
   - { name: flink-operator,    ns: streaming,       kind: helm, profile: streaming, wave: -3, pdf: "5.5", repo: https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.16.1/, chart: flink-kubernetes-operator, version: 1.16.1 }
   - { name: flink-jobs,        ns: streaming,       kind: path, profile: streaming, wave: 1,  pdf: "5.5" }
-  - { name: keda,              ns: streaming,       kind: helm, profile: streaming, wave: -3, pdf: "6.2", repo: https://kedacore.github.io/charts, chart: keda, version: 2.16.1 }
+  - { name: keda,              ns: streaming,       kind: helm, profile: base,      wave: -3, pdf: "6.2", repo: https://kedacore.github.io/charts, chart: keda, version: 2.16.1 }
   - { name: keda-scalers,      ns: streaming,       kind: path, profile: streaming, wave: 2,  pdf: "6.2" }
   - { name: seatunnel,         ns: streaming,       kind: path, profile: streaming-extra, wave: 1, pdf: "5.5" }
 
@@ -71,6 +71,7 @@ components:
   - { name: polaris,           ns: lakehouse,       kind: path, profile: lakehouse, wave: -1, pdf: "5.6" }
   - { name: trino,             ns: lakehouse,       kind: helm, profile: lakehouse, wave: 0,  pdf: "5.6", repo: https://trinodb.github.io/charts, chart: trino, version: 1.37.0 }
   - { name: superset,          ns: lakehouse,       kind: helm, profile: lakehouse, wave: 1,  pdf: "5.6", repo: https://apache.github.io/superset, chart: superset, version: 0.14.2 }
+  - { name: idle-scaling,      ns: lakehouse,       kind: path, profile: lakehouse, wave: 2,  pdf: "ADR-029" }   # scale-to-zero: Trino with its callers, Superset in working hours
   - { name: analytics-jobs,    ns: lakehouse,       kind: path, profile: lakehouse, wave: 2,  pdf: "5.6" }
   - { name: flink-archive,     ns: streaming,       kind: path, profile: lakehouse, wave: 2,  pdf: "5.6" }   # event-archive Flink job; needs Polaris
   - { name: marquez,           ns: governance,      kind: path, profile: lakehouse-extra, wave: 1, pdf: "5.8" }   # lineage; replaces DataHub (owner 2026-11-20)
@@ -80,6 +81,7 @@ components:
   # Vector search: pgvector on the shared Postgres (database "ml"), not Weaviate (owner 2026-11-20).
   - { name: onnx-serving,      ns: ml-platform,     kind: path, profile: ml, wave: 1, pdf: "5.7" }   # services/fraud-scorer
   - { name: mlflow,            ns: ml-platform,     kind: helm, profile: ml, wave: 0, pdf: "5.7", repo: https://community-charts.github.io/helm-charts, chart: mlflow, version: 0.17.2 }
+  - { name: ml-idle-scaling,   ns: ml-platform,     kind: path, profile: ml, wave: 1, pdf: "ADR-029" }   # scale-to-zero: MLflow in working hours / training
 
   # ── Payment-rail simulators (profile: rails; owner 2026-11-21) ─────────────
   - { name: scheme-sim,        ns: rails,           kind: path, profile: rails, wave: 0, pdf: "rails" }   # card scheme + ISO 8583 adapter

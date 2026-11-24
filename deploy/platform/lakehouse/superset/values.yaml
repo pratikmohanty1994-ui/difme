@@ -3,7 +3,9 @@ bootstrapScript: |
   #!/bin/bash
   pip install --no-cache-dir trino[sqlalchemy]==0.333.0 psycopg2-binary==2.9.10
 supersetNode:
-  podLabels: { istio.io/dataplane-mode: ambient }   # mTLS to postgres-docdb / valkey (STRICT meshed tiers)
+  # ambient: mTLS to postgres-docdb / valkey (STRICT meshed tiers). difme/*: ADR-029 scale-to-zero, a running web node
+  # keeps Trino and the Celery worker up (deploy/platform/lakehouse/idle-scaling).
+  podLabels: { istio.io/dataplane-mode: ambient, difme/wakes-trino: "true", difme/superset-web: "true" }
   # Superset's own metadata on the shared PostgreSQL, not YugabyteDB: its Alembic migrations (DDL inside transactions)
   # kept failing on YugabyteDB with SerializationFailure (cluster-verify 2026-11-23). The password comes from the
   # postgres-docdb Secret (extraEnvRaw DB_PASS, which takes precedence over the chart's generated env Secret).

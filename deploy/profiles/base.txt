@@ -10,3 +10,4 @@ external-dns
 kyverno
 policies
 fleet-bundles
+keda

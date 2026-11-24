@@ -1,0 +1,3 @@
+# Scale-to-zero for idle lakehouse tools (ADR-029): Trino wakes with its callers, Superset in working hours or on demand.
+resources: [scaledobjects.yaml]
+namespace: lakehouse

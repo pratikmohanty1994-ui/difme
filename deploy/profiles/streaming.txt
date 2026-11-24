@@ -8,6 +8,5 @@ risingwave-sql
 risingwave
 flink-operator
 flink-jobs
-keda
 keda-scalers
 seaweedfs

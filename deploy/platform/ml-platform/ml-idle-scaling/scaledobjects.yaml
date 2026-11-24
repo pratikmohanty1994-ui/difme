@@ -1,0 +1,17 @@
+# ADR-029 scale-to-zero, ml-platform. MLflow has no runtime callers (models reach serving through the registry export,
+# not live calls): up in working hours, while a pod labelled difme/wakes-mlflow=true runs (training jobs: wait for it in
+# an init container), or on demand (ci/wake.sh mlflow).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: mlflow }
+spec:
+  scaleTargetRef: { name: mlflow }
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  pollingInterval: 15
+  cooldownPeriod: 600
+  triggers:
+    - type: cron
+      metadata: { timezone: Asia/Kolkata, start: "0 9 * * 1-5", end: "0 20 * * 1-5", desiredReplicas: "1" }
+    - type: kubernetes-workload
+      metadata: { podSelector: "difme/wakes-mlflow=true", value: "1", activationValue: "0" }

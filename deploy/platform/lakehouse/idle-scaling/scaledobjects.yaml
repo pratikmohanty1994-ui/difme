@@ -1,0 +1,43 @@
+# ADR-029 scale-to-zero, lakehouse. KEDA owns these Deployments' replica counts (Argo CD ignores /spec/replicas for them,
+# deploy/argocd/render.py IGNORE). Cold starts are taken by whoever can wait, never by a person mid-request:
+#   Trino (~60 s JVM start): up while any pod labelled difme/wakes-trino=true exists (Superset's web pods, the dbt and
+#   iceberg-maintenance jobs, whose init container waits until Trino answers); down 10 min after the last such pod.
+#   Superset (web + worker): up in working hours (IST weekdays), otherwise only on demand: ci/wake.sh superset.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: trino }
+spec:
+  scaleTargetRef: { name: trino-coordinator }
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  pollingInterval: 10
+  cooldownPeriod: 600
+  triggers:
+    - type: kubernetes-workload
+      metadata: { podSelector: "difme/wakes-trino=true", value: "1", activationValue: "0" }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: superset }
+spec:
+  scaleTargetRef: { name: superset }
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  cooldownPeriod: 600
+  triggers:
+    - type: cron
+      metadata: { timezone: Asia/Kolkata, start: "0 9 * * 1-5", end: "0 20 * * 1-5", desiredReplicas: "1" }
+---
+# The Celery worker follows the web node (it only runs queries the web node hands it).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: superset-worker }
+spec:
+  scaleTargetRef: { name: superset-worker }
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  pollingInterval: 10
+  cooldownPeriod: 300
+  triggers:
+    - type: kubernetes-workload
+      metadata: { podSelector: "difme/superset-web=true", value: "1", activationValue: "0" }

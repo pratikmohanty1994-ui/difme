@@ -4,7 +4,7 @@ metadata:
   name: keda
   namespace: argocd
   labels:
-    difme/profile: streaming
+    difme/profile: base
     difme/pdf-section: '6.2'
   annotations:
     argocd.argoproj.io/sync-wave: '-3'

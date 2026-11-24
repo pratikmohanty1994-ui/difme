@@ -22,12 +22,24 @@ spec:
     syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true
+    - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
         duration: 10s
         factor: 2
         maxDuration: 3m
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    name: superset
+    jsonPointers:
+    - /spec/replicas
+  - group: apps
+    kind: Deployment
+    name: superset-worker
+    jsonPointers:
+    - /spec/replicas
   sources:
   - repoURL: https://apache.github.io/superset
     chart: superset
