@@ -1,34 +1,40 @@
-# D3 (c): the PSP side of card checkout. A Fluxnova external-task worker (services/core/hyperswitch-worker) that answers
-# the DifmeCardCheckout / DifmeCardRefund flows (topics hyperswitch-charge, hyperswitch-refund) through Hyperswitch.
+# D3: the worker for DIFME's own PH-EE flows (services/core/rails-worker), a Fluxnova external-task worker:
+#   DifmeCardCheckout / DifmeCardRefund: the PSP side of card checkout, through Hyperswitch (fraud check on Tazama);
+#   DifmeOpenAccount: accounts opened in Fineract on first use, with their ACCOUNT_ID (was the interim hub's job).
 # The flows carry only a card reference ("*" or a partner node); the card details live here, next to the PSP call, in
-# Secret hyperswitch-worker-cards (dev-secrets.sh; scheme-sim's seeded test cards in dev). No Service: it only calls out.
+# Secret rails-worker-cards (dev-secrets.sh; scheme-sim's seeded test cards in dev). No Service: it only calls out.
 # Checkout: authorise (hyperswitch-charge), fraud check on Tazama (tazama-check), capture or cancel; refund separately.
 apiVersion: v1
 kind: ServiceAccount
-metadata: { name: hyperswitch-worker }
+metadata: { name: rails-worker }
 automountServiceAccountToken: false
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: hyperswitch-worker, labels: { app: hyperswitch-worker } }
+metadata: { name: rails-worker, labels: { app: rails-worker } }
 spec:
   replicas: 1
-  selector: { matchLabels: { app: hyperswitch-worker } }
+  selector: { matchLabels: { app: rails-worker } }
   template:
-    metadata: { labels: { app: hyperswitch-worker, difme/team: rails, business.metric: card-checkout } }
+    metadata: { labels: { app: rails-worker, difme/team: rails, business.metric: card-checkout } }
     spec:
-      serviceAccountName: hyperswitch-worker
+      serviceAccountName: rails-worker
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: worker
-          image: ghcr.io/pratikmohanty1994-ui/difme-hyperswitch-worker:0.1.0
+          image: ghcr.io/pratikmohanty1994-ui/difme-rails-worker:0.1.0
           env:
             - { name: FLUXNOVA_ENGINE_URL, value: "http://fluxnova.process.svc:8080/engine-rest" }
             - { name: FLUXNOVA_BASIC, valueFrom: { secretKeyRef: { name: fluxnova, key: admin-basic } } }
             - { name: HYPERSWITCH_URL, value: "http://hyperswitch.rails.svc:8080" }
             - { name: HYPERSWITCH_ADMIN_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: admin-api-key } } }
             - { name: HYPERSWITCH_ACQUIRER_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: acquirer-api-key } } }
-            - { name: HSWORKER_CARDS, valueFrom: { secretKeyRef: { name: hyperswitch-worker-cards, key: cards } } }
+            - { name: RAILSWORKER_CARDS, valueFrom: { secretKeyRef: { name: rails-worker-cards, key: cards } } }
+            # Account opening (DifmeOpenAccount): Fineract through Keycloak client credentials (Fineract's OIDC federation).
+            - { name: FINERACT_URL, value: "http://fineract.rails.svc:8080/fineract-provider" }
+            - { name: FINERACT_TOKEN_URL, value: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token" }
+            - { name: FINERACT_CLIENT_ID, valueFrom: { secretKeyRef: { name: fineract-admin-oauth, key: client-id } } }
+            - { name: FINERACT_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: fineract-admin-oauth, key: client-secret } } }
             # Fraud check before capture on Tazama (fraud profile, ADR-023), as the interim hub did: no alert -> capture,
             # alert -> hold for review, interdiction -> cancel the authorisation. No verdict within the budget -> review
             # (fail closed). Without the fraud profile the check answers "no verdict" and payments are held: set

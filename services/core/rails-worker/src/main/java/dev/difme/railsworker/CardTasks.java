@@ -1,4 +1,4 @@
-package dev.difme.hsworker;
+package dev.difme.railsworker;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -9,7 +9,7 @@ import java.util.Map;
  * A decline is an answer (completed with chargeStatus=declined), not a failure; only an unreachable PSP or Fluxnova is a
  * failure, retried by Fluxnova.
  */
-final class CardTasks {
+final class CardTasks implements Tasks {
     static final String CHARGE = "hyperswitch-charge", FRAUD = "tazama-check", CAPTURE = "hyperswitch-capture",
             CANCEL = "hyperswitch-cancel", REFUND = "hyperswitch-refund";
     static final java.util.List<String> TOPICS = java.util.List.of(CHARGE, FRAUD, CAPTURE, CANCEL, REFUND);
@@ -35,7 +35,11 @@ final class CardTasks {
         this.failOpen = failOpen;
     }
 
-    Map<String, Object> handle(Fluxnova.Task t) {
+    @Override
+    public java.util.List<String> topics() { return TOPICS; }
+
+    @Override
+    public Map<String, Object> handle(Fluxnova.Task t) {
         return switch (t.topic()) {
             case CHARGE -> charge(t);
             case FRAUD -> fraudCheck(t);

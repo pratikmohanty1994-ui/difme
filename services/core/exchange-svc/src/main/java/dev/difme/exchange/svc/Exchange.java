@@ -152,7 +152,8 @@ public class Exchange {
     @ConfigProperty(name = "difme.exchange.phee.fluxnova-url") java.util.Optional<String> pheeFluxnovaUrl;
     @ConfigProperty(name = "difme.exchange.phee.fluxnova-basic") java.util.Optional<String> pheeFluxnovaBasic;   // user:password
     @ConfigProperty(name = "difme.exchange.phee.settlement-account", defaultValue = "card-settlement") String pheeSettlementAccount;
-    @ConfigProperty(name = "difme.exchange.phee.card-flows", defaultValue = "false") boolean pheeCardFlows;   // DifmeCardCheckout + hyperswitch-worker
+    @ConfigProperty(name = "difme.exchange.phee.card-flows", defaultValue = "false") boolean pheeCardFlows;
+    @ConfigProperty(name = "difme.exchange.phee.open-accounts", defaultValue = "false") boolean pheeOpenAccounts;   // DifmeOpenAccount   // DifmeCardCheckout + hyperswitch-worker
     /** Dev only: keep the in-process evidence keys here so chains sealed before a restart still verify after it. */
     @ConfigProperty(name = "difme.evidence.local-keys-dir") java.util.Optional<String> localKeysDir;
     private StateStore store = StateStore.none();
@@ -1167,7 +1168,7 @@ public class Exchange {
             var token = new ClientCredentials(pheeTokenUrl.orElseThrow(), pheeClientId.orElseThrow(), pheeClientSecret.orElseThrow());
             String basic = "Basic " + java.util.Base64.getEncoder().encodeToString(pheeFluxnovaBasic.orElseThrow().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             hub = new PhEePaymentHub(hub, pheeChannelUrl.get(), token::header, pheeFluxnovaUrl.orElseThrow(), () -> basic,
-                    pheeSettlementAccount, java.time.Duration.ofSeconds(20), pheeCardFlows);
+                    pheeSettlementAccount, java.time.Duration.ofSeconds(20), pheeCardFlows).openAccounts(pheeOpenAccounts);
             LOG.info("escrow movements through Mifos PH-EE (" + pheeChannelUrl.get() + "); card payments through "
                     + (pheeCardFlows ? "PH-EE DifmeCardCheckout (hyperswitch-worker)" : "the hub"));
         }

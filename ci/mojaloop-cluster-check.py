@@ -8,9 +8,11 @@ deploy/platform/rails/mojaloop-switch):
   -> party lookup, quote and transfer through the switch -> payeefsp COMMITTED -> payer booked in Fineract.
 Checks: the flow ends at "Transfer successfully completed" and the payer's Fineract balance dropped by the amount.
 
-The payer is a dedicated check account, "xbank-check", funded through the interim payment hub (which creates Fineract
-accounts with their ACCOUNT_ID interop identifier on first use). Port-forwards: payment hub, PH-EE channel, Fluxnova
-(Basic login from Secret rails/fluxnova). Exit 1 on a failed check."""
+The payer is a dedicated check account, "xbank-check", opened through PH-EE's DifmeOpenAccount flow (rails-worker:
+Fineract account + ACCOUNT_ID) and funded with an on-us transfer from card-settlement (a settlement account, may run
+negative) through the channel: no interim hub involved. Balances are read from Fineract (Keycloak client credentials
+from Secret rails/fineract-admin-oauth). Port-forwards: PH-EE channel, Fluxnova (Basic login from Secret
+rails/fluxnova), Fineract, Keycloak. Exit 1 on a failed check."""
 import base64
 import json
 import socket
@@ -22,7 +24,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-HUB, CHANNEL, FLUX = 18190, 18180, 18188
+CHANNEL, FLUX, FINERACT, KEYCLOAK = 18180, 18188, 18191, 18192
 PAYER, PAYEE_MSISDN, AMOUNT_MINOR = "xbank-check", "919900000001", 150
 SUCCESS_END = "EndEvent_1y60c95"   # PayerFundTransfer: "Transfer successfully completed"
 
@@ -57,48 +59,43 @@ def call(method, url, body=None, headers=None):
         return 0, str(e)
 
 
+TOKEN = {}
+
+
+def secret(ns, name, key):
+    v = kubectl("-n", ns, "get", "secret", name, "-o", "jsonpath={.data." + key + "}")
+    return base64.b64decode(v).decode() if v else ""
+
+
+def fineract_token():
+    if "h" not in TOKEN:
+        form = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": secret("rails", "fineract-admin-oauth", "client-id"),
+                                       "client_secret": secret("rails", "fineract-admin-oauth", "client-secret")}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{KEYCLOAK}/realms/difme/protocol/openid-connect/token", data=form,
+                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            TOKEN["h"] = "Bearer " + json.loads(r.read())["access_token"]
+    return TOKEN["h"]
+
+
 def balance():
-    code, b = call("GET", f"http://127.0.0.1:{HUB}/v1/accounts/{PAYER}")
-    return b.get("balanceMinor") if code == 200 and isinstance(b, dict) else None
-
-
-def main():
-    basic = kubectl("-n", "rails", "get", "secret", "fluxnova", "-o", "jsonpath={.data.admin-basic}")
-    if not basic:
-        print("  mojaloop cross-bank: FAILED - no Secret rails/fluxnova")
-        return 1
-    flux_auth = "Basic " + base64.b64encode(base64.b64decode(basic)).decode()
-    pfs = [forward("rails", "svc/payment-hub", HUB, 8090), forward("rails", "deploy/ph-ee-connector-channel", CHANNEL, 8080),
-           forward("process", "svc/fluxnova", FLUX, 8080)]
+    """The payer's Fineract balance in minor units, or None."""
     try:
-        return run(flux_auth)
-    finally:
-        for p in pfs:
-            p.terminate()
+        h = {"Authorization": fineract_token(), "Fineract-Platform-TenantId": "default"}
+    except OSError as e:
+        print(f"  mojaloop cross-bank: no Fineract token: {e}")
+        return None
+    code, a = call("GET", f"http://127.0.0.1:{FINERACT}/fineract-provider/api/v1/savingsaccounts/external-id/{PAYER}", headers=h)
+    if code != 200 or not isinstance(a, dict):
+        return None
+    code, a = call("GET", f"http://127.0.0.1:{FINERACT}/fineract-provider/api/v1/savingsaccounts/{a['id']}", headers=h)
+    return round(float(a["summary"]["accountBalance"]) * 100) if code == 200 and isinstance(a, dict) else None
 
 
-def run(flux_auth):
-    run_id = uuid.uuid4().hex[:12]
-    # 1. fund the payer (creates it, with its ACCOUNT_ID identifier, on first use)
-    code, r = call("POST", f"http://127.0.0.1:{HUB}/v1/accounts/{PAYER}/deposits", {"depositId": "xbank-fund-" + run_id, "amountMinor": 10_000})
-    before = balance()
-    print(f"  mojaloop cross-bank: payer {PAYER} funded (HTTP {code}), balance {before}")
-    if before is None:
-        print("  mojaloop cross-bank: FAILED - payer account not readable")
-        return 1
-    # 2. pay the other bank's party through PH-EE (no payee fspId: the switch's lookup finds payeefsp)
-    corr = "xbank-" + run_id
-    body = {"payer": {"partyIdInfo": {"partyIdType": "ACCOUNT_ID", "partyIdentifier": PAYER}},
-            "payee": {"partyIdInfo": {"partyIdType": "MSISDN", "partyIdentifier": PAYEE_MSISDN}},
-            "amount": {"amount": f"{AMOUNT_MINOR / 100:.2f}", "currency": "INR"}, "note": "cluster cross-bank check"}
-    code, r = call("POST", f"http://127.0.0.1:{CHANNEL}/channel/transfer", body,
-                   {"Platform-TenantId": "default", "X-CorrelationID": corr})
-    if code // 100 != 2:
-        print(f"  mojaloop cross-bank: FAILED - channel answered {code}: {r}")
-        return 1
-    # 3. follow the PayerFundTransfer instance in Fluxnova's history
-    q = urllib.parse.urlencode({"processDefinitionKey": "PayerFundTransfer-default", "variables": "clientCorrelationId_eq_" + corr})
-    state, pid, deadline = "", None, time.time() + 120
+def flow_end(flux_auth, definition, query):
+    """(instance id, state, end event id) of the newest instance matching query, waiting up to 2 minutes for it to end."""
+    q = urllib.parse.urlencode({"processDefinitionKey": definition, **query})
+    pid, state, deadline = None, "", time.time() + 120
     while time.time() < deadline:
         code, l = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/process-instance?{q}", headers={"Authorization": flux_auth})
         if code == 200 and l:
@@ -111,6 +108,76 @@ def run(flux_auth):
         code, ends = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/activity-instance?processInstanceId={pid}&activityType=noneEndEvent",
                           headers={"Authorization": flux_auth})
         end = ends[0]["activityId"] if code == 200 and ends else ""
+    return pid, state, end
+
+
+def open_account(flux_auth, name):
+    """Opens the account through DifmeOpenAccount (the exchange's way); True when Fineract has it with its ACCOUNT_ID."""
+    bk = "open-" + name
+    code, l = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/process-instance?" + urllib.parse.urlencode(
+        {"processDefinitionKey": "DifmeOpenAccount-default", "processInstanceBusinessKey": bk}), headers={"Authorization": flux_auth})
+    if not (code == 200 and l):
+        code, r = call("POST", f"http://127.0.0.1:{FLUX}/engine-rest/process-definition/key/DifmeOpenAccount-default/start",
+                       {"businessKey": bk, "variables": {"accountName": {"value": name, "type": "String"}}}, {"Authorization": flux_auth})
+        if code // 100 != 2:
+            print(f"  mojaloop cross-bank: DifmeOpenAccount {name}: start answered {code}: {r}")
+            return False
+    pid, state, end = flow_end(flux_auth, "DifmeOpenAccount-default", {"processInstanceBusinessKey": bk})
+    code, v = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/variable-instance?processInstanceId={pid}&variableName=accountStatus",
+                   headers={"Authorization": flux_auth}) if pid else (0, None)
+    status = v[0]["value"] if code == 200 and v else "-"
+    print(f"  mojaloop cross-bank: DifmeOpenAccount {name}: {state or 'no instance'}, accountStatus {status}")
+    return status == "open"
+
+
+def channel_transfer(corr, payer, payee_type, payee, fsp=None):
+    payee_info = {"partyIdType": payee_type, "partyIdentifier": payee}
+    if fsp:
+        payee_info["fspId"] = fsp
+    body = {"payer": {"partyIdInfo": {"partyIdType": "ACCOUNT_ID", "partyIdentifier": payer}}, "payee": {"partyIdInfo": payee_info},
+            "amount": {"amount": f"{AMOUNT_MINOR / 100:.2f}" if payee_type == "MSISDN" else "100.00", "currency": "INR"},
+            "note": "cluster cross-bank check"}
+    return call("POST", f"http://127.0.0.1:{CHANNEL}/channel/transfer", body, {"Platform-TenantId": "default", "X-CorrelationID": corr})
+
+
+def main():
+    basic = kubectl("-n", "rails", "get", "secret", "fluxnova", "-o", "jsonpath={.data.admin-basic}")
+    if not basic:
+        print("  mojaloop cross-bank: FAILED - no Secret rails/fluxnova")
+        return 1
+    flux_auth = "Basic " + base64.b64encode(base64.b64decode(basic)).decode()
+    pfs = [forward("rails", "deploy/ph-ee-connector-channel", CHANNEL, 8080), forward("process", "svc/fluxnova", FLUX, 8080),
+           forward("rails", "svc/fineract", FINERACT, 8080), forward("security", "svc/keycloak", KEYCLOAK, 8080)]
+    try:
+        return run(flux_auth)
+    finally:
+        for p in pfs:
+            p.terminate()
+
+
+def run(flux_auth):
+    run_id = uuid.uuid4().hex[:12]
+    # 1. open the payer and the funding account through PH-EE, then fund the payer with an on-us transfer
+    if not (open_account(flux_auth, "card-settlement") and open_account(flux_auth, PAYER)):
+        print("  mojaloop cross-bank: FAILED - accounts not opened through DifmeOpenAccount")
+        return 1
+    fund = "xbank-fund-" + run_id
+    code, r = channel_transfer(fund, "card-settlement", "ACCOUNT_ID", PAYER, "default")
+    _, fstate, fend = flow_end(flux_auth, "DifmeOnUsTransfer-default", {"variables": "clientCorrelationId_eq_" + fund}) if code // 100 == 2 else (None, "", "")
+    before = balance()
+    print(f"  mojaloop cross-bank: payer funded on-us (channel {code}, DifmeOnUsTransfer {fstate or '-'} end {fend or '-'}), balance {before}")
+    if before is None:
+        print("  mojaloop cross-bank: FAILED - payer balance not readable from Fineract")
+        return 1
+    # 2. pay the other bank's party through PH-EE (no payee fspId: the switch's lookup finds payeefsp)
+    corr = "xbank-" + run_id
+    code, r = channel_transfer(corr, PAYER, "MSISDN", PAYEE_MSISDN)
+    if code // 100 != 2:
+        print(f"  mojaloop cross-bank: FAILED - channel answered {code}: {r}")
+        return 1
+    # 3. follow the PayerFundTransfer instance in Fluxnova's history
+    pid, state, end = flow_end(flux_auth, "PayerFundTransfer-default", {"variables": "clientCorrelationId_eq_" + corr})
+    if pid:
         code, acts = call("GET", f"http://127.0.0.1:{FLUX}/engine-rest/history/activity-instance?processInstanceId={pid}&sortBy=startTime&sortOrder=asc",
                           headers={"Authorization": flux_auth})
         steps = " > ".join(a.get("activityName") or a["activityId"] for a in acts if a.get("activityType") in ("serviceTask", "receiveTask", "intermediateCatchEvent")) if code == 200 and acts else ""

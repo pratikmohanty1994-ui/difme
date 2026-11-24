@@ -1,4 +1,4 @@
-package dev.difme.hsworker;
+package dev.difme.railsworker;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,7 +52,7 @@ public final class Hyperswitch {
             ok(call("POST", "accounts", m, adminKey, "admin-api-key"), "create merchant");
         }
         ObjectNode k = JSON.createObjectNode();
-        k.put("name", "hyperswitch-worker").put("description", "PH-EE card flows worker").put("expiration", "never");
+        k.put("name", "rails-worker").put("description", "PH-EE card flows worker").put("expiration", "never");
         apiKey = ok(call("POST", "api_keys/" + MERCHANT, k, adminKey, "admin-api-key"), "create api key").path("api_key").asText();
         JsonNode connectors = ok(call("GET", "account/" + MERCHANT + "/connectors", null, adminKey, "admin-api-key"), "list connectors");
         for (JsonNode c : connectors) if (CONNECTOR.equals(c.path("connector_name").asText())) return;

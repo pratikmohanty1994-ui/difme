@@ -1,4 +1,4 @@
-package dev.difme.hsworker;
+package dev.difme.railsworker;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

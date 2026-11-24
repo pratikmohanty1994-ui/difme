@@ -37,6 +37,7 @@ final class PhEePaymentHub implements PaymentHub {
     static final String TENANT = "default";
     static final String FLOW = "DifmeOnUsTransfer-" + TENANT;
     static final String CHECKOUT = "DifmeCardCheckout-" + TENANT, REFUND = "DifmeCardRefund-" + TENANT;
+    static final String OPEN_ACCOUNT = "DifmeOpenAccount-" + TENANT;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final PaymentHub cards;
@@ -45,6 +46,9 @@ final class PhEePaymentHub implements PaymentHub {
     private final String settlementAccount;
     private final Duration wait;
     private final boolean cardFlows;
+    private volatile boolean openAccounts;
+    /** Accounts known to be open in Fineract with their ACCOUNT_ID (this process; a restart asks the flow history again). */
+    private final java.util.Set<String> open = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
 
     PhEePaymentHub(PaymentHub cards, String channelUrl, Supplier<String> channelAuth, String fluxnovaEngineUrl,
@@ -64,6 +68,27 @@ final class PhEePaymentHub implements PaymentHub {
         this.wait = wait;
     }
 
+    /**
+     * With account opening on, every account is opened through PH-EE's DifmeOpenAccount flow (rails-worker → Fineract:
+     * client + savings account + interop identifier ACCOUNT_ID) before its first transfer, as the interim hub did on
+     * first use. Business key "open-<name>": a second run for the same account finds the first one.
+     */
+    PhEePaymentHub openAccounts(boolean on) {
+        this.openAccounts = on;
+        return this;
+    }
+
+    /** Opens the account if this process hasn't seen it open; a rejected name refuses the movement. */
+    Outcome ensureOpen(String account) {
+        if (!openAccounts || open.contains(account)) return null;
+        Map<String, String> r = runFlow(OPEN_ACCOUNT, "open-" + account, Map.of("accountName", account));
+        if (!"open".equals(r.get("accountStatus"))) {
+            return new Outcome("REJECTED", "account " + account + " can't be opened: " + r.getOrDefault("accountMessage", r.get("accountStatus")));
+        }
+        open.add(account);
+        return null;
+    }
+
     @Override
     public Outcome deposit(String id, String account, long amountMinor) {
         return transfer(id, settlementAccount, account, amountMinor, "deposit " + id);
@@ -72,6 +97,10 @@ final class PhEePaymentHub implements PaymentHub {
     @Override
     public Outcome transfer(String id, String from, String to, long amountMinor, String note) {
         if (amountMinor <= 0) return new Outcome("REJECTED", "amount must be positive");
+        for (String a : new String[] {from, to}) {
+            Outcome refused = ensureOpen(a);
+            if (refused != null) return refused;
+        }
         Outcome known = outcome(id);
         if (known == null) {
             start(id, from, to, amountMinor, note);

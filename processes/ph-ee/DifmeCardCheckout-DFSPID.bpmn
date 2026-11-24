@@ -5,7 +5,7 @@
   Authorises a buying partner's card through Hyperswitch (DIFME's PSP: card network via the acquirer and the scheme),
   checks the payment on Tazama before any money is taken (ADR-023, as the interim hub did), then captures it (no alert),
   holds it for review (alert, or no verdict unless the worker fails open) or cancels the authorisation (interdiction).
-  All tasks are answered by services/core/hyperswitch-worker. It resolves the card from its own cards-on-file by cardRef,
+  All tasks are answered by services/core/rails-worker. It resolves the card from its own cards-on-file by cardRef,
   so no card number is ever a process variable (Fluxnova's database stays out of the cardholder-data environment).
   Variables in: paymentId (idempotency key at the PSP), merchant, amountMinor, currency, cardRef, payer (DIFME's id for the
   cardholder, for Tazama), description. Out: chargeStatus (succeeded | declined | review | failed), declineCode,

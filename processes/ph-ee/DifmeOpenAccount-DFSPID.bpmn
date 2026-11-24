@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DIFME account opening for Mifos Payment Hub EE (D3: account provisioning off the interim hub). Written in PH-EE's Zeebe
+  dialect and converted for Fluxnova by ci/zeebe-bpmn-to-fluxnova.py, like the other flows.
+  Opens the named account in Fineract on first use (client + savings account, approved and active, external id = the
+  name) and registers its interop identifier ACCOUNT_ID = the name, which PH-EE's ams connector resolves every party by.
+  The exchange (exchange-svc's PhEePaymentHub) runs it once per account (escrow, partner-*, merchant-*, card-settlement)
+  with business key "open-<name>" before the account's first transfer. Answered by services/core/rails-worker.
+  Variables in: accountName. Out: accountStatus (open | rejected), accountId, accountMessage.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="difme-openaccount" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="DifmeOpenAccount-DFSPID" name="DIFME account opening" isExecutable="true">
+    <bpmn:startEvent id="start" name="Request"><bpmn:outgoing>s1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="open" name="Open account (Fineract)">
+      <bpmn:extensionElements><zeebe:taskDefinition type="fineract-open-account" retries="5" /></bpmn:extensionElements>
+      <bpmn:incoming>s1</bpmn:incoming><bpmn:outgoing>s2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="done" name="Answered"><bpmn:incoming>s2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="s1" sourceRef="start" targetRef="open" />
+    <bpmn:sequenceFlow id="s2" sourceRef="open" targetRef="done" />
+  </bpmn:process>
+</bpmn:definitions>

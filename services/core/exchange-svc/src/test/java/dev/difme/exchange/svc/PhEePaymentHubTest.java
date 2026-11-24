@@ -60,6 +60,13 @@ class PhEePaymentHubTest {
                     + vars.path("amountMinor").path("value").asText() + "/" + vars.path("amountMinor").path("type").asText());
             assertTrue(!body.toString().contains("4375510000000001"), "the card number never goes into a flow");
             payers.add(vars.path("payer").path("value").asText(""));
+            if (def.startsWith("DifmeOpenAccount")) {
+                String name = vars.path("accountName").path("value").asText();
+                flows.put(bk, name.startsWith("closed") ? Map.of("accountStatus", "rejected", "accountMessage", "client closed")
+                        : Map.of("accountStatus", "open", "accountId", "42"));
+                reply(x, "{\"id\":\"ci-" + bk + "\"}");
+                return;
+            }
             flows.put(bk, def.startsWith("DifmeCardCheckout")
                     ? switch (chargeResult) {
                         case "succeeded" -> Map.of("chargeStatus", "succeeded", "pspPaymentId", "pay_1");
@@ -208,5 +215,23 @@ class PhEePaymentHubTest {
         endEventForNext = "failed";
         assertEquals("REJECTED", flowHub.refundCard("r3", "p1", "acme", 1_00, "returned").status());
         assertEquals(2, flowStarts.size());
+    }
+
+    @Test
+    void accountsAreOpenedThroughPhEeOnceBeforeTheirFirstTransfer() {
+        PhEePaymentHub h = flowHub.openAccounts(true);
+        assertEquals("DONE", h.transfer("t1", "escrow", "partner-7", 1_00, "release").status());
+        assertEquals(List.of("DifmeOpenAccount-default open-escrow  /", "DifmeOpenAccount-default open-partner-7  /"), flowStarts);
+        assertEquals("DONE", h.transfer("t2", "escrow", "partner-7", 1_00, "release").status());
+        assertEquals(2, flowStarts.size());            // known open: no second flow
+        assertEquals(2, started.size());
+    }
+
+    @Test
+    void anAccountThatCantBeOpenedRefusesTheMovement() {
+        var o = flowHub.openAccounts(true).transfer("t3", "escrow", "closed-9", 1_00, "x");
+        assertEquals("REJECTED", o.status());
+        assertTrue(o.detail().contains("client closed"));
+        assertTrue(started.isEmpty());                 // nothing reached the channel
     }
 }
