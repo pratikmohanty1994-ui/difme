@@ -156,6 +156,14 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 21 result (45414414868, core,security,process,rails; 2026-11-24)
+Green again; Mojaloop cross-bank ok again (10000 -> 9850); the channel 403 is gone (escrow bookings accepted at the
+waypoint); account opening ok; ACS certificate from the scheme CA; network tokenization on. Card checkout still blocked:
+Hyperswitch answers 401 to the admin key even in the right form ("Authorization: admin-api-key=<key>"), the report's
+probe too, so the key value differs from the router's. The live buy timed out waiting for the charge. Next run's probe
+compares a hash of the router's key (router.env from OpenBao) with the Secret's and tries the built-in default
+test_admin.
+
 ### Run 20 result (45398742032, core,security,process,rails; 2026-11-24): green, Mojaloop end to end
 All four profiles converged. **Mojaloop cross-bank payment works end to end:** xbank-check opened through
 DifmeOpenAccount (least-privilege client), funded on-us (DifmeOnUsTransfer done), paid MSISDN 919900000001 at payeefsp
