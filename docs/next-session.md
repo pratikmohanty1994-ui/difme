@@ -144,7 +144,8 @@ cluster run; if green, delete payment-hub.**
 - replay-engine image: its manifest's signing step hit a ghcr.io timeout (images run 45302041542); rebuild with the next
   core build.
 - D4 GET /transfers after commit: the connector has no route for it; needs Fluxnova history lookups from the connector.
-- **Least privilege broken by today's change:** the rails-worker opens accounts with Keycloak client `fineract-admin`,
+- **Least privilege (fixed 2026-11-24):** client `rails-worker` → Fineract user `rails-worker`, role "Account opening".
+  Was: the rails-worker opened accounts with Keycloak client `fineract-admin`,
   which maps to Fineract's superuser `mifos` (component-reuse said: bootstrap job and the interim hub only). Fix: a
   `rails-worker` client mapped to a Fineract user whose role may only create/approve/activate clients and savings
   accounts and register interop identifiers (realm import + the fineract-service-users job), like `ph-ee-ams`.

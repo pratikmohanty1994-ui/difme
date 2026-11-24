@@ -34,6 +34,7 @@ spec:
             - { name: DIFME_EXCHANGE_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: difme-exchange } } }
             - { name: FINERACT_ADMIN_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: fineract-admin } } }
             - { name: CARD_ISSUER_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: card-issuer } } }
+            - { name: RAILS_WORKER_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: rails-worker } } }
             - { name: LOAN_ORIGINATION_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: keycloak-clients, key: loan-origination } } }
             # Identity provider for back-office logins, not a hot path: Tier 2 low-footprint JVM flags. JAVA_OPTS replaces
             # kc.sh's defaults (which select G1: appending SerialGC made the JVM refuse to start, "Multiple garbage

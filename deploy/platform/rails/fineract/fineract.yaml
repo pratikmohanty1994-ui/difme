@@ -85,6 +85,7 @@ spec: { selector: { app: fineract }, ports: [{ name: http, port: 8080 }] }
 # Creates Fineract's own users for the Keycloak clients that call it, after every sync (idempotent). It logs in through
 # Keycloak as client fineract-admin, whose token says fineract_user=mifos (Fineract's admin user).
 #   ph-ee-ams: role "Payment hub" (interoperation API, savings and client reads; the permission list is in the script)
+#   rails-worker: role "Account opening" (open clients/savings accounts, interop identifiers; no money movement)
 apiVersion: batch/v1
 kind: Job
 metadata: { name: fineract-service-users, annotations: { argocd.argoproj.io/hook: PostSync, argocd.argoproj.io/hook-delete-policy: BeforeHookCreation } }
@@ -142,6 +143,12 @@ spec:
               issuer=$(role "Card issuer" "DIFME card issuer (card-issuer): debit holds and withdrawals, credit-line disbursements" \
                 READ_SAVINGSACCOUNT HOLDAMOUNT_SAVINGSACCOUNT RELEASEAMOUNT_SAVINGSACCOUNT WITHDRAWAL_SAVINGSACCOUNT READ_LOAN DISBURSE_LOAN READ_CLIENT)
               user card-issuer "$issuer"
+              # rails-worker (DifmeOpenAccount): opens client + savings account and registers ACCOUNT_ID; creates the two
+              # DIFME savings products if missing. No transfers, holds or withdrawals (least privilege, 2026-11-24).
+              opener=$(role "Account opening" "DIFME rails-worker: open clients and savings accounts, register interop identifiers" \
+                READ_CLIENT CREATE_CLIENT READ_SAVINGSACCOUNT CREATE_SAVINGSACCOUNT APPROVE_SAVINGSACCOUNT ACTIVATE_SAVINGSACCOUNT \
+                READ_SAVINGSPRODUCT CREATE_SAVINGSPRODUCT READ_INTERID CREATE_INTERID READ_OFFICE)
+              user rails-worker "$opener"
               lo=$(role "Loan origination" "DIFME loan origination workflows: book, approve and disburse term loans" \
                 READ_LOAN CREATE_LOAN APPROVE_LOAN DISBURSE_LOAN READ_CLIENT READ_LOANPRODUCT)
               user loan-origination "$lo"

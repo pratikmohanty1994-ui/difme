@@ -33,8 +33,10 @@ spec:
             # Account opening (DifmeOpenAccount): Fineract through Keycloak client credentials (Fineract's OIDC federation).
             - { name: FINERACT_URL, value: "http://fineract.rails.svc:8080/fineract-provider" }
             - { name: FINERACT_TOKEN_URL, value: "http://keycloak.security.svc:8080/realms/difme/protocol/openid-connect/token" }
-            - { name: FINERACT_CLIENT_ID, valueFrom: { secretKeyRef: { name: fineract-admin-oauth, key: client-id } } }
-            - { name: FINERACT_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: fineract-admin-oauth, key: client-secret } } }
+            # Its own Keycloak client -> Fineract user rails-worker, role "Account opening" (least privilege; not the
+            # superuser client fineract-admin).
+            - { name: FINERACT_CLIENT_ID, valueFrom: { secretKeyRef: { name: rails-worker-oauth, key: client-id } } }
+            - { name: FINERACT_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: rails-worker-oauth, key: client-secret } } }
             # Fraud check before capture on Tazama (fraud profile, ADR-023), as the interim hub did: no alert -> capture,
             # alert -> hold for review, interdiction -> cancel the authorisation. No verdict within the budget -> review
             # (fail closed). Without the fraud profile the check answers "no verdict" and payments are held: set
