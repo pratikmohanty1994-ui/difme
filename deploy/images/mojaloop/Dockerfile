@@ -10,11 +10,12 @@ ARG COMPONENT=testing-toolkit
 WORKDIR /src
 COPY vendor/mojaloop/${COMPONENT}/ app/
 WORKDIR /src/app
-# Dependency install scripts are off except where a native module needs them: sqlite3 (simulator; the in-memory model
+# Dependency install scripts are off except where a native module needs them: sqlite3 (simulator; built from source:
+# its prebuilt binary needs glibc 2.38, Debian bookworm has 2.36; the in-memory model
 # database) and the scheme adapter's Kafka client (node-rdkafka builds its bundled librdkafka; the Kafka handlers stay off).
 RUN set -eux; case "$COMPONENT" in \
       testing-toolkit) npm ci --omit=dev --ignore-scripts; mkdir -p uploads ;; \
-      simulator) npm ci --omit=dev --ignore-scripts; npm rebuild sqlite3 ;; \
+      simulator) npm ci --omit=dev --ignore-scripts; npm rebuild sqlite3 --build-from-source ;; \
       sdk-scheme-adapter) \
         Y="node .yarn/releases/yarn-4.18.0.cjs"; \
         $Y workspaces focus @mojaloop/sdk-scheme-adapter-api-svc @mojaloop/sdk-scheme-adapter-private-shared-lib; \
@@ -25,9 +26,10 @@ RUN set -eux; case "$COMPONENT" in \
     esac; \
     rm -rf test docs .git* || true   # LICENSE.md stays
 
+# libsasl2-2 + libcurl4: linked by the Kafka client's bundled librdkafka (scheme adapter).
 FROM node:22-bookworm-slim
 ARG COMPONENT=testing-toolkit
-RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends libsasl2-2 \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends libsasl2-2 libcurl4 \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /opt/yarn* /usr/local/bin/yarn*
 WORKDIR /opt/app
