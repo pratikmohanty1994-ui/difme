@@ -58,7 +58,12 @@ class CardTasksTest {
         });
         // Hyperswitch: bootstrap (merchant exists, key, connector present), payments, refunds
         server.createContext("/accounts/", x -> reply(x, 200, "{}"));
-        server.createContext("/api_keys/", x -> reply(x, 200, "{\"api_key\":\"k\"}"));
+        // Hyperswitch reads the admin key from header "api-key" only (router authentication.rs); anything else is 401,
+        // as the real router answered the worker's former "admin-api-key" header (cluster-verify run 18).
+        server.createContext("/api_keys/", x -> {
+            if (!"admin".equals(x.getRequestHeaders().getFirst("api-key"))) { reply(x, 401, "{\"error\":{\"message\":\"API key not provided or invalid\"}}"); return; }
+            reply(x, 200, "{\"api_key\":\"k\"}");
+        });
         server.createContext("/account/", x -> reply(x, 200, "[{\"connector_name\":\"stripe_test\"}]"));
         server.createContext("/payments", x -> {
             if (pspDown) { reply(x, 503, "{\"error\":{\"message\":\"down\"}}"); return; }
