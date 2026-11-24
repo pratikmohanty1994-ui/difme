@@ -100,6 +100,13 @@ the session branch; nothing runs on the owner's PC.
 - Lightweight 3DS ACS (ADR-027) connected to CMS, Tazama, hsm and the authorisation switch; `ci/acs-e2e.sh` passes.
 
 ## 3. Cluster runs
+### Run 14 result (45291141393, core,security,streaming,process,rails; 2026-11-24)
+core, security, streaming, process **converged**; live buy ok four times. rails failed only on ph-ee: the ams connector
+never passed its startup probe and timed out calling Fluxnova while idle (5m CPU). Cause: memory pressure by the time
+rails deployed (node RAM 79%, **swap 3.8 GiB**): its JVM was swapped out. No PH-EE/mesh config changed since run 13.
+Decision: the PH-EE runs use the profiles they need only (core,security,process,rails,fraud: no streaming, 2.1 GiB).
+Images core+mojaloop dispatched 01:05 UTC (exchange with card flows, hyperswitch-worker, Mojaloop switch + payeefsp).
+
 Run 3 (45026327939, core,streaming,security,rails,fraud) dispatched 13:13 UTC with the Tazama uid fix and failing-pod log capture; a check-in is scheduled.
 
 ### Run 3 result (45026327939)
