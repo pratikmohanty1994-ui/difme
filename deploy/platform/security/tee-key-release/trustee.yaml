@@ -149,9 +149,11 @@ spec:
   selector: { app: trustee }
   ports: [{ name: http, port: 8080 }]
 ---
-# Only the security module and the notary may run the attestation protocol, each fetching only its own resources; nobody
-# reaches the admin API through the mesh (the configure container uses it over the pod's loopback). Enforced because the
-# Trustee pod is in the mesh (pod-level ambient; before 2026-11-24 it wasn't, so this policy did not apply).
+# Only the security module and the notary may reach the KBS; nobody reaches the admin API through the mesh (the configure
+# container uses it over the pod's loopback). Enforced since the Trustee pod joined the mesh (pod-level ambient,
+# 2026-11-24). L4 only (identity + port): ztunnel can't evaluate paths, and an ALLOW rule with paths reset every
+# connection (cluster-verify run 16). Keeping each caller to its own resources (difme/hsm/*, difme/notary/*) would need a
+# waypoint in this namespace; both callers are DIFME's own TEE workloads.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata: { name: trustee-kbs-callers }
@@ -159,7 +161,5 @@ spec:
   selector: { matchLabels: { app: trustee } }
   action: ALLOW
   rules:
-    - from: [{ source: { principals: ["difme.local/ns/rails/sa/hsm"] } }]
-      to: [{ operation: { paths: ["/kbs/v0/auth", "/kbs/v0/attest", "/kbs/v0/resource/difme/hsm/*"] } }]
-    - from: [{ source: { principals: ["difme.local/ns/security/sa/notary"] } }]
-      to: [{ operation: { paths: ["/kbs/v0/auth", "/kbs/v0/attest", "/kbs/v0/resource/difme/notary/*"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/hsm", "difme.local/ns/security/sa/notary"] } }]
+      to: [{ operation: { ports: ["8080"] } }]

@@ -47,7 +47,9 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: hsm }
+# Through the rails waypoint (L7): the per-path caller rules below (hsm-callers) need it; ztunnel alone enforces only L4
+# and resets every connection an ALLOW rule with paths would match (cluster-verify run 16, Trustee).
+metadata: { name: hsm, labels: { istio.io/use-waypoint: ph-ee-waypoint } }
 spec:
   selector: { app: hsm }
   ports: [{ name: http, port: 8700 }]
@@ -158,7 +160,7 @@ apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata: { name: hsm-callers }
 spec:
-  selector: { matchLabels: { app: hsm } }
+  targetRefs: [{ kind: Service, group: "", name: hsm }]   # enforced at the waypoint (paths are L7)
   action: ALLOW
   rules:
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/acs", "difme.local/ns/rails/sa/scheme-sim", "difme.local/ns/rails/sa/card-issuer"] } }]
@@ -170,6 +172,18 @@ spec:
       to: [{ operation: { methods: ["POST"], paths: ["/v1/ilp/difme/hmac"] } }]
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/payeefsp"] } }]
       to: [{ operation: { methods: ["POST"], paths: ["/v1/ilp/payeefsp/hmac"] } }]
+---
+# ztunnel on the security module's pods (L4): only the waypoint may reach the API port, so the path rules above can't be
+# bypassed by pod IP (kubelet probes are allowed by ztunnel itself).
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: hsm-pods }
+spec:
+  selector: { matchLabels: { app: hsm } }
+  action: ALLOW
+  rules:
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/ph-ee-waypoint"] } }]
+      to: [{ operation: { ports: ["8700"] } }]
 ---
 apiVersion: v1
 kind: ServiceAccount

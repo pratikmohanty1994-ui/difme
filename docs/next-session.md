@@ -155,6 +155,14 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 16 result (45348130568, core,security,process,rails,lakehouse; 2026-11-24)
+core converged; **security failed**: the notary crash-looped ("KBS auth: Connection reset by peer") and the exchange
+followed (notary unreachable at start). Cause: Trustee joined the mesh, so its caller AuthorizationPolicy finally
+applied, and it matched on paths; ztunnel enforces only L4 and resets connections an ALLOW rule with paths would match.
+The same mistake was in the new hsm-callers rules (ILP/CA paths). **Fixed:** Trustee's rule is L4 (hsm + notary
+identities, port 8080); the hsm Service goes through the rails waypoint (ph-ee-waypoint), where the path rules are
+enforced, and hsm pods accept only the waypoint. A scan finds no other selector-based policy with L7 attributes.
+
 ### Run 15 result (45331437349, core,security,process,rails,fraud; 2026-11-24)
 core, security, process, **rails converged** (PH-EE healthy, Mojaloop switch + payeefsp running, rails-worker running:
 **DifmeOpenAccount completed on the cluster**); live buy ok 4x; network tokenization on; hsm keys by attestation.
