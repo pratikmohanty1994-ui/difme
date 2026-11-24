@@ -19,6 +19,8 @@ apply 'sys/policies/acl/trustee-kbs' '{"policy":"path \"kbs/difme/*\" { capabili
 apply 'auth/kubernetes/role/trustee-kbs' '{"audience":"vault","bound_service_account_names":["trustee"],"bound_service_account_namespaces":["security"],"token_policies":["trustee-kbs"],"token_ttl":"720h"}'
 apply 'sys/policies/acl/hsm-bootstrap' '{"policy":"path \"kbs/difme/hsm/*\" { capabilities = [\"create\"] }"}'
 apply 'auth/kubernetes/role/hsm-bootstrap' '{"audience":"vault","bound_service_account_names":["hsm"],"bound_service_account_namespaces":["rails"],"token_policies":["hsm-bootstrap"],"token_ttl":"5m"}'
+apply 'sys/policies/acl/notary-bootstrap' '{"policy":"path \"kbs/difme/notary/*\" { capabilities = [\"create\"] }"}'
+apply 'auth/kubernetes/role/notary-bootstrap' '{"audience":"vault","bound_service_account_names":["notary"],"bound_service_account_namespaces":["security"],"token_policies":["notary-bootstrap"],"token_ttl":"5m"}'
 apply 'sys/mounts/secret' '{"options":{"version":"2"},"type":"kv"}'
 apply 'sys/policies/acl/hyperswitch' '{"policy":"path \"secret/data/rails/hyperswitch\" { capabilities = [\"read\"] }"}'
 apply 'auth/kubernetes/role/hyperswitch' '{"audience":"vault","bound_service_account_names":["hyperswitch"],"bound_service_account_namespaces":["rails"],"token_policies":["hyperswitch"],"token_ttl":"10m"}'

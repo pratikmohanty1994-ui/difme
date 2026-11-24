@@ -212,6 +212,34 @@
   "path": "auth/kubernetes/role/hsm-bootstrap"
  },
  {
+  "block": "key-release",
+  "data": {
+   "policy": "path \"kbs/difme/notary/*\" { capabilities = [\"create\"] }"
+  },
+  "name": "notary-bootstrap-policy",
+  "operation": "update",
+  "path": "sys/policies/acl/notary-bootstrap"
+ },
+ {
+  "block": "key-release",
+  "data": {
+   "audience": "vault",
+   "bound_service_account_names": [
+    "notary"
+   ],
+   "bound_service_account_namespaces": [
+    "security"
+   ],
+   "token_policies": [
+    "notary-bootstrap"
+   ],
+   "token_ttl": "5m"
+  },
+  "name": "notary-bootstrap-role",
+  "operation": "update",
+  "path": "auth/kubernetes/role/notary-bootstrap"
+ },
+ {
   "block": "rails-secrets",
   "data": {
    "options": {

@@ -1,6 +1,9 @@
 # DIFME evidence notary (decided 2026-11-20): an independent witness with its own Ed25519 key. It counter-signs the
 # hash each evidence chain is sealed at and keeps an append-only JSON-lines record of what it witnessed and when.
 # The exchange uses it when difme.evidence.notary-url is set; the operator key stays in OpenBao transit.
+# Its own key only in the emulated TEE (owner 2026-11-24): the Ed25519 seed arrives by attested key release from Trustee
+# (resource difme/notary/seed), generated inside the notary on first start and stored through OpenBao's create-only role
+# notary-bootstrap; no Kubernetes Secret. In the mesh (pod-level ambient) so Trustee's caller policy can name it.
 apiVersion: v1
 kind: ServiceAccount
 metadata: { name: notary, namespace: security }
@@ -19,7 +22,7 @@ spec:
   strategy: { type: Recreate }          # one writer of the append-only log
   selector: { matchLabels: { app: notary } }
   template:
-    metadata: { labels: { app: notary, difme/team: security, business.metric: evidence-witness } }
+    metadata: { labels: { app: notary, difme/team: security, business.metric: evidence-witness, istio.io/dataplane-mode: ambient } }
     spec:
       serviceAccountName: notary
       securityContext: { runAsNonRoot: true, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
@@ -28,18 +31,21 @@ spec:
           image: ghcr.io/pratikmohanty1994-ui/difme-notary:0.1.0
           env:
             - { name: NOTARY_NAME, value: notary-1 }
-            - { name: NOTARY_KEY_FILE, value: /etc/notary/seed }
+            - { name: NOTARY_KBS_URL, value: "http://trustee-kbs.security.svc:8080" }
+            - { name: NOTARY_TEE_SVN, value: "1" }        # emulated TEE: the measurement registered in Trustee (dev)
+            - { name: NOTARY_BOOTSTRAP_OPENBAO, value: "http://openbao.security.svc:8200" }
             - { name: NOTARY_LOG, value: /var/lib/notary/witness.log }
           ports: [{ containerPort: 8080 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 10 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts:
-            - { name: key, mountPath: /etc/notary, readOnly: true }
+            - { name: openbao-token, mountPath: /var/run/secrets/openbao, readOnly: true }
             - { name: log, mountPath: /var/lib/notary }
           # Single-threaded runtime; a 1.1 MiB binary. Sized like the attestation verifier until measured.
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
       volumes:
-        - { name: key, secret: { secretName: notary-key, items: [{ key: seed, path: seed }] } }
+        - name: openbao-token   # used only on the first start (create-only role notary-bootstrap)
+          projected: { sources: [{ serviceAccountToken: { audience: vault, expirationSeconds: 600, path: token } }] }
         - { name: log, persistentVolumeClaim: { claimName: notary-log } }
 ---
 apiVersion: v1

@@ -163,6 +163,23 @@ server:
               token_ttl = "5m"
             }
           }
+          # The evidence notary's Ed25519 seed (difme/notary/seed): created once by the notary itself, released by attestation.
+          request "notary-bootstrap-policy" {
+            operation = "update"
+            path = "sys/policies/acl/notary-bootstrap"
+            data = { policy = "path \"kbs/difme/notary/*\" { capabilities = [\"create\"] }" }
+          }
+          request "notary-bootstrap-role" {
+            operation = "update"
+            path = "auth/kubernetes/role/notary-bootstrap"
+            data = {
+              bound_service_account_names = ["notary"]
+              bound_service_account_namespaces = ["security"]
+              audience = "vault"
+              token_policies = ["notary-bootstrap"]
+              token_ttl = "5m"
+            }
+          }
         }
         initialize "rails-secrets" {
           # Component reuse (owner 2026-11-21): Hyperswitch reads its secrets from here (KV v2) instead of Kubernetes

@@ -59,7 +59,7 @@ spec:
   replicas: 1
   selector: { matchLabels: { app: trustee } }
   template:
-    metadata: { labels: { app: trustee, difme/team: security, business.metric: key-release } }
+    metadata: { labels: { app: trustee, difme/team: security, business.metric: key-release, istio.io/dataplane-mode: ambient } }
     spec:
       serviceAccountName: trustee
       securityContext: { seccompProfile: { type: RuntimeDefault } }
@@ -149,8 +149,9 @@ spec:
   selector: { app: trustee }
   ports: [{ name: http, port: 8080 }]
 ---
-# Only the security module may run the attestation protocol and fetch resources; nobody reaches the admin API
-# through the mesh (the configure container uses it over the pod's loopback).
+# Only the security module and the notary may run the attestation protocol, each fetching only its own resources; nobody
+# reaches the admin API through the mesh (the configure container uses it over the pod's loopback). Enforced because the
+# Trustee pod is in the mesh (pod-level ambient; before 2026-11-24 it wasn't, so this policy did not apply).
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata: { name: trustee-kbs-callers }
@@ -160,3 +161,5 @@ spec:
   rules:
     - from: [{ source: { principals: ["difme.local/ns/rails/sa/hsm"] } }]
       to: [{ operation: { paths: ["/kbs/v0/auth", "/kbs/v0/attest", "/kbs/v0/resource/difme/hsm/*"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/security/sa/notary"] } }]
+      to: [{ operation: { paths: ["/kbs/v0/auth", "/kbs/v0/attest", "/kbs/v0/resource/difme/notary/*"] } }]
