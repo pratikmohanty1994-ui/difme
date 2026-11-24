@@ -73,6 +73,10 @@ def manifests(s: dict) -> list[dict]:
     # when the profile has no Rollout. Everyone else runs one replica in the Codespace.
     if not (s.get("autoscaled") or s.get("rollout")):
         deploy_spec = {"replicas": 1, **deploy_spec}
+    # Single writer of durable state (StateStore): the old pod stops before the new one starts, so two exchange pods
+    # never run their matching and stores side by side during a rollout (a short gap instead of split state).
+    if s.get("store"):
+        deploy_spec["strategy"] = {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}
     return [
         {"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": s["name"], "labels": {"app": s["name"]}},
          "spec": deploy_spec},

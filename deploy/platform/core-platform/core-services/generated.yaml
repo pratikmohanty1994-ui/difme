@@ -498,6 +498,11 @@ spec:
               audience: vault
               expirationSeconds: 3600
               path: token
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
 ---
 apiVersion: v1
 kind: Service

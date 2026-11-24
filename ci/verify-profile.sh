@@ -178,6 +178,10 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   # D3 (c): card checkout on PH-EE (DifmeCardCheckout/DifmeCardRefund answered by the hyperswitch-worker).
   kubectl -n rails logs deploy/hyperswitch-worker --tail=500 2>/dev/null | grep -E "card flows worker|card task" \
     | tail -4 | sed 's/^/  card checkout: /' | cut -c1-240
+  # D3 (d/e): a cross-bank payment through the Mojaloop switch to the other bank (informational until it has passed once).
+  if kubectl -n rails get deploy mojaloop-switch payeefsp-sdk >/dev/null 2>&1; then
+    timeout 300 python3 ci/mojaloop-cluster-check.py 2>&1 | cut -c1-500 || echo "  mojaloop cross-bank: FAILED (informational)"
+  fi
 fi
 # Tazama end to end (informational): a payment and a 3-D Secure pain.001 through the deployed fraud engine, verdicts read
 # from its evaluation database (ci/tazama-cluster-check.py; the cluster counterpart of ci/tazama-e2e.sh). Once per run,
