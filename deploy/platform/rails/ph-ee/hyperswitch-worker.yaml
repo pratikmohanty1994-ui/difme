@@ -2,6 +2,7 @@
 # the DifmeCardCheckout / DifmeCardRefund flows (topics hyperswitch-charge, hyperswitch-refund) through Hyperswitch.
 # The flows carry only a card reference ("*" or a partner node); the card details live here, next to the PSP call, in
 # Secret hyperswitch-worker-cards (dev-secrets.sh; scheme-sim's seeded test cards in dev). No Service: it only calls out.
+# Checkout: authorise (hyperswitch-charge), fraud check on Tazama (tazama-check), capture or cancel; refund separately.
 apiVersion: v1
 kind: ServiceAccount
 metadata: { name: hyperswitch-worker }
@@ -28,6 +29,14 @@ spec:
             - { name: HYPERSWITCH_ADMIN_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: admin-api-key } } }
             - { name: HYPERSWITCH_ACQUIRER_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: acquirer-api-key } } }
             - { name: HSWORKER_CARDS, valueFrom: { secretKeyRef: { name: hyperswitch-worker-cards, key: cards } } }
+            # Fraud check before capture on Tazama (fraud profile, ADR-023), as the interim hub did: no alert -> capture,
+            # alert -> hold for review, interdiction -> cancel the authorisation. No verdict within the budget -> review
+            # (fail closed). Without the fraud profile the check answers "no verdict" and payments are held: set
+            # TAZAMA_TMS_URL empty to capture without a check.
+            - { name: TAZAMA_TMS_URL, value: "http://tazama-tms.fraud.svc:3000" }
+            - { name: TAZAMA_ADMIN_URL, value: "http://tazama-admin-service.fraud.svc:3100" }
+            - { name: TAZAMA_BUDGET_MS, value: "3000" }
+            - { name: TAZAMA_FAIL_OPEN, value: "false" }
             # The image's entrypoint selects G1 already (services/core/Dockerfile.jvm): no GC flag here.
             - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=60 -Xss512k" }
           ports: [{ name: http, containerPort: 8091 }]

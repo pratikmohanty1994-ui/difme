@@ -91,9 +91,15 @@ final class PhEePaymentHub implements PaymentHub {
         if (card.ref() == null) return new Outcome("DECLINED", "14: card has no reference for the PSP worker");
         Map<String, Object> vars = new LinkedHashMap<>();
         vars.put("paymentId", paymentId); vars.put("merchant", merchant); vars.put("amountMinor", amountMinor);
-        vars.put("currency", "INR"); vars.put("cardRef", card.ref()); vars.put("description", "DIFME card payment " + paymentId);
+        vars.put("currency", "INR"); vars.put("cardRef", card.ref());
+        vars.put("payer", "*".equals(card.ref()) ? "partner-default" : "partner-" + card.ref());   // Tazama's payer id, never the card
+        vars.put("description", "DIFME card payment " + paymentId);
         Map<String, String> r = runFlow(CHECKOUT, paymentId, vars);
-        if (!"succeeded".equals(r.get("chargeStatus"))) {
+        String charge = r.getOrDefault("chargeStatus", "");
+        // Fraud alert (or no verdict, failing closed): authorised, held for review, no money taken (ADR-023).
+        if ("review".equals(charge)) return new Outcome("REVIEW", r.getOrDefault("declineMessage", "held for review"));
+        if ("failed".equals(charge)) return new Outcome("FAILED", r.getOrDefault("declineMessage", "capture failed"));
+        if (!"succeeded".equals(charge)) {
             return new Outcome("DECLINED", r.getOrDefault("declineCode", "05") + ": " + r.getOrDefault("declineMessage", "declined"));
         }
         String account = "merchant-" + merchant;

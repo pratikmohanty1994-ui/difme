@@ -32,6 +32,7 @@ class PhEePaymentHubTest {
     /** card flows: business key -> final variables (as the hyperswitch-worker leaves them) */
     private final Map<String, Map<String, String>> flows = new ConcurrentHashMap<>();
     private final List<String> flowStarts = new CopyOnWriteArrayList<>();
+    private final List<String> payers = new CopyOnWriteArrayList<>();
     private volatile String chargeResult = "succeeded", refundResult = "succeeded";
     private PhEePaymentHub flowHub;
 
@@ -58,9 +59,13 @@ class PhEePaymentHubTest {
             flowStarts.add(def + " " + bk + " " + vars.path("cardRef").path("value").asText("") + " "
                     + vars.path("amountMinor").path("value").asText() + "/" + vars.path("amountMinor").path("type").asText());
             assertTrue(!body.toString().contains("4375510000000001"), "the card number never goes into a flow");
+            payers.add(vars.path("payer").path("value").asText(""));
             flows.put(bk, def.startsWith("DifmeCardCheckout")
-                    ? ("succeeded".equals(chargeResult) ? Map.of("chargeStatus", "succeeded", "pspPaymentId", "pay_1")
-                            : Map.of("chargeStatus", "declined", "declineCode", "51", "declineMessage", "insufficient funds"))
+                    ? switch (chargeResult) {
+                        case "succeeded" -> Map.of("chargeStatus", "succeeded", "pspPaymentId", "pay_1");
+                        case "review" -> Map.of("chargeStatus", "review", "declineMessage", "fraud alert: ALRT");
+                        default -> Map.of("chargeStatus", "declined", "declineCode", "51", "declineMessage", "insufficient funds");
+                    }
                     : Map.of("refundStatus", refundResult, "refundMessage", refundResult));
             reply(x, "{\"id\":\"ci-" + bk + "\"}");
         });
@@ -172,6 +177,14 @@ class PhEePaymentHubTest {
         var o = flowHub.payCard("p2", "acme", 1_00, CARD);
         assertEquals("DECLINED", o.status());
         assertEquals("51: insufficient funds", o.detail());
+        assertTrue(started.isEmpty());
+    }
+
+    @Test
+    void aFraudAlertHoldsThePaymentWithoutMovingMoney() {
+        chargeResult = "review";
+        assertEquals("REVIEW", flowHub.payCard("p4", "acme", 1_00, new PaymentHub.CardOnFile("4375510000000001", "12", "2030", "123", "7")).status());
+        assertEquals(List.of("partner-7"), payers);
         assertTrue(started.isEmpty());
     }
 

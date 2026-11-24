@@ -4,7 +4,6 @@ import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
-import java.util.List;
 import java.util.Map;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -28,10 +27,13 @@ public class Worker {
     void start(@Observes StartupEvent e) {
         if (!enabled) return;
         Fluxnova fx = new Fluxnova(fluxnovaUrl, fluxnovaBasic.orElse(null), "hyperswitch-worker-" + ProcessHandle.current().pid());
-        CardTasks tasks = new CardTasks(new Hyperswitch(pspUrl, adminKey.orElse(""), acquirerKey.orElse("")), new CardsOnFile(cards.orElse("")));
+        // Fraud check before capture (ADR-023): TAZAMA_TMS_URL / TAZAMA_ADMIN_URL / TAZAMA_BUDGET_MS, off when not set.
+        Tazama tazama = Tazama.fromEnv();
+        CardTasks tasks = new CardTasks(new Hyperswitch(pspUrl, adminKey.orElse(""), acquirerKey.orElse("")), new CardsOnFile(cards.orElse("")),
+                tazama == null ? null : tazama::evaluate, Boolean.parseBoolean(System.getenv("TAZAMA_FAIL_OPEN")));
         running = true;
         thread = Thread.ofPlatform().name("card-flows").daemon().start(() -> loop(fx, tasks));
-        LOG.info("PH-EE card flows worker: topics " + CardTasks.CHARGE + ", " + CardTasks.REFUND);
+        LOG.info("PH-EE card flows worker: topics " + CardTasks.TOPICS + (tazama == null ? "; no fraud check (Tazama not configured)" : "; fraud check on Tazama"));
     }
 
     void stop(@Observes ShutdownEvent e) {
@@ -40,11 +42,12 @@ public class Worker {
     }
 
     static void runOnce(Fluxnova fx, CardTasks tasks, long pollMs) {
-        for (Fluxnova.Task t : fx.fetchAndLock(List.of(CardTasks.CHARGE, CardTasks.REFUND), 4, pollMs, 120_000)) {
+        for (Fluxnova.Task t : fx.fetchAndLock(CardTasks.TOPICS, 4, pollMs, 120_000)) {
             try {
                 Map<String, Object> out = tasks.handle(t);
                 fx.complete(t, out);
-                LOG.info("card task " + t.topic() + " " + (t.str("refundId") != null ? t.str("refundId") : t.str("paymentId")) + ": " + out.getOrDefault("chargeStatus", out.get("refundStatus"))
+                LOG.info("card task " + t.topic() + " " + (t.str("refundId") != null ? t.str("refundId") : t.str("paymentId")) + ": " + out.getOrDefault("chargeStatus", out.getOrDefault("refundStatus", ""))
+                        + (out.containsKey("fraudVerdict") ? " fraud " + out.get("fraudVerdict") + " -> " + out.get("fraudAction") : "")
                         + (out.containsKey("declineCode") ? " " + out.get("declineCode") : ""));
             } catch (RuntimeException ex) {
                 int left = (t.retries() < 0 ? 5 : t.retries()) - 1;

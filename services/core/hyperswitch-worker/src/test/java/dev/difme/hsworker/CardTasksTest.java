@@ -25,6 +25,8 @@ class CardTasksTest {
     private final Map<String, JsonNode> failed = new ConcurrentHashMap<>();
     private final List<String> charged = new CopyOnWriteArrayList<>();
     private volatile boolean pspDown;
+    private final Map<String, String> state = new ConcurrentHashMap<>();   // Hyperswitch payment status by id
+    private final List<String> psp = new CopyOnWriteArrayList<>();         // captures and cancels
     private Fluxnova fx;
     private CardTasks tasks;
 
@@ -60,11 +62,21 @@ class CardTasksTest {
         server.createContext("/account/", x -> reply(x, 200, "[{\"connector_name\":\"stripe_test\"}]"));
         server.createContext("/payments", x -> {
             if (pspDown) { reply(x, 503, "{\"error\":{\"message\":\"down\"}}"); return; }
+            String path = x.getRequestURI().getPath();
+            if (!path.equals("/payments")) {                       // GET /payments/{id}, POST .../capture, .../cancel
+                String[] seg = path.split("/");
+                String id = seg[2];
+                if (seg.length > 3) { psp.add(seg[3] + " " + id); state.put(id, seg[3].equals("capture") ? "succeeded" : "cancelled"); }
+                reply(x, 200, "{\"payment_id\":\"" + id + "\",\"status\":\"" + state.get(id) + "\",\"amount\":1}");
+                return;
+            }
             JsonNode b = JSON.readTree(x.getRequestBody());
             String pan = b.at("/payment_method_data/card/card_number").asText();
-            charged.add(b.path("payment_id").asText() + " " + pan + " " + b.path("amount").asLong());
+            String id = b.path("payment_id").asText();
+            charged.add(id + " " + pan + " " + b.path("amount").asLong() + " " + b.path("capture_method").asText());
             boolean ok = !pan.endsWith("0019");
-            reply(x, 200, "{\"payment_id\":\"" + b.path("payment_id").asText() + "\",\"status\":\"" + (ok ? "succeeded" : "failed")
+            state.put(id, ok ? "requires_capture" : "failed");
+            reply(x, 200, "{\"payment_id\":\"" + id + "\",\"status\":\"" + state.get(id)
                     + "\",\"amount\":" + b.path("amount").asLong() + (ok ? "" : ",\"error_message\":\"51: Insufficient funds\"") + "}");
         });
         server.createContext("/refunds", x -> {
@@ -93,14 +105,14 @@ class CardTasksTest {
         task("t3", CardTasks.CHARGE, Map.of("paymentId", "auc3-p1000002-000003", "amountMinor", 700, "cardRef", "1000002", "description", "buy"));
         task("t4", CardTasks.REFUND, Map.of("refundId", "rev-auc1", "paymentId", "auc1-p1-000001", "amountMinor", 1600000, "reason", "reversal"));
         Worker.runOnce(fx, tasks, 100);
-        assertEquals("succeeded", completed.get("t1").at("/chargeStatus/value").asText());
+        assertEquals("authorised", completed.get("t1").at("/chargeStatus/value").asText());
         assertEquals("auc1-p1-000001", completed.get("t1").at("/pspPaymentId/value").asText());
         assertEquals("declined", completed.get("t2").at("/chargeStatus/value").asText());
         assertEquals("51", completed.get("t2").at("/declineCode/value").asText());
-        assertEquals("succeeded", completed.get("t3").at("/chargeStatus/value").asText());   // "*" card for a standing mandate
+        assertEquals("authorised", completed.get("t3").at("/chargeStatus/value").asText());   // "*" card for a standing mandate
         assertEquals("succeeded", completed.get("t4").at("/refundStatus/value").asText());
-        assertEquals(List.of("auc1-p1-000001 4375510000000001 1600000", "auc2-p2-000002 4375510000000019 500",
-                "auc3-p1000002-000003 4375510000000001 700"), charged);
+        assertEquals(List.of("auc1-p1-000001 4375510000000001 1600000 manual", "auc2-p2-000002 4375510000000019 500 manual",
+                "auc3-p1000002-000003 4375510000000001 700 manual"), charged);
         assertTrue(completed.values().stream().noneMatch(v -> v.toString().contains("4375510000")), "no card number in process variables");
     }
 
@@ -114,5 +126,54 @@ class CardTasksTest {
         assertEquals("14", completed.get("t5").at("/declineCode/value").asText());
         assertEquals(2, failed.get("t6").path("retries").asInt());     // 3 left before, one used
         assertTrue(charged.isEmpty());
+    }
+
+    private CardTasks withFraud(Tazama.Verdict v, boolean failOpen) {
+        String base = "http://127.0.0.1:" + server.getAddress().getPort();
+        return new CardTasks(new Hyperswitch(base, "admin", "acq"), new CardsOnFile("*:4375510000000001:1230"),
+                (id, payer, m, amt, ccy) -> new Tazama.Evaluation(v, "NALT (difme-901-902@1.0.0=0) payer " + payer), failOpen);
+    }
+
+    @Test
+    void fraudCheckDecidesCaptureReviewOrCancel() throws Exception {
+        task("a", CardTasks.CHARGE, Map.of("paymentId", "pa", "amountMinor", 100, "cardRef", "7", "description", "buy"));
+        Worker.runOnce(fx, withFraud(Tazama.Verdict.NO_ALERT, false), 100);
+        assertEquals("requires_capture", state.get("pa"));            // authorised, no money taken yet
+        task("f1", CardTasks.FRAUD, Map.of("paymentId", "pa", "merchant", "acme", "amountMinor", 100, "payer", "partner-7"));
+        Worker.runOnce(fx, withFraud(Tazama.Verdict.NO_ALERT, false), 100);
+        assertEquals("capture", completed.get("f1").at("/fraudAction/value").asText());
+        assertTrue(completed.get("f1").at("/fraudDetail/value").asText().endsWith("payer partner-7"));
+        task("c1", CardTasks.CAPTURE, Map.of("paymentId", "pa"));
+        Worker.runOnce(fx, tasks, 100);
+        assertEquals("succeeded", completed.get("c1").at("/chargeStatus/value").asText());
+
+        task("f2", CardTasks.FRAUD, Map.of("paymentId", "pb", "merchant", "acme", "amountMinor", 100));
+        Worker.runOnce(fx, withFraud(Tazama.Verdict.ALERT, true), 100);
+        assertEquals("review", completed.get("f2").at("/fraudAction/value").asText());
+        assertEquals("review", completed.get("f2").at("/chargeStatus/value").asText());
+        task("f3", CardTasks.FRAUD, Map.of("paymentId", "pc", "merchant", "acme", "amountMinor", 100));
+        Worker.runOnce(fx, withFraud(Tazama.Verdict.UNKNOWN, false), 100);
+        assertEquals("review", completed.get("f3").at("/fraudAction/value").asText());   // fail closed
+        task("f4", CardTasks.FRAUD, Map.of("paymentId", "pd", "merchant", "acme", "amountMinor", 100));
+        Worker.runOnce(fx, withFraud(Tazama.Verdict.UNKNOWN, true), 100);
+        assertEquals("capture", completed.get("f4").at("/fraudAction/value").asText());  // fail open
+        task("f5", CardTasks.FRAUD, Map.of("paymentId", "pe", "merchant", "acme", "amountMinor", 100));
+        Worker.runOnce(fx, withFraud(Tazama.Verdict.INTERDICT, false), 100);
+        assertEquals("cancel", completed.get("f5").at("/fraudAction/value").asText());
+
+        state.put("pe", "requires_capture");
+        task("x1", CardTasks.CANCEL, Map.of("paymentId", "pe", "fraudDetail", "ALRT (difme-fraud-model@1.0.0=1)"));
+        Worker.runOnce(fx, tasks, 100);
+        assertEquals("declined", completed.get("x1").at("/chargeStatus/value").asText());
+        assertEquals("59", completed.get("x1").at("/declineCode/value").asText());
+        assertEquals(List.of("capture pa", "cancel pe"), psp);
+    }
+
+    @Test
+    void withoutTazamaEveryAuthorisedPaymentIsCaptured() throws Exception {
+        task("f", CardTasks.FRAUD, Map.of("paymentId", "pz", "merchant", "acme", "amountMinor", 100));
+        Worker.runOnce(fx, tasks, 100);
+        assertEquals("OFF", completed.get("f").at("/fraudVerdict/value").asText());
+        assertEquals("capture", completed.get("f").at("/fraudAction/value").asText());
     }
 }
