@@ -25,6 +25,7 @@ class CardTasksTest {
     private final Map<String, JsonNode> failed = new ConcurrentHashMap<>();
     private final List<String> charged = new CopyOnWriteArrayList<>();
     private volatile boolean pspDown;
+    private volatile boolean merchantCreated;
     private final Map<String, String> state = new ConcurrentHashMap<>();   // Hyperswitch payment status by id
     private final List<String> psp = new CopyOnWriteArrayList<>();         // captures and cancels
     private Fluxnova fx;
@@ -57,11 +58,18 @@ class CardTasksTest {
             }
         });
         // Hyperswitch: bootstrap (merchant exists, key, connector present), payments, refunds
-        server.createContext("/accounts/", x -> reply(x, 200, "{}"));
+        // As the router: GET /accounts/{id} of a merchant that doesn't exist answers 401 (admin auth fails on the route's
+        // merchant, then API-key fallback); POST /accounts (admin) creates it.
+        server.createContext("/accounts", x -> {
+            boolean admin = "admin-api-key=admin".equals(x.getRequestHeaders().getFirst("Authorization"));
+            if ("POST".equals(x.getRequestMethod()) && admin) { merchantCreated = true; reply(x, 200, "{}"); return; }
+            if (admin && merchantCreated) { reply(x, 200, "{}"); return; }
+            reply(x, 401, "{\"error\":{\"message\":\"API key not provided or invalid\"}}");
+        });
         // Hyperswitch's admin auth reads "Authorization: admin-api-key=<key>" (router authentication.rs, V2AdminApiAuth);
         // anything else is 401, as the real router answered both "admin-api-key: <key>" and "api-key: <key>" (runs 18, 20).
         server.createContext("/api_keys/", x -> {
-            if (!"admin-api-key=admin".equals(x.getRequestHeaders().getFirst("Authorization"))) { reply(x, 401, "{\"error\":{\"message\":\"API key not provided or invalid\"}}"); return; }
+            if (!"admin-api-key=admin".equals(x.getRequestHeaders().getFirst("Authorization")) || !merchantCreated) { reply(x, 401, "{\"error\":{\"message\":\"API key not provided or invalid\"}}"); return; }
             reply(x, 200, "{\"api_key\":\"k\"}");
         });
         server.createContext("/account/", x -> reply(x, 200, "[{\"connector_name\":\"stripe_test\"}]"));

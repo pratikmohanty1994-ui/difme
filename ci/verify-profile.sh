@@ -190,7 +190,7 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   if adm=$(kubectl -n rails get secret hyperswitch -o jsonpath='{.data.admin-api-key}' 2>/dev/null | base64 -d) && [ -n "$adm" ]; then
     kubectl -n rails port-forward svc/hyperswitch 18282:8080 >/dev/null 2>&1 & hpf=$!; sleep 3
     code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=$adm" http://127.0.0.1:18282/accounts/difme_marketplace)
-    echo "  hyperswitch admin key: GET /accounts/difme_marketplace -> HTTP $code (200/404 = key accepted, 401 = refused)"
+    echo "  hyperswitch admin key: GET /accounts/difme_marketplace -> HTTP $code (200 = key accepted; 401 = refused OR the merchant doesn't exist yet: the router answers a missing route merchant with 401)"
     dflt=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=test_admin" http://127.0.0.1:18282/accounts/difme_marketplace)
     rh=$(kubectl -n rails exec deploy/hyperswitch -c router -- bash -c '. /vault/secrets/router.env 2>/dev/null; printf %s "$ROUTER__SECRETS__ADMIN_API_KEY" | sha256sum | cut -c1-12' 2>&1 | tail -1)
     echo "  hyperswitch admin key: router's key (router.env) sha256 $rh, Secret's $(printf %s "$adm" | sha256sum | cut -c1-12); built-in default test_admin -> HTTP $dflt"

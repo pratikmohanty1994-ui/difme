@@ -46,10 +46,14 @@ public final class Hyperswitch {
     /** Creates (or finds) the merchant account and its card connector, and issues an API key for this process. */
     public synchronized void bootstrap() {
         if (apiKey != null) return;
-        if (call("GET", "accounts/" + MERCHANT, null, "admin-api-key=" + adminKey, "Authorization").status() == 404) {
+        // A missing merchant answers 401, not 404: the merchant-route admin auth fails when the route's merchant doesn't
+        // exist and the router falls back to API-key auth (cluster-verify run 22). So: create unless the lookup is 200,
+        // and accept "already exists" (a concurrent or earlier create).
+        if (call("GET", "accounts/" + MERCHANT, null, "admin-api-key=" + adminKey, "Authorization").status() != 200) {
             ObjectNode m = JSON.createObjectNode();
             m.put("merchant_id", MERCHANT).put("merchant_name", "DIFME marketplace").put("return_url", "https://difme.local/return");
-            ok(call("POST", "accounts", m, "admin-api-key=" + adminKey, "Authorization"), "create merchant");
+            Reply created = call("POST", "accounts", m, "admin-api-key=" + adminKey, "Authorization");
+            if (created.status() / 100 != 2 && !duplicate(created.body())) ok(created, "create merchant");
         }
         ObjectNode k = JSON.createObjectNode();
         k.put("name", "rails-worker").put("description", "PH-EE card flows worker").put("expiration", "never");

@@ -156,6 +156,14 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 22 result (45424562151, core,security,process,rails; 2026-11-24)
+Green. The probe settled it: the router's admin key (router.env from OpenBao) and the Secret's have the same hash, and
+both the real key and the default test_admin get 401 on GET /accounts/difme_marketplace. Cause (router source): the
+merchant-route admin auth passes, then looks up the route's merchant; a missing merchant makes it fall back to API-key
+auth, which answers 401, so "merchant not found" looks like a refused key. The worker created the merchant only on 404,
+so it never did, and every later admin call failed. Fixed: create unless the lookup is 200, accept "already exists"; the
+test fake models the router's 401.
+
 ### Run 21 result (45414414868, core,security,process,rails; 2026-11-24)
 Green again; Mojaloop cross-bank ok again (10000 -> 9850); the channel 403 is gone (escrow bookings accepted at the
 waypoint); account opening ok; ACS certificate from the scheme CA; network tokenization on. Card checkout still blocked:
