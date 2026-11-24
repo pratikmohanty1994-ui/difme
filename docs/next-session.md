@@ -128,6 +128,16 @@ cluster run; if green, delete payment-hub.**
 - replay-engine image: its manifest's signing step hit a ghcr.io timeout (images run 45302041542); rebuild with the next
   core build.
 - D4 GET /transfers after commit: the connector has no route for it; needs Fluxnova history lookups from the connector.
+- **Least privilege broken by today's change:** the rails-worker opens accounts with Keycloak client `fineract-admin`,
+  which maps to Fineract's superuser `mifos` (component-reuse said: bootstrap job and the interim hub only). Fix: a
+  `rails-worker` client mapped to a Fineract user whose role may only create/approve/activate clients and savings
+  accounts and register interop identifiers (realm import + the fineract-service-users job), like `ph-ee-ams`.
+- Planned earlier and still open (master list / §4–5): ACS scheme-issued signing cert from OpenBao, real app push, 3DS
+  device data into Tazama; Hyperswitch B4 admin API check and a live network-token tokenise → fetch (TAVV) on the
+  cluster; rotation round trip with live Trustee; LMK rotation drill and the key store rendered by the attested release;
+  first cluster run of card-security's callers; card-issuer credit parts (interest, delinquency, chargeback) and the
+  Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
+  README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
 ### Run 14 result (45291141393, core,security,streaming,process,rails; 2026-11-24)
 core, security, streaming, process **converged**; live buy ok four times. rails failed only on ph-ee: the ams connector
