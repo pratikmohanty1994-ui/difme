@@ -1,18 +1,12 @@
 # Who may call the PH-EE channel API (component reuse: Keycloak instead of the channel's own token check, which is dead
 # code in channel 1.9.0). The JWT is checked at an ambient waypoint, because ztunnel (L4) cannot read tokens:
-#   1. the channel Service routes through the waypoint (label istio.io/use-waypoint in connectors.yaml);
+#   1. the channel Service routes through the rails waypoint (Gateway rails-waypoint, defined in card-security so it
+#      exists in wave 0; label istio.io/use-waypoint in connectors.yaml);
 #   2. RequestAuthentication: tokens must be signed by Keycloak's realm difme (its JWKS) and issued by the realm;
 #   3. AuthorizationPolicy at the waypoint: a valid token from client difme-exchange carrying realm role ph-ee-transfer
 #      (Keycloak puts realm roles in realm_access.roles and the client in azp);
 #   4. ztunnel on the channel pods: the API port only from the waypoint (no way round it by pod IP), the metrics/probe
 #      port only from vmagent's namespace (kubelet probes are allowed by ztunnel itself).
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata: { name: ph-ee-waypoint, labels: { istio.io/waypoint-for: service } }
-spec:
-  gatewayClassName: istio-waypoint
-  listeners: [{ name: mesh, port: 15008, protocol: HBONE }]
----
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata: { name: ph-ee-channel-jwt }
@@ -42,7 +36,7 @@ spec:
   selector: { matchLabels: { app: ph-ee-connector-channel } }
   action: ALLOW
   rules:
-    - from: [{ source: { principals: ["difme.local/ns/rails/sa/ph-ee-waypoint"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/rails-waypoint"] } }]
       to: [{ operation: { ports: ["8080"] } }]
     - from: [{ source: { namespaces: [observability] } }]
       to: [{ operation: { ports: ["8081"] } }]

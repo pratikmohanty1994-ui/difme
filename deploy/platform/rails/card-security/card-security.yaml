@@ -45,11 +45,22 @@ spec:
         - name: openbao-token   # used only on the first start (create-only role hsm-bootstrap)
           projected: { sources: [{ serviceAccountToken: { audience: vault, expirationSeconds: 600, path: token } }] }
 ---
+# The rails waypoint (Istio ambient, L7) for the security module and PH-EE's channel API. Defined here, in wave 0 with the
+# security module, so it exists before anything calls hsm: in the PH-EE app (wave 2) it came too late, the ACS's calls
+# went straight to the hsm pods (which admit only the waypoint), were reset, and the ACS never became healthy, so wave 2
+# never came (cluster-verify run 19).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: { name: rails-waypoint, labels: { istio.io/waypoint-for: service } }
+spec:
+  gatewayClassName: istio-waypoint
+  listeners: [{ name: mesh, port: 15008, protocol: HBONE }]
+---
 apiVersion: v1
 kind: Service
 # Through the rails waypoint (L7): the per-path caller rules below (hsm-callers) need it; ztunnel alone enforces only L4
 # and resets every connection an ALLOW rule with paths would match (cluster-verify run 16, Trustee).
-metadata: { name: hsm, labels: { istio.io/use-waypoint: ph-ee-waypoint } }
+metadata: { name: hsm, labels: { istio.io/use-waypoint: rails-waypoint } }
 spec:
   selector: { app: hsm }
   ports: [{ name: http, port: 8700 }]
@@ -182,7 +193,7 @@ spec:
   selector: { matchLabels: { app: hsm } }
   action: ALLOW
   rules:
-    - from: [{ source: { principals: ["difme.local/ns/rails/sa/ph-ee-waypoint"] } }]
+    - from: [{ source: { principals: ["difme.local/ns/rails/sa/rails-waypoint"] } }]
       to: [{ operation: { ports: ["8700"] } }]
 ---
 apiVersion: v1

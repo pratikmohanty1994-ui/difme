@@ -156,6 +156,15 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 19 result (45389945403, core,security,process,rails; 2026-11-24)
+core, security, process converged; rails failed: the ACS crash-looped. Its log: POST http://hsm.rails.svc:8700/v1/csr/acs-sign
+"connection reset by peer". Root cause: an ordering deadlock. The waypoint lived in the PH-EE app (rails wave 2) while
+hsm, the ACS and scheme-sim deploy in wave 0. Without the waypoint, calls to hsm went straight to its pods (which admit
+only the waypoint) and were reset, so the ACS never became healthy and wave 2 never came. Network tokenization failed
+the same way (scheme-sim needs hsm for the token service's public key). Fixed: the waypoint (renamed rails-waypoint) is
+defined in card-security, wave 0. Separately, the worker's Hyperswitch admin header was wrong ("admin-api-key"; the
+router reads "api-key"): fixed in 1b5081d1, core image rebuilt.
+
 ### Run 18 result (45377690439, core,security,process,rails; 2026-11-24): first green run of the day
 All four profiles converged. **The exchange runs on PH-EE now** ("escrow movements through Mifos PH-EE; card payments
 through PH-EE DifmeCardCheckout"), after the exchange-rails restart: the live buy drove DifmeOpenAccount and

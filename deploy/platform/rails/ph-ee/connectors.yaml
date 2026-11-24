@@ -90,7 +90,7 @@ spec:
 # The channel API; callers are checked at the waypoint (channel-auth.yaml).
 apiVersion: v1
 kind: Service
-metadata: { name: ph-ee-connector-channel, labels: { istio.io/use-waypoint: ph-ee-waypoint } }
+metadata: { name: ph-ee-connector-channel, labels: { istio.io/use-waypoint: rails-waypoint } }
 spec: { selector: { app: ph-ee-connector-channel }, ports: [{ name: http-api, port: 8080, targetPort: http-api }] }
 ---
 apiVersion: v1
