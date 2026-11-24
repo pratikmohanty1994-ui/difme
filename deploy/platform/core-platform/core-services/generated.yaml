@@ -478,6 +478,9 @@ spec:
         - configMapRef:
             name: exchange-rails
             optional: true
+        - secretRef:
+            name: exchange-phee
+            optional: true
         volumeMounts:
         - name: tmp
           mountPath: /tmp

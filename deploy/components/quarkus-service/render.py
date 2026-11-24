@@ -51,6 +51,8 @@ def manifests(s: dict) -> list[dict]:
     # Without it the exchange keeps its simulated rails, so the core profile works on its own.
     if s.get("rails"):
         container.setdefault("envFrom", []).append({"configMapRef": {"name": "exchange-rails", "optional": True}})
+        # D3: PH-EE client credentials and Fluxnova login for escrow movements through PH-EE (PhEePaymentHub)
+        container["envFrom"].append({"secretRef": {"name": "exchange-phee", "optional": True}})
     # Loan origination (ADR-025): Fineract/Tazama endpoints and the Keycloak client, shipped by the rails profile.
     if s.get("loans"):
         container.setdefault("envFrom", []).append({"configMapRef": {"name": "loan-origination", "optional": True}})

@@ -172,6 +172,9 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   fi
   kubectl -n rails logs job/ph-ee-deploy-flows -c deploy --tail=2 2>&1 | sed 's/^/  ph-ee flows: /' | cut -c1-240
   kubectl -n rails logs deploy/hsm --tail=400 2>/dev/null | grep -iE "key release|attest|bootstrap|listening" | tail -4 | sed 's/^/  hsm: /' | cut -c1-200
+  # D3: escrow movements through PH-EE (exchange-svc's PhEePaymentHub); booking failures are retried and logged.
+  kubectl -n core-platform logs deploy/exchange-svc --tail=3000 2>/dev/null | grep -E "through Mifos PH-EE|CBS refused|CBS booking .* failed" \
+    | tail -5 | sed 's/^/  exchange escrow: /' | cut -c1-260
 fi
 # Exchange restart smoke (informational): a mandate registered before the pod is replaced must still be there after
 # (StateStore in YugabyteDB). Runs only where exchange-svc has its store configured.

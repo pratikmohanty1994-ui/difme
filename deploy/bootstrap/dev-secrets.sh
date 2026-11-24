@@ -55,6 +55,9 @@ secret rails         fluxnova admin-basic="admin:${FLUX_ADMIN}"
 secret rails         ph-ee-mojaloop ilp-secret="$(rand 48)"
 secret rails         fineract-admin-oauth client-id=fineract-admin client-secret="$FIN_ADMIN_CS"
 secret core-platform difme-exchange-oauth client-id=difme-exchange client-secret="$EXCHANGE_CS"
+# exchange-svc → PH-EE (D3): the channel token (client difme-exchange) and the Fluxnova login for transfer status
+secret core-platform exchange-phee DIFME_EXCHANGE_PHEE_CLIENT_ID=difme-exchange DIFME_EXCHANGE_PHEE_CLIENT_SECRET="$EXCHANGE_CS" \
+                     DIFME_EXCHANGE_PHEE_FLUXNOVA_BASIC="admin:${FLUX_ADMIN}"
 HYPERSWITCH_PG=$(rand)
 hex32() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }   # Hyperswitch wants 32-byte hex keys
 # Network tokenization (ADR-024): Hyperswitch's own JWE key pair (its private half decrypts the token service's
