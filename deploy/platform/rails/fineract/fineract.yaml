@@ -146,7 +146,7 @@ spec:
               # rails-worker (DifmeOpenAccount): opens client + savings account and registers ACCOUNT_ID; creates the two
               # DIFME savings products if missing. No transfers, holds or withdrawals (least privilege, 2026-11-24).
               opener=$(role "Account opening" "DIFME rails-worker: open clients and savings accounts, register interop identifiers" \
-                READ_CLIENT CREATE_CLIENT READ_SAVINGSACCOUNT CREATE_SAVINGSACCOUNT APPROVE_SAVINGSACCOUNT ACTIVATE_SAVINGSACCOUNT \
+                READ_CLIENT CREATE_CLIENT ACTIVATE_CLIENT READ_SAVINGSACCOUNT CREATE_SAVINGSACCOUNT APPROVE_SAVINGSACCOUNT ACTIVATE_SAVINGSACCOUNT \
                 READ_SAVINGSPRODUCT CREATE_SAVINGSPRODUCT READ_INTERID CREATE_INTERID READ_OFFICE)
               user rails-worker "$opener"
               lo=$(role "Loan origination" "DIFME loan origination workflows: book, approve and disburse term loans" \

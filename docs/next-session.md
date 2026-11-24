@@ -156,6 +156,17 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 18 result (45377690439, core,security,process,rails; 2026-11-24): first green run of the day
+All four profiles converged. **The exchange runs on PH-EE now** ("escrow movements through Mifos PH-EE; card payments
+through PH-EE DifmeCardCheckout"), after the exchange-rails restart: the live buy drove DifmeOpenAccount and
+DifmeCardCheckout through the rails-worker. Money didn't move yet:
+- account opening refused: "User has no authority to: ACTIVATE_CLIENT" (least-privilege role) → added ACTIVATE_CLIENT;
+- the card charge: "PSP create api key refused: API key not provided or invalid" (Hyperswitch admin key);
+- the ACS restarted 6x (it exits without its scheme-issued certificate) and network tokenization was off this run (the
+  token service's public key, served via the security module, wasn't available): both call the security module, now
+  behind the rails waypoint. Diagnostics added for run 19 (ACS current/previous logs, scheme-sim CA/NTS lines, hsm
+  refusals, a direct check of the Hyperswitch admin key).
+
 ### Run 17 result (45359895795, core,security,process,rails,lakehouse; 2026-11-24)
 core, security, process, **rails converged**; the notary starts from **attested key release** and witnesses evidence;
 hsm keys by attestation; rails-worker up on all topics; DifmeOpenAccount completed. Findings (diagnostics worked):

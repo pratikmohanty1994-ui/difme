@@ -177,6 +177,22 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   # D3: escrow movements through PH-EE (exchange-svc's PhEePaymentHub); booking failures are retried and logged.
   kubectl -n core-platform logs deploy/exchange-svc --tail=5000 2>/dev/null | grep -E "rails: |through Mifos PH-EE|CBS refused|CBS booking .* failed" \
     | tail -5 | sed 's/^/  exchange escrow: /' | cut -c1-260
+  # Security module callers through the rails waypoint: the ACS's scheme-issued certificate (it exits after ~2 min
+  # without one; --previous shows why), the scheme simulator's CA and token service, the module's refusals.
+  for p in "" "--previous"; do
+    kubectl -n rails logs deploy/acs $p --tail=300 2>/dev/null | grep -iE "signing certificate|scheme CA|security module|certificate request|fatal" \
+      | tail -3 | sed "s/^/  acs${p:+ (previous)}: /" | cut -c1-260
+  done
+  kubectl -n rails logs deploy/scheme-sim --tail=400 2>/dev/null | grep -iE "scheme CA|network tokenization|security module|nts" \
+    | tail -3 | sed 's/^/  scheme-sim: /' | cut -c1-240
+  kubectl -n rails logs deploy/hsm --tail=400 2>/dev/null | grep -iE " 4[0-9][0-9] |denied|error|refus" | tail -3 | sed 's/^/  hsm: /' | cut -c1-200
+  # Does Hyperswitch accept the admin key the rails-worker uses (Secret hyperswitch, admin-api-key)?
+  if adm=$(kubectl -n rails get secret hyperswitch -o jsonpath='{.data.admin-api-key}' 2>/dev/null | base64 -d) && [ -n "$adm" ]; then
+    kubectl -n rails port-forward svc/hyperswitch 18282:8080 >/dev/null 2>&1 & hpf=$!; sleep 3
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H "api-key: $adm" http://127.0.0.1:18282/accounts/difme_marketplace)
+    echo "  hyperswitch admin key: GET /accounts/difme_marketplace -> HTTP $code (200/404 = key accepted, 401 = refused)"
+    kill $hpf 2>/dev/null
+  fi
   # D3 (c): card checkout on PH-EE (DifmeCardCheckout/DifmeCardRefund answered by the rails-worker).
   kubectl -n rails logs deploy/rails-worker --tail=2000 2>/dev/null | grep -E "flows worker|card task|hyperswitch-|tazama-check|fineract-open-account" \
     | tail -8 | sed 's/^/  card checkout: /' | cut -c1-240
