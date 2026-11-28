@@ -225,16 +225,16 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
     fi
     echo "  hyperswitch router restarts: $(kubectl -n rails get pods -l app=hyperswitch -o jsonpath='{range .items[*].status.containerStatuses[*]}{.name}={.restartCount} last={.lastState.terminated.reason}/{.lastState.terminated.exitCode} {end}' 2>/dev/null)"
     # How the previous router died (run 29: a payment hung ~60 s, then the router restarted). Messages only.
-    kubectl -n rails logs deploy/hyperswitch -c router --previous --tail=40 2>/dev/null \
+    kubectl -n rails logs deploy/hyperswitch -c router --previous --tail=20000 2>/dev/null | grep -viE 'superposition|LocalResolutionProvider' \
       | sed -E 's/.*"level":"([A-Z]+)".*"time":"([^"]+)".*"message":"([^"]{0,180}).*"flow":"([^"]*)".*/\2 \1 [\4] \3/; s/.*"level":"([A-Z]+)".*"time":"([^"]+)".*"message":"([^"]{0,220}).*/\2 \1 \3/' \
-      | tail -25 | sed 's/^/  hyperswitch router (previous): /' | cut -c1-330
+      | tail -45 | sed 's/^/  hyperswitch router (previous): /' | cut -c1-330
     kubectl -n rails logs deploy/hyperswitch -c router --tail=3000 2>/dev/null | grep -iE 'panic|"level":"(ERROR|WARN)"|ERROR|thread .* panicked' \
       | grep -viE 'health' | tail -10 | sed 's/^/  hyperswitch router: /' | cut -c1-400
     # The test processor's calls land on DIFME's acquirer (iso-adapter -> ISO 8583 -> scheme-sim).
     # What the scheme decided (masked PANs): MTI, response code, state (run 31: a charge declined 05, cause unknown).
     kubectl -n rails port-forward svc/scheme-sim 18283:8080 >/dev/null 2>&1 & spf=$!; sleep 3
     curl -s -m 10 'http://127.0.0.1:18283/v1/transactions?limit=8' \
-      | python3 -c 'import json,sys; [print("  scheme txn: %s %s %s rc=%s %s %s" % (t.get("at","")[:19], t.get("mti"), t.get("pan"), t.get("responseCode"), t.get("state"), t.get("amountMinor"))) for t in json.load(sys.stdin).get("transactions",[])[-8:]]' 2>/dev/null \
+      | python3 -c 'import json,sys; ts=json.load(sys.stdin).get("transactions") or []; print("  scheme txn: %d processed" % len(ts)); [print("  scheme txn: %s %s %s rc=%s %s %s" % (t.get("at","")[:19], t.get("mti"), t.get("pan"), t.get("responseCode"), t.get("state"), t.get("amountMinor"))) for t in ts[-8:]]' 2>/dev/null \
       || echo "  scheme txn: not readable"
     kill $spf 2>/dev/null
     kubectl -n rails logs deploy/iso-adapter --tail=300 2>/dev/null | tail -6 | sed 's/^/  iso-adapter: /' | cut -c1-300

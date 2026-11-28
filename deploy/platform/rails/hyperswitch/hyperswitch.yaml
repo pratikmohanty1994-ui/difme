@@ -129,7 +129,7 @@ spec:
             - { name: ROUTER__LOG__TELEMETRY__OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://alloy.observability.svc:4317" }
             - { name: ROUTER__LOG__TELEMETRY__SAMPLING_RATE, value: "0.1" }
             - { name: ROUTER__LOG__TELEMETRY__IGNORE_ERRORS, value: "true" }     # collector down must not stop payments
-            - { name: ROUTER__SERVER__WORKERS, value: "2" }
+            - { name: ROUTER__SERVER__WORKERS, value: "4" }   # 2 let two stuck payments starve /health (runs 29-32)
             # Thread stacks: the router crate is built unoptimised (deploy/images/hyperswitch/Dockerfile: opt-level 0 to fit a
             # 16 GB build), and its payment path then overflowed the image's 6 MiB worker stacks: "fatal runtime error:
             # stack overflow, aborting" on every POST /payments (cluster run 28). Stack pages are only committed as used.
