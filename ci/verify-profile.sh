@@ -210,6 +210,23 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
     dflt=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=test_admin" http://127.0.0.1:18282/accounts/difme_marketplace)
     rh=$(kubectl -n rails exec deploy/hyperswitch -c router -- bash -c '. /vault/secrets/router.env 2>/dev/null; printf %s "$ROUTER__SECRETS__ADMIN_API_KEY" | sha256sum | cut -c1-12' 2>&1 | tail -1)
     echo "  hyperswitch admin key: router's key (router.env) sha256 $rh, Secret's $(printf %s "$adm" | sha256sum | cut -c1-12); built-in default test_admin -> HTTP $dflt"
+    # A payment straight to the router (run 27: the worker's POST payments got the connection closed with no reply,
+    # twice). Status, time and body of a 1 INR manual-capture charge on a Luhn-valid test card; then the router's errors.
+    pk=$(curl -s -m 20 -X POST -H "Authorization: admin-api-key=$adm" -H 'Content-Type: application/json' \
+      -d '{"name":"verify-probe","expiration":"never"}' http://127.0.0.1:18282/api_keys/difme_marketplace | sed -n 's/.*"api_key":"\([^"]*\)".*/\1/p')
+    if [ -n "$pk" ]; then
+      curl -s -m 60 -o /tmp/hs-pay.json -w '  hyperswitch probe payment: HTTP %{http_code} in %{time_total}s\n' -X POST -H "api-key: $pk" -H 'Content-Type: application/json' \
+        -d '{"amount":100,"currency":"INR","confirm":true,"capture_method":"manual","payment_method":"card","payment_method_type":"credit","authentication_type":"no_three_ds","description":"verify probe","payment_method_data":{"card":{"card_number":"4375510000000007","card_exp_month":"12","card_exp_year":"2030","card_holder_name":"verify probe","card_cvc":"123"}}}' \
+        http://127.0.0.1:18282/payments 2>&1 || echo "  hyperswitch probe payment: curl exit $? (connection closed or timed out)"
+      echo "  hyperswitch probe body: $(head -c 400 /tmp/hs-pay.json 2>/dev/null)"
+    else
+      echo "  hyperswitch probe payment: no API key issued"
+    fi
+    echo "  hyperswitch router restarts: $(kubectl -n rails get pods -l app=hyperswitch -o jsonpath='{.items[*].status.containerStatuses[*].restartCount}' 2>/dev/null)"
+    kubectl -n rails logs deploy/hyperswitch -c router --tail=3000 2>/dev/null | grep -iE 'panic|"level":"(ERROR|WARN)"|ERROR|thread .* panicked' \
+      | grep -viE 'health' | tail -10 | sed 's/^/  hyperswitch router: /' | cut -c1-400
+    # The test processor's calls land on DIFME's acquirer (iso-adapter -> ISO 8583 -> scheme-sim).
+    kubectl -n rails logs deploy/iso-adapter --tail=300 2>/dev/null | tail -6 | sed 's/^/  iso-adapter: /' | cut -c1-300
     kill $hpf 2>/dev/null
   fi
   # D3 (c): card checkout on PH-EE (DifmeCardCheckout/DifmeCardRefund answered by the rails-worker).
