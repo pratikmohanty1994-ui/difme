@@ -156,6 +156,13 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Runs 27-28 (2026-11-28, core,security,process,rails)
+Both green, and Mojaloop ok in both. In run 27, POST /payments had its connection closed again, even with the
+transport retry, so a stale pooled connection wasn't the cause. Run 28's direct payment probe got the same (curl exit 52
+after 2 s), and the router had restarted with "fatal runtime error: stack overflow, aborting". The router crate is
+built at opt-level 0 (to fit the 16 GB build), and unoptimised async frames overflow the image's 6 MiB worker stacks
+on the payment path. Fix: RUST_MIN_STACK=64 MiB on the deployment; only the pages actually used are committed.
+
 ### Run 26 (46125828501, 2026-11-28, core,security,process,rails)
 Green. The merchant and connector setup now got through: no refusals, and the admin key answered 200. The charge
 failed once with "PSP unreachable: HTTP/1.1 header parser received no bytes". The JDK client had reused a pooled

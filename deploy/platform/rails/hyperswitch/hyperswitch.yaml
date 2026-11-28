@@ -130,6 +130,10 @@ spec:
             - { name: ROUTER__LOG__TELEMETRY__SAMPLING_RATE, value: "0.1" }
             - { name: ROUTER__LOG__TELEMETRY__IGNORE_ERRORS, value: "true" }     # collector down must not stop payments
             - { name: ROUTER__SERVER__WORKERS, value: "2" }
+            # Thread stacks: the router crate is built unoptimised (deploy/images/hyperswitch/Dockerfile: opt-level 0 to fit a
+            # 16 GB build), and its payment path then overflowed the image's 6 MiB worker stacks: "fatal runtime error:
+            # stack overflow, aborting" on every POST /payments (cluster run 28). Stack pages are only committed as used.
+            - { name: RUST_MIN_STACK, value: "67108864" }
           ports: [{ name: http, containerPort: 8080 }]
           startupProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 5, failureThreshold: 60 }
           # Shallow check: /health/ready is Hyperswitch's deep check, which also probes services DIFME doesn't run (analytics,
