@@ -156,6 +156,12 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 34 (46172194821, 2026-11-28)
+Green; Mojaloop ok. Router restarts 0 (4 workers, tolerant liveness), and the probe got its API key. Its POST /payments
+still hung the full 60 s, and the scheme processed 0 transactions. So the payment flow waits on something before (or
+at) the connector call, with the router otherwise healthy. The INFO lines aren't visible (the WARN filter only showed
+superposition polling). The report now prints the PaymentsCreate flow's own lines to find the last step reached.
+
 ### Run 33 (46164667537, 2026-11-28; cancelled after 76 min)
 The rails profile converged, but the report hung on the Hyperswitch probe: a curl with no timeout, to a router busy
 with the worker's charges (the live buy got 504 at 16:49; the probe never returned until the cancel at 17:44). The
