@@ -99,6 +99,21 @@ if [ $rc -ne 0 ]; then
       | head -8 | sed "s/^/  $a: /"
   done
   kubectl get rollouts -A 2>/dev/null | head; kubectl get rs -n core-platform 2>/dev/null | head -15
+  # Kyverno's fail-closed webhooks block every Deployment while its server has no certificate (run 23, 2026-11-28:
+  # startup probe "tls: internal error", webhook calls EOF/502, pods Ready). Its own log and cert secrets say why.
+  if kubectl get events -A --field-selector type=Warning 2>/dev/null | grep -q 'kyverno.svc'; then
+    echo "== kyverno: webhook calls failing"
+    for d in kyverno-admission-controller kyverno-cleanup-controller; do
+      echo "--- $d (restarts: $(kubectl -n security get pods -l app.kubernetes.io/component=${d#kyverno-} -o jsonpath='{.items[*].status.containerStatuses[*].restartCount}' 2>/dev/null))"
+      kubectl -n security logs "deploy/$d" --tail=400 2>&1 | grep -iE 'error|fail|tls|cert|leader|panic' | grep -v 'level=info' | head -20 | cut -c1-300
+      p=$(kubectl -n security get pods -l app.kubernetes.io/component=${d#kyverno-} -o name 2>/dev/null | head -1)
+      [ -n "$p" ] && kubectl -n security logs "$p" --previous --tail=25 2>/dev/null | sed 's/^/  (previous) /' | cut -c1-300
+    done
+    echo "--- security secrets (tls)"; kubectl -n security get secrets 2>/dev/null | grep -iE 'tls|kyverno' | head
+    echo "--- endpoints"; kubectl -n security get endpoints kyverno-svc kyverno-cleanup-controller 2>&1 | head -4
+    echo "--- webhook caBundle lengths"; kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations -o jsonpath='{range .items[*]}{.metadata.name} {range .webhooks[*]}{.clientConfig.caBundle}{end}{"\n"}{end}' 2>/dev/null | awk '/kyverno/ {print "  " $1, length($2)}'
+    echo "--- node: $(uname -r), docker $(docker version -f '{{.Server.Version}}' 2>/dev/null)"
+  fi
   echo "== recent warning events"; kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp 2>/dev/null | tail -20 | cut -c1-250
 fi
 echo "== $P: after"; bash ci/mem-report.sh 12
