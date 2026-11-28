@@ -161,15 +161,23 @@ public final class Hyperswitch {
                 .header("Accept", "application/json").header(header, key == null ? "" : key);
         if (body != null) b.header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(body.toString()));
         else b.method(method, HttpRequest.BodyPublishers.noBody());
-        try {
-            HttpResponse<String> r = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
-            JsonNode n = r.body() == null || r.body().isBlank() ? JSON.createObjectNode() : JSON.readTree(r.body());
-            return new Reply(r.statusCode(), n);
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException("PSP unreachable: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted", e);
+        HttpRequest req = b.build();
+        // One retry on a transport error: a pooled keep-alive connection the router has already closed fails with
+        // "header parser received no bytes" (cluster run 26). Every call here is safe to repeat: payments, refunds and
+        // connectors are keyed by DIFME's ids and a repeat answers "already exists".
+        for (int attempt = 1; ; attempt++) {
+            try {
+                HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
+                JsonNode n = r.body() == null || r.body().isBlank() ? JSON.createObjectNode() : JSON.readTree(r.body());
+                return new Reply(r.statusCode(), n);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalStateException("PSP answered " + method + " " + path + " with a body that isn't JSON", e);
+            } catch (java.io.IOException e) {
+                if (attempt >= 2) throw new IllegalStateException("PSP unreachable (" + method + " " + path + "): " + e.getMessage(), e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted", e);
+            }
         }
     }
 

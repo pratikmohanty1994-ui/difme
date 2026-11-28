@@ -156,6 +156,14 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 26 (46125828501, 2026-11-28, core,security,process,rails)
+Green. The merchant and connector setup now got through: no refusals, and the admin key answered 200. The charge
+failed once with "PSP unreachable: HTTP/1.1 header parser received no bytes". The JDK client had reused a pooled
+keep-alive connection that the router had already closed. The report read the worker log 15 s later and showed no
+second attempt. The live buy got 504; without fraud the checkout would hold the payment anyway. Mojaloop
+cross-bank ok. Fix: the PSP client retries once on a transport error. Every call is keyed by DIFME's ids, so a
+repeat is safe. The report now waits 20 s and also prints worker errors.
+
 ### Runs 23-25 (2026-11-28, core,security,process,rails)
 - Runs 23 (two attempts) and 24 failed in core. Kyverno's admission controller restarted over and over (6 times in
   run 24), each time right after verifying image attestations. While it restarted, its startup probe answered "tls:

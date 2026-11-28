@@ -213,8 +213,10 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
     kill $hpf 2>/dev/null
   fi
   # D3 (c): card checkout on PH-EE (DifmeCardCheckout/DifmeCardRefund answered by the rails-worker).
-  kubectl -n rails logs deploy/rails-worker --tail=2000 2>/dev/null | grep -E "flows worker|card task|hyperswitch-|tazama-check|fineract-open-account" \
-    | tail -8 | sed 's/^/  card checkout: /' | cut -c1-240
+  # The flow retries a failed task after 5 s: wait, so the report shows how it ended (run 26 printed only the first try).
+  sleep 20
+  kubectl -n rails logs deploy/rails-worker --tail=2000 2>/dev/null | grep -E "flows worker|card task|hyperswitch-|tazama-check|fineract-open-account|Fluxnova poll|ERROR|Exception" \
+    | tail -12 | sed 's/^/  card checkout: /' | cut -c1-240
   # D3 (d/e): a cross-bank payment through the Mojaloop switch to the other bank (informational until it has passed once).
   if kubectl -n rails get deploy mojaloop-switch payeefsp-sdk >/dev/null 2>&1; then
     if ! timeout 300 python3 ci/mojaloop-cluster-check.py 2>&1 | cut -c1-500; then
