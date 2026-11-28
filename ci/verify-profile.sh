@@ -107,6 +107,7 @@ if [ $rc -ne 0 ]; then
       echo "--- $d (restarts: $(kubectl -n security get pods -l app.kubernetes.io/component=${d#kyverno-} -o jsonpath='{.items[*].status.containerStatuses[*].restartCount}' 2>/dev/null))"
       kubectl -n security logs "deploy/$d" --tail=400 2>&1 | grep -iE 'error|fail|tls|cert|leader|panic' | grep -v 'level=info' | head -20 | cut -c1-300
       p=$(kubectl -n security get pods -l app.kubernetes.io/component=${d#kyverno-} -o name 2>/dev/null | head -1)
+      [ -n "$p" ] && echo "  last termination: $(kubectl -n security get "$p" -o jsonpath='{range .status.containerStatuses[*]}{.name}={.lastState.terminated.reason}/{.lastState.terminated.exitCode} limit {.resources.limits.memory}{" "}{end}' 2>/dev/null)$(kubectl -n security get "$p" -o jsonpath='{.spec.containers[0].resources.limits.memory}' 2>/dev/null)"
       [ -n "$p" ] && kubectl -n security logs "$p" --previous --tail=25 2>/dev/null | sed 's/^/  (previous) /' | cut -c1-300
     done
     echo "--- security secrets (tls)"; kubectl -n security get secrets 2>/dev/null | grep -iE 'tls|kyverno' | head

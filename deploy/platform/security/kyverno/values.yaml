@@ -1,5 +1,9 @@
 admissionController:
   replicas: 1
+  # The chart's 384Mi limit is too small: run 24 (2026-11-28) restarted the admission controller 6 times, each time
+  # right after verifying image attestations, and its fail-closed webhooks then blocked core. Only the limit is
+  # raised; the request stays at the chart's 128Mi.
+  container: { resources: { limits: { memory: 1Gi }, requests: { cpu: 100m, memory: 128Mi } } }
   # Generate rule (policies/kyverno/generate-default-deny.yaml) creates CiliumNetworkPolicies (found live 2026-11-17).
   rbac: { clusterRole: { extraResources: [{ apiGroups: [cilium.io], resources: [ciliumnetworkpolicies], verbs: [get, list, watch] }] } }
 backgroundController:
