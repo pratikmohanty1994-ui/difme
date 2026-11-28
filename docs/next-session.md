@@ -156,6 +156,13 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 29 (46137122539, 2026-11-28)
+Green; Mojaloop ok. With 64 MiB stacks the payment changed from an instant crash to a hang: two POST /payments timed
+out (30 s each), then the router restarted and later attempts were dropped again. iso-adapter received no call, so the
+router fails before reaching the connector. A hang that still ends in a restart points to runaway recursion or an OOM
+kill rather than just large frames. The report now prints the router's last termination reason and the previous
+container's log messages; the probe waits for the router to be ready.
+
 ### Runs 27-28 (2026-11-28, core,security,process,rails)
 Both green, and Mojaloop ok in both. In run 27, POST /payments had its connection closed again, even with the
 transport retry, so a stale pooled connection wasn't the cause. Run 28's direct payment probe got the same (curl exit 52

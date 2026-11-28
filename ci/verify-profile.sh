@@ -212,7 +212,8 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
     echo "  hyperswitch admin key: router's key (router.env) sha256 $rh, Secret's $(printf %s "$adm" | sha256sum | cut -c1-12); built-in default test_admin -> HTTP $dflt"
     # A payment straight to the router (run 27: the worker's POST payments got the connection closed with no reply,
     # twice). Status, time and body of a 1 INR manual-capture charge on a Luhn-valid test card; then the router's errors.
-    pk=$(curl -s -m 20 -X POST -H "Authorization: admin-api-key=$adm" -H 'Content-Type: application/json' \
+    kubectl -n rails wait --for=condition=Ready pod -l app=hyperswitch --timeout=180s >/dev/null 2>&1
+    pk=$(curl -s -m 20 --retry 6 --retry-delay 10 --retry-all-errors -X POST -H "Authorization: admin-api-key=$adm" -H 'Content-Type: application/json' \
       -d '{"name":"verify-probe","expiration":"never"}' http://127.0.0.1:18282/api_keys/difme_marketplace | sed -n 's/.*"api_key":"\([^"]*\)".*/\1/p')
     if [ -n "$pk" ]; then
       curl -s -m 60 -o /tmp/hs-pay.json -w '  hyperswitch probe payment: HTTP %{http_code} in %{time_total}s\n' -X POST -H "api-key: $pk" -H 'Content-Type: application/json' \
@@ -222,7 +223,11 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
     else
       echo "  hyperswitch probe payment: no API key issued"
     fi
-    echo "  hyperswitch router restarts: $(kubectl -n rails get pods -l app=hyperswitch -o jsonpath='{.items[*].status.containerStatuses[*].restartCount}' 2>/dev/null)"
+    echo "  hyperswitch router restarts: $(kubectl -n rails get pods -l app=hyperswitch -o jsonpath='{range .items[*].status.containerStatuses[*]}{.name}={.restartCount} last={.lastState.terminated.reason}/{.lastState.terminated.exitCode} {end}' 2>/dev/null)"
+    # How the previous router died (run 29: a payment hung ~60 s, then the router restarted). Messages only.
+    kubectl -n rails logs deploy/hyperswitch -c router --previous --tail=40 2>/dev/null \
+      | sed -E 's/.*"level":"([A-Z]+)".*"time":"([^"]+)".*"message":"([^"]{0,180}).*"flow":"([^"]*)".*/\2 \1 [\4] \3/; s/.*"level":"([A-Z]+)".*"time":"([^"]+)".*"message":"([^"]{0,220}).*/\2 \1 \3/' \
+      | tail -25 | sed 's/^/  hyperswitch router (previous): /' | cut -c1-330
     kubectl -n rails logs deploy/hyperswitch -c router --tail=3000 2>/dev/null | grep -iE 'panic|"level":"(ERROR|WARN)"|ERROR|thread .* panicked' \
       | grep -viE 'health' | tail -10 | sed 's/^/  hyperswitch router: /' | cut -c1-400
     # The test processor's calls land on DIFME's acquirer (iso-adapter -> ISO 8583 -> scheme-sim).
