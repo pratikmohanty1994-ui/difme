@@ -18,7 +18,7 @@ data:
   DIFME_EXCHANGE_PHEE_CARD_FLOWS: "true"
   # Accounts (escrow, partner-*, merchant-*, card-settlement) opened through PH-EE's DifmeOpenAccount before first use.
   DIFME_EXCHANGE_PHEE_OPEN_ACCOUNTS: "true"
-  DIFME_EXCHANGE_HUB_PARTNER_CARDS: "1:4375510000000001:1230,2:4375510000000019:1230,3:4375510000000027:1230,*:4375510000000001:1230"
+  DIFME_EXCHANGE_HUB_PARTNER_CARDS: "1:4375510000000007:1230,2:4375510000000015:1230,3:4375510000000023:1230,*:4375510000000007:1230"
 ---
 # exchange-svc reads its environment at start: restart it once after the ConfigMap exists, so it actually uses PH-EE
 # (cluster-verify runs 15-17: the exchange kept its simulated rails, so no card checkout went through DifmeCardCheckout).

@@ -156,6 +156,25 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Runs 23-25 (2026-11-28, core,security,process,rails)
+- Runs 23 (two attempts) and 24 failed in core. Kyverno's admission controller restarted over and over (6 times in
+  run 24), each time right after verifying image attestations. While it restarted, its startup probe answered "tls:
+  internal error" and webhook calls ended in EOF/502, so the fail-closed webhooks blocked four core Deployments.
+  Its certificates, endpoints and caBundle were all fine. The runner image had changed (ubuntu-24.04 20261116 ->
+  20261122: kernel 7.0.0, Docker 28.0.4). Fix: admission controller memory limit 1Gi (chart default 384Mi; request
+  unchanged, policies unchanged). The report now prints Kyverno's logs, its last termination reason and its certs
+  when its webhooks fail.
+- Run 25 (46121453341): green; all profiles converged. Mojaloop cross-bank ok (10000 -> 9850); ACS certificate from
+  the scheme CA; network tokenization on. The Hyperswitch merchant now exists (admin key -> 200). The card charge
+  still failed twice:
+  1. The first connector list after the merchant was created answered "API key not provided or invalid". The
+     worker had already set its API key, so the retry skipped the connector step altogether. Fix: keep the key only
+     once the connector exists. On 401, the connector calls fall back to the merchant's own key, and an existing
+     connector counts as success.
+  2. "Json deserialize error: card number invalid": the seeded test PANs (…0001, …0019, …0027) fail the Luhn
+     check. Fix: Luhn-valid seeds (…0007, …0015, …0023) in scheme-sim, exchange-rails and dev-secrets. The
+     rails-worker refuses a non-Luhn PAN at start.
+
 ### Run 22 result (45424562151, core,security,process,rails; 2026-11-24)
 Green. The probe settled it: the router's admin key (router.env from OpenBao) and the Secret's have the same hash, and
 both the real key and the default test_admin get 401 on GET /accounts/difme_marketplace. Cause (router source): the

@@ -26,12 +26,13 @@ spec:
             # Network tokenization service for Hyperswitch (/nts): shared API key and Hyperswitch's public key (not secret).
             - { name: NTS_API_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-api-key } } }
             - { name: NTS_HYPERSWITCH_PUBLIC_KEY, valueFrom: { secretKeyRef: { name: hyperswitch, key: nts-public-key } } }
-            # Bank X (BIN 437551, the FR-01 offer BIN) cards for buying partners, plus another issuer.
+            # Bank X (BIN 437551, the FR-01 offer BIN) cards for buying partners, plus another issuer. PANs must pass
+            # the Luhn check: Hyperswitch refuses others ("card number invalid", cluster run 25).
             - name: SEED_CARDS
               value: >-
-                [{"pan":"4375510000000001","expiry":"3012","limitMinor":5000000,"holder":"partner-1"},
-                 {"pan":"4375510000000019","expiry":"3012","limitMinor":5000000,"holder":"partner-2"},
-                 {"pan":"4375510000000027","expiry":"3012","limitMinor":100000,"holder":"low-limit partner"},
+                [{"pan":"4375510000000007","expiry":"3012","limitMinor":5000000,"holder":"partner-1"},
+                 {"pan":"4375510000000015","expiry":"3012","limitMinor":5000000,"holder":"partner-2"},
+                 {"pan":"4375510000000023","expiry":"3012","limitMinor":100000,"holder":"low-limit partner"},
                  {"pan":"5200000000000007","expiry":"3012","limitMinor":5000000,"holder":"other issuer"}]
           ports: [{ name: iso, containerPort: 8583 }, { name: http, containerPort: 8080 }]
           readinessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 10 }

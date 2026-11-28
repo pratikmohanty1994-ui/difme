@@ -74,7 +74,7 @@ unset NTS_PRIV
 secret database-tier hyperswitch-db password="$HYPERSWITCH_PG"
 # Card checkout on PH-EE (D3 c): the cards on file the rails-worker charges, by the reference the flows carry
 # (ref:PAN:MMYY; scheme-sim's seeded test cards, the same as exchange-rails' partner cards).
-secret rails         rails-worker-cards cards="1:4375510000000001:1230,2:4375510000000019:1230,3:4375510000000027:1230,*:4375510000000001:1230"
+secret rails         rails-worker-cards cards="1:4375510000000007:1230,2:4375510000000015:1230,3:4375510000000023:1230,*:4375510000000007:1230"
 # Card security (ADR-026/027): no keys here. The security module gets them only through attested key release.
 CARD_ISSUER_PG=$(rand)
 secret rails         card-issuer-db password="$CARD_ISSUER_PG"

@@ -57,18 +57,31 @@ public final class Hyperswitch {
         }
         ObjectNode k = JSON.createObjectNode();
         k.put("name", "rails-worker").put("description", "PH-EE card flows worker").put("expiration", "never");
-        apiKey = ok(call("POST", "api_keys/" + MERCHANT, k, "admin-api-key=" + adminKey, "Authorization"), "create api key").path("api_key").asText();
-        JsonNode connectors = ok(call("GET", "account/" + MERCHANT + "/connectors", null, "admin-api-key=" + adminKey, "Authorization"), "list connectors");
-        for (JsonNode c : connectors) if (CONNECTOR.equals(c.path("connector_name").asText())) return;
-        ObjectNode c = JSON.createObjectNode();
-        c.put("connector_type", "payment_processor").put("connector_name", CONNECTOR).put("test_mode", true).put("disabled", false);
-        c.putObject("connector_account_details").put("auth_type", "HeaderKey").put("api_key", acquirerKey);
-        var pm = c.putArray("payment_methods_enabled").addObject().put("payment_method", "card").putArray("payment_method_types");
-        for (String t : new String[] {"credit", "debit"}) {
-            pm.addObject().put("payment_method_type", t).put("minimum_amount", 1).put("maximum_amount", 1_000_000_000)
-                    .put("recurring_enabled", false).put("installment_payment_enabled", false);
+        // The key is kept only once the connector exists: run 25 failed the connector step once, and the retry then
+        // returned early (key already set) and charged with no connector.
+        String key = ok(call("POST", "api_keys/" + MERCHANT, k, "admin-api-key=" + adminKey, "Authorization"), "create api key").path("api_key").asText();
+        // Connector routes: admin auth with the merchant from the route; the merchant's own key where the router
+        // refuses that (run 25: "API key not provided or invalid" right after the merchant was created).
+        Reply listed = call("GET", "account/" + MERCHANT + "/connectors", null, "admin-api-key=" + adminKey, "Authorization");
+        if (listed.status() == 401) listed = call("GET", "account/" + MERCHANT + "/connectors", null, key, "api-key");
+        boolean exists = false;
+        if (listed.status() / 100 == 2) {
+            for (JsonNode c : ok(listed, "list connectors")) exists |= CONNECTOR.equals(c.path("connector_name").asText());
         }
-        ok(call("POST", "account/" + MERCHANT + "/connectors", c, "admin-api-key=" + adminKey, "Authorization"), "create card connector");
+        if (!exists) {
+            ObjectNode c = JSON.createObjectNode();
+            c.put("connector_type", "payment_processor").put("connector_name", CONNECTOR).put("test_mode", true).put("disabled", false);
+            c.putObject("connector_account_details").put("auth_type", "HeaderKey").put("api_key", acquirerKey);
+            var pm = c.putArray("payment_methods_enabled").addObject().put("payment_method", "card").putArray("payment_method_types");
+            for (String t : new String[] {"credit", "debit"}) {
+                pm.addObject().put("payment_method_type", t).put("minimum_amount", 1).put("maximum_amount", 1_000_000_000)
+                        .put("recurring_enabled", false).put("installment_payment_enabled", false);
+            }
+            Reply created = call("POST", "account/" + MERCHANT + "/connectors", c, "admin-api-key=" + adminKey, "Authorization");
+            if (created.status() == 401) created = call("POST", "account/" + MERCHANT + "/connectors", c, key, "api-key");
+            if (created.status() / 100 != 2 && !duplicate(created.body())) ok(created, "create card connector");
+        }
+        apiKey = key;
     }
 
     /** Charges a card (authorise + capture). paymentId is DIFME's id: a retry with the same id returns the first result. */

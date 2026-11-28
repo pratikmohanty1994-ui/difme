@@ -1,6 +1,7 @@
 package dev.difme.railsworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -87,7 +88,7 @@ class CardTasksTest {
             String pan = b.at("/payment_method_data/card/card_number").asText();
             String id = b.path("payment_id").asText();
             charged.add(id + " " + pan + " " + b.path("amount").asLong() + " " + b.path("capture_method").asText());
-            boolean ok = !pan.endsWith("0019");
+            boolean ok = !pan.endsWith("0015");
             state.put(id, ok ? "requires_capture" : "failed");
             reply(x, 200, "{\"payment_id\":\"" + id + "\",\"status\":\"" + state.get(id)
                     + "\",\"amount\":" + b.path("amount").asLong() + (ok ? "" : ",\"error_message\":\"51: Insufficient funds\"") + "}");
@@ -99,7 +100,7 @@ class CardTasksTest {
         server.start();
         String base = "http://127.0.0.1:" + server.getAddress().getPort();
         fx = new Fluxnova(base + "/engine-rest", "admin:x", "w1");
-        tasks = new CardTasks(new Hyperswitch(base, "admin", "acq"), new CardsOnFile("1:4375510000000001:1230,2:4375510000000019:1230,*:4375510000000001:1230"));
+        tasks = new CardTasks(new Hyperswitch(base, "admin", "acq"), new CardsOnFile("1:4375510000000007:1230,2:4375510000000015:1230,*:4375510000000007:1230"));
     }
 
     @AfterEach
@@ -124,14 +125,14 @@ class CardTasksTest {
         assertEquals("51", completed.get("t2").at("/declineCode/value").asText());
         assertEquals("authorised", completed.get("t3").at("/chargeStatus/value").asText());   // "*" card for a standing mandate
         assertEquals("succeeded", completed.get("t4").at("/refundStatus/value").asText());
-        assertEquals(List.of("auc1-p1-000001 4375510000000001 1600000 manual", "auc2-p2-000002 4375510000000019 500 manual",
-                "auc3-p1000002-000003 4375510000000001 700 manual"), charged);
+        assertEquals(List.of("auc1-p1-000001 4375510000000007 1600000 manual", "auc2-p2-000002 4375510000000015 500 manual",
+                "auc3-p1000002-000003 4375510000000007 700 manual"), charged);
         assertTrue(completed.values().stream().noneMatch(v -> v.toString().contains("4375510000")), "no card number in process variables");
     }
 
     @Test
     void noCardIsADeclineAndAnUnreachablePspIsRetried() throws Exception {
-        tasks = new CardTasks(new Hyperswitch("http://127.0.0.1:" + server.getAddress().getPort(), "a", "b"), new CardsOnFile("1:4375510000000001:1230"));
+        tasks = new CardTasks(new Hyperswitch("http://127.0.0.1:" + server.getAddress().getPort(), "a", "b"), new CardsOnFile("1:4375510000000007:1230"));
         task("t5", CardTasks.CHARGE, Map.of("paymentId", "p5", "amountMinor", 1, "cardRef", "9"));
         pspDown = true;
         task("t6", CardTasks.CHARGE, Map.of("paymentId", "p6", "amountMinor", 1, "cardRef", "1"));
@@ -143,7 +144,7 @@ class CardTasksTest {
 
     private CardTasks withFraud(Tazama.Verdict v, boolean failOpen) {
         String base = "http://127.0.0.1:" + server.getAddress().getPort();
-        return new CardTasks(new Hyperswitch(base, "admin", "acq"), new CardsOnFile("*:4375510000000001:1230"),
+        return new CardTasks(new Hyperswitch(base, "admin", "acq"), new CardsOnFile("*:4375510000000007:1230"),
                 (id, payer, m, amt, ccy) -> new Tazama.Evaluation(v, "NALT (difme-901-902@1.0.0=0) payer " + payer), failOpen);
     }
 
@@ -188,5 +189,10 @@ class CardTasksTest {
         Worker.runOnce(fx, tasks, 100);
         assertEquals("OFF", completed.get("f").at("/fraudVerdict/value").asText());
         assertEquals("capture", completed.get("f").at("/fraudAction/value").asText());
+    }
+
+    @Test
+    void cardsOnFileRefuseAPanThatFailsLuhn() {
+        assertThrows(IllegalArgumentException.class, () -> new CardsOnFile("1:4375510000000001:1230"));
     }
 }
