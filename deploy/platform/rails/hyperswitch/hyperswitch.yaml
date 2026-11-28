@@ -99,11 +99,11 @@ spec:
             - { name: ROUTER__MASTER_DATABASE__HOST, value: postgres-docdb.database-tier.svc }
             - { name: ROUTER__MASTER_DATABASE__USERNAME, value: hyperswitch }
             - { name: ROUTER__MASTER_DATABASE__DBNAME, value: hyperswitch }
-            - { name: ROUTER__MASTER_DATABASE__MAX_POOL_SIZE, value: "3" }
+            - { name: ROUTER__MASTER_DATABASE__MAX_POOL_SIZE, value: "10" }
             - { name: ROUTER__REPLICA_DATABASE__HOST, value: postgres-docdb.database-tier.svc }
             - { name: ROUTER__REPLICA_DATABASE__USERNAME, value: hyperswitch }
             - { name: ROUTER__REPLICA_DATABASE__DBNAME, value: hyperswitch }
-            - { name: ROUTER__REPLICA_DATABASE__MAX_POOL_SIZE, value: "3" }
+            - { name: ROUTER__REPLICA_DATABASE__MAX_POOL_SIZE, value: "10" }
             - { name: ROUTER__ACCOUNTS_DATABASE__HOST, value: postgres-docdb.database-tier.svc }
             - { name: ROUTER__ACCOUNTS_DATABASE__USERNAME, value: hyperswitch }
             - { name: ROUTER__ACCOUNTS_DATABASE__DBNAME, value: hyperswitch }
@@ -140,10 +140,12 @@ spec:
           # OpenSearch, gRPC, decision engine) and an outgoing request to the internet that egress policy blocks, so it
           # timed out on the first cluster run (2026-11-22). Database and Valkey failures surface on requests and logs.
           readinessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 15, timeoutSeconds: 5 }
-          livenessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 30 }
+          # Tolerant: the kubelet killed the router mid-payment when /health missed the default 1 s timeout (cluster runs
+          # 29-31: two first payments held the 3-connection pools, and the pod's small CPU share slowed /health).
+          livenessProbe: { httpGet: { path: /health, port: 8080 }, periodSeconds: 30, timeoutSeconds: 10, failureThreshold: 6 }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: nts, mountPath: /nts, readOnly: true }]
-          resources: { requests: { cpu: 50m, memory: 160Mi }, limits: { memory: 512Mi } }
+          resources: { requests: { cpu: 200m, memory: 160Mi }, limits: { memory: 512Mi } }
       volumes:
         - { name: nts, emptyDir: { medium: Memory, sizeLimit: 1Mi } }
         - name: openbao-token

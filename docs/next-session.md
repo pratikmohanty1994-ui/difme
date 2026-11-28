@@ -156,6 +156,15 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 31 (46156708772, 2026-11-28; Hyperswitch router at opt-level 1)
+Green; Mojaloop ok. The first two concurrent payments still timed out (30 s each) and the kubelet killed the router
+(Error/137). After the restart, a charge got a real answer for the first time: "declined 05" (Do not honour). So the
+payment path works end to end, and the stall isn't the optimisation level. Likely cause: the 3-connection DB pools
+(two first payments waiting on connections up to 30 s), a small CPU share (50m, divided by 4 on CI), and the default
+1 s liveness timeout. Fix: master/replica pools 10, liveness timeout 10 s × 6, CPU request 200m. The 05: scheme-sim
+answers 05 for a blocked card or a bad token/CAVV, and card-issuer for a failed CVV2. The acquirer forwards no CVC,
+so the report now lists the scheme's last transactions (masked PAN, MTI, response code) to find which.
+
 ### Run 30 (46140676202, 2026-11-28)
 Green; Mojaloop ok. The router's last termination was Error/137 after "SIGTERM received": the kubelet killed it on
 the liveness probe, not an OOM kill. Its last request was PaymentsCreate; both workers were stuck in payments, so

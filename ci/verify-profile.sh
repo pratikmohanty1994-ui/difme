@@ -231,6 +231,12 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
     kubectl -n rails logs deploy/hyperswitch -c router --tail=3000 2>/dev/null | grep -iE 'panic|"level":"(ERROR|WARN)"|ERROR|thread .* panicked' \
       | grep -viE 'health' | tail -10 | sed 's/^/  hyperswitch router: /' | cut -c1-400
     # The test processor's calls land on DIFME's acquirer (iso-adapter -> ISO 8583 -> scheme-sim).
+    # What the scheme decided (masked PANs): MTI, response code, state (run 31: a charge declined 05, cause unknown).
+    kubectl -n rails port-forward svc/scheme-sim 18283:8080 >/dev/null 2>&1 & spf=$!; sleep 3
+    curl -s -m 10 'http://127.0.0.1:18283/v1/transactions?limit=8' \
+      | python3 -c 'import json,sys; [print("  scheme txn: %s %s %s rc=%s %s %s" % (t.get("at","")[:19], t.get("mti"), t.get("pan"), t.get("responseCode"), t.get("state"), t.get("amountMinor"))) for t in json.load(sys.stdin).get("transactions",[])[-8:]]' 2>/dev/null \
+      || echo "  scheme txn: not readable"
+    kill $spf 2>/dev/null
     kubectl -n rails logs deploy/iso-adapter --tail=300 2>/dev/null | tail -6 | sed 's/^/  iso-adapter: /' | cut -c1-300
     kill $hpf 2>/dev/null
   fi
