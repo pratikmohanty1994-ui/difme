@@ -205,9 +205,9 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
   # Does Hyperswitch accept the admin key the rails-worker uses (Secret hyperswitch, admin-api-key)?
   if adm=$(kubectl -n rails get secret hyperswitch -o jsonpath='{.data.admin-api-key}' 2>/dev/null | base64 -d) && [ -n "$adm" ]; then
     kubectl -n rails port-forward svc/hyperswitch 18282:8080 >/dev/null 2>&1 & hpf=$!; sleep 3
-    code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=$adm" http://127.0.0.1:18282/accounts/difme_marketplace)
+    code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=$adm" http://127.0.0.1:18282/accounts/difme_marketplace)
     echo "  hyperswitch admin key: GET /accounts/difme_marketplace -> HTTP $code (200 = key accepted; 401 = refused OR the merchant doesn't exist yet: the router answers a missing route merchant with 401)"
-    dflt=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=test_admin" http://127.0.0.1:18282/accounts/difme_marketplace)
+    dflt=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H "Authorization: admin-api-key=test_admin" http://127.0.0.1:18282/accounts/difme_marketplace)
     rh=$(kubectl -n rails exec deploy/hyperswitch -c router -- bash -c '. /vault/secrets/router.env 2>/dev/null; printf %s "$ROUTER__SECRETS__ADMIN_API_KEY" | sha256sum | cut -c1-12' 2>&1 | tail -1)
     echo "  hyperswitch admin key: router's key (router.env) sha256 $rh, Secret's $(printf %s "$adm" | sha256sum | cut -c1-12); built-in default test_admin -> HTTP $dflt"
     # A payment straight to the router (run 27: the worker's POST payments got the connection closed with no reply,
@@ -276,7 +276,7 @@ if [ "$rc" -eq 0 ] && kubectl -n core-platform get deploy exchange-svc -o yaml 2
   echo "== exchange state survives a restart"
   ex=/api/v1/namespaces/core-platform/services/exchange-svc:8089/proxy/v1/exchange
   kubectl -n core-platform port-forward svc/exchange-svc 18089:8089 >/dev/null 2>&1 & pf=$!; sleep 3
-  mid=$(curl -s -X POST -H 'Content-Type: application/json' localhost:18089/v1/exchange/fr01-buy/mandates -d '{"partnerRef":"restart-smoke","limitMinor":2500000,"maxPerOrderMinor":2500000,"minYieldPct":4,"depositMinor":2000000,"budgetTotalMinor":2500000,"merchantCount":2,"goodsCount":5,"validityDays":5,"cardJurisdiction":"IN_DOMESTIC_AFA"}' | python3 -c 'import json,sys; print(json.load(sys.stdin).get("mandateId",""))' 2>/dev/null)
+  mid=$(curl -s -m 20 -X POST -H 'Content-Type: application/json' localhost:18089/v1/exchange/fr01-buy/mandates -d '{"partnerRef":"restart-smoke","limitMinor":2500000,"maxPerOrderMinor":2500000,"minYieldPct":4,"depositMinor":2000000,"budgetTotalMinor":2500000,"merchantCount":2,"goodsCount":5,"validityDays":5,"cardJurisdiction":"IN_DOMESTIC_AFA"}' | python3 -c 'import json,sys; print(json.load(sys.stdin).get("mandateId",""))' 2>/dev/null)
   kill $pf 2>/dev/null
   sleep 1   # > the 50 ms flush interval
   if [ -n "$mid" ]; then

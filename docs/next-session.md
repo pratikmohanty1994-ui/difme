@@ -156,6 +156,11 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 33 (46164667537, 2026-11-28; cancelled after 76 min)
+The rails profile converged, but the report hung on the Hyperswitch probe: a curl with no timeout, to a router busy
+with the worker's charges (the live buy got 504 at 16:49; the probe never returned until the cancel at 17:44). The
+report's curls now all have timeouts.
+
 ### Run 32 (46160781853, 2026-11-28)
 Green; Mojaloop ok. With pools of 10, a 10 s × 6 liveness probe and 200m CPU, the router was still killed (Error/137).
 The two first payments timed out; from 16:06:11 the router was alive but closing connections with no reply, and
