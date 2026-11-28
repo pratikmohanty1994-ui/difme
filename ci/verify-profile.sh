@@ -232,9 +232,9 @@ if [ "$rc" -eq 0 ] && kubectl -n rails get deploy hyperswitch >/dev/null 2>&1; t
       | grep -viE 'health' | tail -10 | sed 's/^/  hyperswitch router: /' | cut -c1-400
     # The probe's own payment, step by step (run 34: POST /payments hung 60 s with the router otherwise healthy and the
     # scheme untouched, so the flow waits on something before the connector). Time, level, message, last 40 lines.
-    kubectl -n rails logs deploy/hyperswitch -c router --tail=20000 2>/dev/null | grep '"flow":"PaymentsCreate"' \
-      | sed -E 's/.*"level":"([A-Z]+)".*"time":"([^"]+)".*"message":"([^"]{0,240}).*/\2 \1 \3/' \
-      | tail -40 | sed 's/^/  hyperswitch payment step: /' | cut -c1-320
+    kubectl -n rails logs deploy/hyperswitch -c router --tail=20000 2>/dev/null | grep '"flow":"PaymentsCreate"' | grep -v 'Lock busy by other request' \
+      | sed -E 's/\\"//g; s/.*"level":"([A-Z]+)".*"time":"([^"]+)".*"message":"([^"]{0,240}).*/\2 \1 \3/' \
+      | tail -70 | sed 's/^/  hyperswitch payment step: /' | cut -c1-320
     # The test processor's calls land on DIFME's acquirer (iso-adapter -> ISO 8583 -> scheme-sim).
     # What the scheme decided (masked PANs): MTI, response code, state (run 31: a charge declined 05, cause unknown).
     kubectl -n rails port-forward svc/scheme-sim 18283:8080 >/dev/null 2>&1 & spf=$!; sleep 3

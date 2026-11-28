@@ -156,6 +156,13 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 35 (46176545613, 2026-11-28)
+Green; Mojaloop ok; router restarts 0; scheme 0 transactions; the probe payment hung 60 s. The PaymentsCreate lines
+were all "Lock busy by other request" every 500 ms. That lock is Hyperswitch's per-payment-id Redis lock, so the
+worker's HTTP retry (same payment_id) waits behind its own first attempt, which hangs while holding it. The probe
+(fresh id) hung too, so the first request of every payment stalls somewhere after taking its lock. The report now
+drops the lock-busy lines to show the first request's own steps.
+
 ### Run 34 (46172194821, 2026-11-28)
 Green; Mojaloop ok. Router restarts 0 (4 workers, tolerant liveness), and the probe got its API key. Its POST /payments
 still hung the full 60 s, and the scheme processed 0 transactions. So the payment flow waits on something before (or
