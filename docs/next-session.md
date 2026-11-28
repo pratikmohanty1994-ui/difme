@@ -156,6 +156,13 @@ cluster run; if green, delete payment-hub.**
   Hyperswitch JWE adapter; ml + fraud scorer FAIL path on a cluster, dbt lineage; edge app (Tauri/Vue UI unfinished);
   README coverage matrix paths; component-reuse/status upkeep; owner: arm64 VM retry, jPOS switch migration (later).
 
+### Run 30 (46140676202, 2026-11-28)
+Green; Mojaloop ok. The router's last termination was Error/137 after "SIGTERM received": the kubelet killed it on
+the liveness probe, not an OOM kill. Its last request was PaymentsCreate; both workers were stuck in payments, so
+/health stopped answering. So the bigger stack only turned the overflow into a long CPU-bound stall in unoptimised
+code. Fix at the source: the router crate is now built at opt-level 1 (Dockerfile; the 24 GB swapfile carries the
+compiler's peak). The 64 MiB stacks stay as a margin.
+
 ### Run 29 (46137122539, 2026-11-28)
 Green; Mojaloop ok. With 64 MiB stacks the payment changed from an instant crash to a hang: two POST /payments timed
 out (30 s each), then the router restarted and later attempts were dropped again. iso-adapter received no call, so the

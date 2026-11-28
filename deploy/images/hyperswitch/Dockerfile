@@ -15,10 +15,12 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld"
 ENV CARGO_INCREMENTAL=0 CARGO_NET_RETRY=10 CARGO_PROFILE_RELEASE_FAST_DEBUG=0 CARGO_PROFILE_RELEASE_FAST_STRIP=symbols
 # Memory (measured 2026-11-22, docs/knowledge-base/build.md): rustc peaks per crate at diesel 11.4 GB, router 13.6 GB
 # (opt-level 0) and hyperswitch_connectors 8.1 GB. Building one crate at a time (-j 1) keeps those peaks from
-# overlapping, so the build fits GitHub's 16 GB runners; images.yml adds a 24 GB swapfile only as a backstop. The router
-# crate is built unoptimised (every other crate is optimised): at opt-level 1 or above it needs more than 16 GB.
+# overlapping, so the build fits GitHub's 16 GB runners; images.yml adds a 24 GB swapfile as a backstop. The router
+# crate is built at opt-level 1, which needs more than 16 GB, so the swap carries the peak. It was opt-level 0 until
+# cluster runs 28-30 (2026-11-28): unoptimised async code overflowed 6 MiB thread stacks on every POST /payments, and
+# with 64 MiB stacks the payment stalled until the liveness probe killed the router.
 # Features stay upstream's defaults: Hyperswitch does not compile with payouts, frm or kv_store turned off.
-RUN cargo build --locked --profile release-fast --bin router -j 1 --config 'profile.release-fast.package.router.opt-level=0' \
+RUN cargo build --locked --profile release-fast --bin router -j 1 --config 'profile.release-fast.package.router.opt-level=1' \
     && cp target/release-fast/router /router
 
 FROM debian:trixie-slim
